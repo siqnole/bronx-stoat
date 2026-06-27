@@ -15,6 +15,12 @@
 #include "stoatpp/cluster.h"
 #include "stoatpp/utils/ulid.h"
 #include <nlohmann/json.hpp>
+#include "../database.h"
+#include <memory>
+
+namespace bronx {
+    inline std::shared_ptr<Database> g_db = nullptr;
+}
 
 namespace bronx::helpers {
 

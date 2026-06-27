@@ -17,6 +17,7 @@
 #include "cogs/moderation.h"
 #include "cogs/roles.h"
 #include "cogs/users.h"
+#include "cogs/prefix.h"
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string& filepath = ".env") {
@@ -63,6 +64,33 @@ int main() {
         return 1;
     }
 
+    // DB configuration
+    const char* db_host_env = std::getenv("DB_HOST");
+    std::string db_host = db_host_env ? db_host_env : "127.0.0.1";
+    
+    const char* db_user_env = std::getenv("DB_USER");
+    std::string db_user = db_user_env ? db_user_env : "root";
+    
+    const char* db_pass_env = std::getenv("DB_PASSWORD");
+    std::string db_pass = db_pass_env ? db_pass_env : "";
+    
+    const char* db_name_env = std::getenv("DB_DATABASE");
+    std::string db_name = db_name_env ? db_name_env : "bronx";
+    
+    int db_port = 3306;
+    if (const char* db_port_env = std::getenv("DB_PORT")) {
+        try {
+            db_port = std::stoi(db_port_env);
+        } catch(...) {}
+    }
+
+    std::cout << "[bronx db] connecting to MariaDB on " << db_host << ":" << db_port << "...\n";
+    bronx::g_db = std::make_shared<bronx::Database>();
+    if (!bronx::g_db->init(db_host, db_user, db_pass, db_name, db_port)) {
+        std::cerr << "[bronx error] failed to initialize database connection. exiting.\n";
+        return 1;
+    }
+
     stoatpp::ClientConfig cfg;
     cfg.log_level = stoatpp::LogLevel::TRACE;
     
@@ -78,6 +106,29 @@ int main() {
         cfg.ws_url = ws_url;
     }
 
+    cfg.prefix_resolver = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg) -> std::vector<std::string> {
+        if (!bronx::g_db) {
+            return {bot.config().command_prefix};
+        }
+        
+        // 1. Check user prefixes
+        std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
+        if (!user_pfx.empty()) {
+            return user_pfx;
+        }
+        
+        // 2. Check server prefixes
+        if (!msg.server_id.empty()) {
+            std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
+            if (!server_pfx.empty()) {
+                return server_pfx;
+            }
+        }
+        
+        // 3. Fallback
+        return {bot.config().command_prefix};
+    };
+
     std::cout << "[bronx] initialising stoatpp cluster...\n";
     std::cout << "        api base: " << cfg.api_base_url << "\n";
     std::cout << "        ws gateway: " << cfg.ws_url << "\n";
@@ -90,6 +141,7 @@ int main() {
     bot.use(std::make_unique<bronx::cogs::ModerationModule>());
     bot.use(std::make_unique<bronx::cogs::RolesModule>());
     bot.use(std::make_unique<bronx::cogs::UsersModule>());
+    bot.use(std::make_unique<bronx::cogs::PrefixModule>());
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
         std::cout << "[bronx event] ready! logged in as: " << e.user.username 
