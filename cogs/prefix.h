@@ -16,7 +16,8 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling prefix...\n";
                 if (args.empty()) {
-                    bot.send_message(msg.channel_id, "usage: `!prefix <list|add|remove> [args...]`\nexamples:\n• `!prefix list`\n• `!prefix add ?`\n• `!prefix add user .`\n• `!prefix remove user .`");
+                    std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                    bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix <list|add|remove> [args...]`\nexamples:\n• `" + pfx + "prefix list`\n• `" + pfx + "prefix add ?`\n• `" + pfx + "prefix add user .`\n• `" + pfx + "prefix remove user .`");
                     return;
                 }
 
@@ -69,7 +70,8 @@ public:
 
                 if (subcommand == "add") {
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "usage: `!prefix add [user|server] <prefix>`");
+                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix add [user|server] <prefix>`");
                         return;
                     }
 
@@ -136,7 +138,8 @@ public:
 
                 if (subcommand == "remove") {
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "usage: `!prefix remove [user|server] <prefix>`");
+                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix remove [user|server] <prefix>`");
                         return;
                     }
 

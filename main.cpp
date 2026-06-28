@@ -18,6 +18,8 @@
 #include "cogs/roles.h"
 #include "cogs/users.h"
 #include "cogs/prefix.h"
+#include "cogs/reaction_roles.h"
+#include "cogs/emoji.h"
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string& filepath = ".env") {
@@ -54,8 +56,16 @@ void load_env(const std::string& filepath = ".env") {
     std::cout << "[bronx env] successfully loaded variables from " << path_used << "\n";
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     load_env();
+
+    bool verbose = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--verbose" || arg == "-v") {
+            verbose = true;
+        }
+    }
 
     const char* token_env = std::getenv("BOT_TOKEN");
     std::string token = token_env ? token_env : "";
@@ -92,7 +102,7 @@ int main() {
     }
 
     stoatpp::ClientConfig cfg;
-    cfg.log_level = stoatpp::LogLevel::TRACE;
+    cfg.log_level = verbose ? stoatpp::LogLevel::TRACE : stoatpp::LogLevel::INFO;
     
     cfg.command_prefix = "!";
     if (const char* pfx = std::getenv("COMMAND_PREFIX")) {
@@ -142,6 +152,8 @@ int main() {
     bot.use(std::make_unique<bronx::cogs::RolesModule>());
     bot.use(std::make_unique<bronx::cogs::UsersModule>());
     bot.use(std::make_unique<bronx::cogs::PrefixModule>());
+    bot.use(std::make_unique<bronx::cogs::ReactionRolesModule>());
+    bot.use(std::make_unique<bronx::cogs::EmojiModule>());
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
         std::cout << "[bronx event] ready! logged in as: " << e.user.username 
@@ -213,9 +225,11 @@ int main() {
         std::cout << "[bronx event] logout detected\n";
     });
 
-    bot.on_raw_event([](const std::string& type, const nlohmann::json& data) {
-        std::cout << "[bronx audit raw] " << type << " payload size: " << data.dump().size() << "\n";
-    });
+    if (verbose) {
+        bot.on_raw_event([](const std::string& type, const nlohmann::json& data) {
+            std::cout << "[bronx audit raw] " << type << " payload size: " << data.dump().size() << "\n";
+        });
+    }
 
     std::cout << "[bronx] starting cluster start() loop. press ctrl+c to terminate.\n";
     bot.start();

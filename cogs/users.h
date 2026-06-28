@@ -25,11 +25,7 @@ public:
                     }
                     
                     stoatpp::models::MessagePayload payload;
-                    std::string content = "user info for **" + user.username + "**:";
-                    if (user.banner) {
-                        content += "\n" + user.banner_url(bot.config().cdn_url);
-                    }
-                    payload.content = content;
+                    payload.content = "user info for **" + user.username + "**:";
                     
                     std::string presence_str = user.presence.value_or("Offline");
                     std::string status_msg = user.status_text.value_or("");
@@ -53,14 +49,19 @@ public:
                     desc += "• **joined stoat**: " + stoat_join + "\n";
                     desc += "• **joined stoat++**: " + server_join + "\n";
                     
-                    nlohmann::json embed = {
-                        {"title", user.username + discrim + (user.bot ? " [bot]" : "")},
-                        {"description", desc},
-                        {"colour", "#5865f2"},
-                        {"icon_url", user.avatar_url(bot.config().cdn_url)}
-                    };
+                    stoatpp::models::Embed embed;
+                    embed.title       = user.username + discrim + (user.bot ? " [bot]" : "");
+                    embed.description = desc;
+                    embed.colour      = "#5865f2";
+                    embed.icon_url    = user.avatar_url(bot.config().cdn_url);
+                    // upload banner (or avatar fallback) to Autumn for the embed image
+                    std::string img_src = user.banner
+                        ? user.banner_url(bot.config().cdn_url)
+                        : user.avatar_url(bot.config().cdn_url);
+                    std::string file_id = bot.rest().upload_from_url(img_src);
+                    if (!file_id.empty()) embed.set_image(file_id);
                     
-                    payload.embeds.push_back(embed);
+                    payload.embeds.push_back(embed.to_json());
                     bot.send_message(msg.channel_id, payload);
                 });
             }
@@ -86,15 +87,17 @@ public:
                     std::string av_url = user.avatar_url(bot.config().cdn_url);
                     
                     stoatpp::models::MessagePayload payload;
-                    payload.content = "avatar for **" + user.username + "**:\n" + av_url;
+                    payload.content = "avatar for **" + user.username + "**:";
                     
-                    nlohmann::json embed = {
-                        {"title", user.username + "'s avatar"},
-                        {"url", av_url},
-                        {"colour", "#5865f2"}
-                    };
+                    stoatpp::models::Embed embed;
+                    embed.title  = user.username + "'s avatar";
+                    embed.url    = av_url;
+                    embed.colour = "#5865f2";
+                    // upload avatar to Autumn to get a file ID for the media field
+                    std::string file_id = bot.rest().upload_from_url(av_url);
+                    if (!file_id.empty()) embed.set_image(file_id);
                     
-                    payload.embeds.push_back(embed);
+                    payload.embeds.push_back(embed.to_json());
                     bot.send_message(msg.channel_id, payload);
                 });
             }
@@ -125,15 +128,16 @@ public:
                     std::string bn_url = user.banner_url(bot.config().cdn_url);
                     
                     stoatpp::models::MessagePayload payload;
-                    payload.content = "banner for **" + user.username + "**:\n" + bn_url;
+                    payload.content = "banner for **" + user.username + "**:";
                     
-                    nlohmann::json embed = {
-                        {"title", user.username + "'s banner"},
-                        {"url", bn_url},
-                        {"colour", "#5865f2"}
-                    };
+                    stoatpp::models::Embed embed;
+                    embed.title  = user.username + "'s banner";
+                    embed.url    = bn_url;
+                    embed.colour = "#5865f2";
+                    std::string file_id = bot.rest().upload_from_url(bn_url);
+                    if (!file_id.empty()) embed.set_image(file_id);
                     
-                    payload.embeds.push_back(embed);
+                    payload.embeds.push_back(embed.to_json());
                     bot.send_message(msg.channel_id, payload);
                 });
             }

@@ -39,6 +39,49 @@ public:
         });
 
         bot.register_command({
+            "uptime",
+            {},
+            "get the time since launch.",
+            "",
+            {},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling uptime...\n";
+                uint64_t total_seconds = bot.uptime();
+                uint64_t days = total_seconds / 86400;
+                uint64_t hours = (total_seconds % 86400) / 3600;
+                uint64_t minutes = (total_seconds % 3600) / 60;
+                uint64_t seconds = total_seconds % 60;
+
+                std::string uptime_str = "";
+                if (days > 0) uptime_str += std::to_string(days) + "d ";
+                if (hours > 0 || days > 0) uptime_str += std::to_string(hours) + "h ";
+                if (minutes > 0 || hours > 0 || days > 0) uptime_str += std::to_string(minutes) + "m ";
+                uptime_str += std::to_string(seconds) + "s";
+
+                bot.send_message(msg.channel_id, "⏱️ **uptime**: `" + uptime_str + "`");
+            }
+        });
+
+        bot.register_command({
+            "reply",
+            {},
+            "reply to your message to test the reply feature.",
+            "",
+            {"[text...]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling reply...\n";
+                std::string text = "testing replies feature! hello!";
+                if (!args.empty()) {
+                    text = "";
+                    for (size_t i = 0; i < args.size(); ++i) {
+                        text += args[i] + (i + 1 < args.size() ? " " : "");
+                    }
+                }
+                bot.send_reply(msg, text, true);
+            }
+        });
+
+        bot.register_command({
             "test_typing",
             {},
             "test the typing indicator gateway event.",

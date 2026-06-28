@@ -280,6 +280,68 @@ public:
                 }
             }
         });
+        bot.register_command({
+            "pin",
+            {},
+            "pin a message in this channel. reply to a message or provide its id.",
+            "",
+            {"[message_id]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling pin...\n";
+
+                // Prefer a message ID supplied as an argument, otherwise use the replied-to message
+                std::string target_id;
+                if (!args.empty()) {
+                    target_id = args[0];
+                } else if (!msg.replies.empty()) {
+                    target_id = msg.replies[0];
+                }
+
+                if (target_id.empty()) {
+                    bot.send_message(msg.channel_id, "usage: reply to a message or provide a message id: `pin <message_id>`");
+                    return;
+                }
+
+                bot.pin_message(msg.channel_id, target_id, [&bot, msg, target_id](bool success) {
+                    if (success) {
+                        bot.send_message(msg.channel_id, "📌 message pinned.");
+                    } else {
+                        bot.send_message(msg.channel_id, "failed to pin message. do i have the manage messages permission?");
+                    }
+                });
+            }
+        });
+
+        bot.register_command({
+            "unpin",
+            {},
+            "unpin a message in this channel. reply to a message or provide its id.",
+            "",
+            {"[message_id]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling unpin...\n";
+
+                std::string target_id;
+                if (!args.empty()) {
+                    target_id = args[0];
+                } else if (!msg.replies.empty()) {
+                    target_id = msg.replies[0];
+                }
+
+                if (target_id.empty()) {
+                    bot.send_message(msg.channel_id, "usage: reply to a message or provide a message id: `unpin <message_id>`");
+                    return;
+                }
+
+                bot.unpin_message(msg.channel_id, target_id, [&bot, msg, target_id](bool success) {
+                    if (success) {
+                        bot.send_message(msg.channel_id, "📌 message unpinned.");
+                    } else {
+                        bot.send_message(msg.channel_id, "failed to unpin message. do i have the manage messages permission?");
+                    }
+                });
+            }
+        });
     }
 };
 
