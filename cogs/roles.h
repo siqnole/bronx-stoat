@@ -101,11 +101,12 @@ public:
                         }
                     };
 
-                    UserResolver::resolve(bot, msg.server_id, user_queries, 0, resolved_ptr, [&bot, msg, resolved_ptr, resolved_roles, exec_member, missing_roles]() {
+                    UserResolver::resolve(bot, msg.server_id, user_queries, 0, resolved_ptr, [&bot, msg, resolved_ptr, resolved_roles, exec_member, missing_roles, user_queries]() {
                         struct TargetResult {
                             std::string id;
                             std::string username;
                             std::string user_mention;
+                            std::string query;
                             std::string status_err = "";
                             std::vector<std::string> added_roles;
                             std::vector<std::string> removed_roles;
@@ -128,6 +129,7 @@ public:
                             (*results)[i].id = target.success ? target.user.id : "";
                             (*results)[i].username = target.success ? target.user.username : "";
                             (*results)[i].user_mention = target.success ? "<@" + target.user.id + ">" : "";
+                            (*results)[i].query = user_queries[i];
 
                             if (!target.success) {
                                 (*results)[i].status_err = "failed to resolve user";
@@ -167,19 +169,16 @@ public:
                         if (actions->empty()) {
                             stoatpp::models::MessagePayload payload;
                             nlohmann::json embed = nlohmann::json::object();
-                            embed["title"] = "unified role toggle summary";
                             embed["colour"] = "#4eb3ec";
                             
                             std::string desc = "";
                             for (const auto& res : *results) {
-                                if (!res.user_mention.empty()) {
-                                    desc += res.user_mention + "\n";
-                                    if (!res.status_err.empty()) {
-                                        desc += "⚠️ " + res.status_err + "\n";
-                                    } else {
-                                        desc += "no changes applied.\n";
-                                    }
-                                    desc += "\n";
+                                std::string target_label = res.user_mention.empty() ? "`" + res.query + "`" : res.user_mention;
+                                desc += target_label + " ,";
+                                if (!res.status_err.empty()) {
+                                    desc += " ⚠️ " + res.status_err + "\n";
+                                } else {
+                                    desc += " no changes applied.\n";
                                 }
                             }
                             if (!missing_roles.empty()) {
@@ -213,33 +212,26 @@ public:
                                 if (completed == total_actions) {
                                     stoatpp::models::MessagePayload payload;
                                     nlohmann::json embed = nlohmann::json::object();
-                                    embed["title"] = "unified role toggle summary";
                                     embed["colour"] = "#4eb3ec";
 
                                     std::string desc = "";
                                     for (const auto& res : *results) {
-                                        if (!res.user_mention.empty()) {
-                                            desc += res.user_mention + "\n";
-                                            if (!res.status_err.empty()) {
-                                                desc += "⚠️ " + res.status_err + "\n";
-                                            } else {
-                                                if (!res.added_roles.empty()) {
-                                                    desc += "+ ";
-                                                    for (size_t r = 0; r < res.added_roles.size(); ++r) {
-                                                        desc += res.added_roles[r] + (r + 1 < res.added_roles.size() ? ", " : "");
-                                                    }
-                                                    desc += "\n";
-                                                }
-                                                if (!res.removed_roles.empty()) {
-                                                    desc += "- ";
-                                                    for (size_t r = 0; r < res.removed_roles.size(); ++r) {
-                                                        desc += res.removed_roles[r] + (r + 1 < res.removed_roles.size() ? ", " : "");
-                                                    }
-                                                    desc += "\n";
-                                                }
-                                                if (res.added_roles.empty() && res.removed_roles.empty()) {
-                                                    desc += "no changes applied.\n";
-                                                }
+                                        std::string target_label = res.user_mention.empty() ? "`" + res.query + "`" : res.user_mention;
+                                        desc += target_label + " ,";
+                                        if (!res.status_err.empty()) {
+                                            desc += " ⚠️ " + res.status_err + "\n";
+                                        } else {
+                                            bool changed = false;
+                                            for (const auto& r_name : res.removed_roles) {
+                                                desc += " -" + r_name;
+                                                changed = true;
+                                            }
+                                            for (const auto& r_name : res.added_roles) {
+                                                desc += " +" + r_name;
+                                                changed = true;
+                                            }
+                                            if (!changed) {
+                                                desc += " no changes applied.";
                                             }
                                             desc += "\n";
                                         }
