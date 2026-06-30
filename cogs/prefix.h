@@ -214,7 +214,8 @@ public:
                 }
 
                 bot.send_message(msg.channel_id, "unknown subcommand. use list, add, or remove.");
-            }
+            },
+            "Prefix"
         });
     }
 };

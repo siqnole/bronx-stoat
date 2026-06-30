@@ -64,7 +64,8 @@ public:
                     payload.embeds.push_back(embed.to_json());
                     bot.send_message(msg.channel_id, payload);
                 });
-            }
+            },
+            "Users"
         });
 
         bot.register_command({
@@ -100,7 +101,8 @@ public:
                     payload.embeds.push_back(embed.to_json());
                     bot.send_message(msg.channel_id, payload);
                 });
-            }
+            },
+            "Users"
         });
 
         bot.register_command({
@@ -140,7 +142,8 @@ public:
                     payload.embeds.push_back(embed.to_json());
                     bot.send_message(msg.channel_id, payload);
                 });
-            }
+            },
+            "Users"
         });
     }
 };

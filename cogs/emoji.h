@@ -221,7 +221,8 @@ public:
             "steal custom emojis from other servers and add them to this server.",
             "",
             {"<emoji1>", "[emoji2]..."},
-            callback
+            callback,
+            "Emoji"
         });
     }
 };

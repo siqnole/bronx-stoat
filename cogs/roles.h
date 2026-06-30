@@ -67,7 +67,127 @@ public:
                     return;
                 }
 
-                bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, user_queries, resolved_roles, missing_roles](stoatpp::models::Member exec_member, bool exec_ok) {
+                if (args[0] == "*") {
+                    bool force_remove = false;
+                    if (args.size() >= 3) {
+                        std::string action = args[2];
+                        std::transform(action.begin(), action.end(), action.begin(), ::tolower);
+                        if (action == "remove" || action == "rem" || action == "del") {
+                            force_remove = true;
+                        }
+                    }
+
+                    std::thread([&bot, msg, resolved_roles, force_remove, missing_roles]() {
+                        auto res = bot.rest().get_server_members(msg.server_id);
+                        if (!res.success()) {
+                            bot.send_message(msg.channel_id, "failed to fetch server members.");
+                            return;
+                        }
+
+                        std::vector<stoatpp::models::Member> members;
+                        if (res.body.is_object() && res.body.contains("members") && res.body["members"].is_array()) {
+                            for (const auto& item : res.body["members"]) {
+                                members.push_back(stoatpp::models::Member::from_json(item));
+                            }
+                        }
+
+                        stoatpp::models::Member exec_member;
+                        bool exec_found = false;
+                        for (const auto& m : members) {
+                            if (m.id == msg.author.id) {
+                                exec_member = m;
+                                exec_found = true;
+                                break;
+                            }
+                        }
+
+                        if (!exec_found) {
+                            bot.send_message(msg.channel_id, "failed to verify executor member settings.");
+                            return;
+                        }
+
+                        stoatpp::models::Member bot_member;
+                        for (const auto& m : members) {
+                            if (m.id == bot.current_user().id) {
+                                bot_member = m;
+                                break;
+                            }
+                        }
+
+                        struct AllAction {
+                            std::string user_id;
+                            std::string role_id;
+                            bool add;
+                        };
+                        std::vector<AllAction> actions;
+
+                        int exec_highest = helpers::get_highest_rank(bot, msg.server_id, exec_member);
+                        int bot_highest = helpers::get_highest_rank(bot, msg.server_id, bot_member);
+
+                        for (const auto& m : members) {
+                            int target_highest = helpers::get_highest_rank(bot, msg.server_id, m);
+                            if (exec_highest >= target_highest && exec_highest != -1) {
+                                continue;
+                            }
+
+                            for (const auto& role : resolved_roles) {
+                                int role_rank = helpers::get_role_rank(bot, msg.server_id, role.id);
+                                if (exec_highest >= role_rank && exec_highest != -1) {
+                                    continue;
+                                }
+                                if (bot_highest >= role_rank && bot_highest != -1) {
+                                    continue;
+                                }
+
+                                bool has_role = false;
+                                for (const auto& r_id : m.roles) {
+                                    if (r_id == role.id) {
+                                        has_role = true;
+                                        break;
+                                    }
+                                }
+
+                                if (force_remove) {
+                                    if (has_role) {
+                                        actions.push_back({m.id, role.id, false});
+                                    }
+                                } else {
+                                    if (!has_role) {
+                                        actions.push_back({m.id, role.id, true});
+                                    }
+                                }
+                            }
+                        }
+
+                        if (actions.empty()) {
+                            bot.send_message(msg.channel_id, "no changes needed for any members.");
+                            return;
+                        }
+
+                        bot.send_message(msg.channel_id, "applying changes to **" + std::to_string(actions.size()) + "** roles across members... please wait.");
+
+                        auto completed = std::make_shared<std::atomic<size_t>>(0);
+                        size_t total = actions.size();
+
+                        for (const auto& act : actions) {
+                            auto cb = [&bot, msg, completed, total](bool ok) {
+                                size_t comp = ++(*completed);
+                                if (comp == total) {
+                                    bot.send_message(msg.channel_id, "successfully finished updating roles for all members.");
+                                }
+                            };
+                            if (act.add) {
+                                bot.add_role_to_member(msg.server_id, act.user_id, act.role_id, cb);
+                            } else {
+                                bot.remove_role_from_member(msg.server_id, act.user_id, act.role_id, cb);
+                            }
+                            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        }
+                    }).detach();
+                    return;
+                }
+
+                bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, user_queries, resolved_roles, missing_roles, args](stoatpp::models::Member exec_member, bool exec_ok) {
                     if (!exec_ok) {
                         bot.send_message(msg.channel_id, "failed to verify executor member settings.");
                         return;
@@ -101,7 +221,7 @@ public:
                         }
                     };
 
-                    UserResolver::resolve(bot, msg.server_id, user_queries, 0, resolved_ptr, [&bot, msg, resolved_ptr, resolved_roles, exec_member, missing_roles, user_queries]() {
+                    UserResolver::resolve(bot, msg.server_id, user_queries, 0, resolved_ptr, [&bot, msg, resolved_ptr, resolved_roles, exec_member, missing_roles, user_queries, args]() {
                         struct TargetResult {
                             std::string id;
                             std::string username;
@@ -157,12 +277,28 @@ public:
                                     }
                                 }
 
+                                bool force_remove = false;
+                                if (args.size() >= 3) {
+                                    std::string action = args[2];
+                                    std::transform(action.begin(), action.end(), action.begin(), ::tolower);
+                                    if (action == "remove" || action == "rem" || action == "del") {
+                                        force_remove = true;
+                                    }
+                                }
+
                                 ActionItem act;
                                 act.target_index = i;
                                 act.role_id = role.id;
                                 act.role_name = role.name;
-                                act.add = !has_role;
-                                actions->push_back(act);
+                                if (force_remove) {
+                                    if (has_role) {
+                                        act.add = false;
+                                        actions->push_back(act);
+                                    }
+                                } else {
+                                    act.add = !has_role;
+                                    actions->push_back(act);
+                                }
                             }
                         }
 
@@ -257,7 +393,9 @@ public:
                         }
                     });
                 });
-            }
+            },
+            "Roles",
+            stoatpp::permissions::AssignRoles
         });
 
         bot.register_command({
@@ -289,7 +427,9 @@ public:
                 }
 
                 bot.send_message(msg.channel_id, out);
-            }
+            },
+            "Roles",
+            stoatpp::permissions::AssignRoles
         });
     }
 };

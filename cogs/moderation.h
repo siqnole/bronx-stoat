@@ -1,6 +1,7 @@
 #pragma once
 #include "stoatpp/bot_module.h"
 #include "helpers.h"
+#include <chrono>
 
 namespace bronx::cogs {
 
@@ -61,7 +62,9 @@ public:
                         });
                     });
                 });
-            }
+            },
+            "Moderation",
+            stoatpp::permissions::BanMembers
         });
 
         bot.register_command({
@@ -117,7 +120,9 @@ public:
                         });
                     });
                 });
-            }
+            },
+            "Moderation",
+            stoatpp::permissions::KickMembers
         });
 
         bot.register_command({
@@ -170,18 +175,22 @@ public:
                                 return;
                             }
 
-                            std::string iso_duration = helpers::get_future_iso_timestamp(seconds);
-                            bot.timeout_member(msg.server_id, target_user.id, iso_duration, [&bot, msg, target_user, seconds](bool action_success) {
-                                if (action_success) {
-                                    bot.send_message(msg.channel_id, "successfully timed out **" + target_user.username + "** for " + std::to_string(seconds) + " seconds.");
-                                } else {
-                                    bot.send_message(msg.channel_id, "failed to set timeout.");
-                                }
-                            });
+                             std::string iso_duration = helpers::get_future_iso_timestamp(seconds);
+                             bot.timeout_member(msg.server_id, target_user.id, iso_duration, [&bot, msg, target_user, seconds](bool action_success) {
+                                 if (action_success) {
+                                     auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                                     auto expires_unix = now_unix + seconds;
+                                     bot.send_message(msg.channel_id, "successfully timed out **" + target_user.username + "** until " + stoatpp::utils::format_timestamp(expires_unix, "R") + ".");
+                                 } else {
+                                     bot.send_message(msg.channel_id, "failed to set timeout.");
+                                 }
+                             });
                         });
                     });
                 });
-            }
+            },
+            "Moderation",
+            stoatpp::permissions::TimeoutMembers
         });
 
         bot.register_command({
@@ -278,7 +287,9 @@ public:
                 } else {
                     proceed_purge("");
                 }
-            }
+            },
+            "Moderation",
+            stoatpp::permissions::ManageMessages
         });
         bot.register_command({
             "pin",
@@ -309,7 +320,9 @@ public:
                         bot.send_message(msg.channel_id, "failed to pin message. do i have the manage messages permission?");
                     }
                 });
-            }
+            },
+            "Moderation",
+            stoatpp::permissions::ManageMessages
         });
 
         bot.register_command({
@@ -340,7 +353,9 @@ public:
                         bot.send_message(msg.channel_id, "failed to unpin message. do i have the manage messages permission?");
                     }
                 });
-            }
+            },
+            "Moderation",
+            stoatpp::permissions::ManageMessages
         });
     }
 };

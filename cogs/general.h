@@ -1,6 +1,7 @@
 #pragma once
 #include "stoatpp/bot_module.h"
 #include "helpers.h"
+#include <chrono>
 
 namespace bronx::cogs {
 
@@ -35,7 +36,8 @@ public:
                             "pong! (immediate: " + std::to_string(immediate_ms) + "ms, gateway: " + std::to_string(gw_ms) + "ms, rest: " + std::to_string(rest_ms) + "ms)");
                     }
                 });
-            }
+            },
+            "General"
         });
 
         bot.register_command({
@@ -46,6 +48,11 @@ public:
             {},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling uptime...\n";
+                auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()
+                ).count();
+                auto launch_unix = now_unix - bot.uptime();
+
                 uint64_t total_seconds = bot.uptime();
                 uint64_t days = total_seconds / 86400;
                 uint64_t hours = (total_seconds % 86400) / 3600;
@@ -58,8 +65,9 @@ public:
                 if (minutes > 0 || hours > 0 || days > 0) uptime_str += std::to_string(minutes) + "m ";
                 uptime_str += std::to_string(seconds) + "s";
 
-                bot.send_message(msg.channel_id, "⏱️ **uptime**: `" + uptime_str + "`");
-            }
+                bot.send_message(msg.channel_id, "⏱️ **uptime**: launch was " + stoatpp::utils::format_timestamp(launch_unix, "R") + "\n(`" + uptime_str + "`)");
+            },
+            "General"
         });
 
         bot.register_command({
@@ -78,7 +86,8 @@ public:
                     }
                 }
                 bot.send_reply(msg, text, true);
-            }
+            },
+            "General"
         });
 
         bot.register_command({
@@ -95,7 +104,8 @@ public:
                     bot.end_typing(msg.channel_id);
                     bot.send_message(msg.channel_id, "typing indicator tested successfully");
                 }).detach();
-            }
+            },
+            "General"
         });
 
         bot.register_command({
@@ -144,7 +154,8 @@ public:
                 
                 payload.embeds.push_back(embed);
                 bot.send_message(msg.channel_id, payload);
-            }
+            },
+            "General"
         });
 
         bot.register_command({
@@ -170,7 +181,8 @@ public:
                         bot.react_to_message(msg.channel_id, res.id, "➡");
                     }
                 });
-            }
+            },
+            "General"
         });
 
         bot.register_command({
@@ -212,7 +224,8 @@ public:
 
                     bot.send_message(msg.channel_id, out);
                 }).detach();
-            }
+            },
+            "General"
         });
 
         bot.on_message_react([&bot](const stoatpp::events::MessageReact& e) {

@@ -638,7 +638,8 @@ public:
                 }
 
                 bot.send_message(msg.channel_id, "unknown subcommand. use create, add, edit, or parse.");
-            }
+            },
+            "Reaction Roles"
         });
 
         // Gateway event handling for role assignments

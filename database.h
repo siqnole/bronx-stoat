@@ -128,6 +128,56 @@ public:
             return false;
         }
 
+        // Create Table guild_command_usage
+        std::string create_cmd_usage = 
+            "CREATE TABLE IF NOT EXISTS guild_command_usage ("
+            "  guild_id VARCHAR(30) NOT NULL,"
+            "  command_name VARCHAR(64) NOT NULL,"
+            "  channel_id VARCHAR(30) NOT NULL,"
+            "  usage_date DATE NOT NULL,"
+            "  use_count INT UNSIGNED NOT NULL DEFAULT 1,"
+            "  PRIMARY KEY (guild_id, command_name, channel_id, usage_date)"
+            ")";
+        if (mysql_query(mysql_, create_cmd_usage.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'guild_command_usage': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table guild_user_activity_daily
+        std::string create_user_activity = 
+            "CREATE TABLE IF NOT EXISTS guild_user_activity_daily ("
+            "  guild_id VARCHAR(30) NOT NULL,"
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  stat_date DATE NOT NULL,"
+            "  messages INT UNSIGNED NOT NULL DEFAULT 0,"
+            "  edits INT UNSIGNED NOT NULL DEFAULT 0,"
+            "  deletes INT UNSIGNED NOT NULL DEFAULT 0,"
+            "  commands_used INT UNSIGNED NOT NULL DEFAULT 0,"
+            "  PRIMARY KEY (guild_id, user_id, stat_date)"
+            ")";
+        if (mysql_query(mysql_, create_user_activity.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'guild_user_activity_daily': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table users for economy
+        std::string create_users = 
+            "CREATE TABLE IF NOT EXISTS users ("
+            "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  wallet BIGINT NOT NULL DEFAULT 0,"
+            "  bank BIGINT NOT NULL DEFAULT 0,"
+            "  bank_limit BIGINT NOT NULL DEFAULT 10000,"
+            "  prestige INT NOT NULL DEFAULT 0,"
+            "  last_beg TIMESTAMP NULL DEFAULT NULL,"
+            "  last_work TIMESTAMP NULL DEFAULT NULL,"
+            "  last_rob TIMESTAMP NULL DEFAULT NULL,"
+            "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+            ")";
+        if (mysql_query(mysql_, create_users.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'users': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes FROM prefixes";
         if (mysql_query(mysql_, select_query.c_str())) {
@@ -457,6 +507,283 @@ public:
             result.push_back({name, counts.first, counts.second});
         }
         return result;
+    }
+
+    bool increment_user_daily_messages(const std::string& guild_id, const std::string& user_id, const std::string& type = "message") {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string col = "messages";
+        if (type == "edit") col = "edits";
+        else if (type == "delete") col = "deletes";
+        
+        std::string sql = "INSERT INTO guild_user_activity_daily (guild_id, user_id, stat_date, " + col + ") VALUES ('"
+            + escape_string(guild_id) + "', '"
+            + escape_string(user_id) + "', CURDATE(), 1) "
+            "ON DUPLICATE KEY UPDATE " + col + " = " + col + " + 1";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool increment_user_daily_commands(const std::string& guild_id, const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO guild_user_activity_daily (guild_id, user_id, stat_date, commands_used) VALUES ('"
+            + escape_string(guild_id) + "', '"
+            + escape_string(user_id) + "', CURDATE(), 1) "
+            "ON DUPLICATE KEY UPDATE commands_used = commands_used + 1";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool increment_command_usage(const std::string& guild_id, const std::string& command_name, const std::string& channel_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO guild_command_usage (guild_id, command_name, channel_id, usage_date, use_count) VALUES ('"
+            + escape_string(guild_id) + "', '"
+            + escape_string(command_name) + "', '"
+            + escape_string(channel_id) + "', CURDATE(), 1) "
+            "ON DUPLICATE KEY UPDATE use_count = use_count + 1";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    struct TopUserEntry {
+        std::string user_id;
+        int message_count;
+    };
+
+    struct TopCmdEntry {
+        std::string command_name;
+        int use_count;
+    };
+
+    struct ServerTotals {
+        int total_messages = 0;
+        int total_commands = 0;
+        int active_users = 0;
+    };
+
+    std::vector<TopUserEntry> get_top_users(const std::string& guild_id, int days, int limit = 10) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<TopUserEntry> entries;
+        if (!mysql_) return entries;
+
+        std::string sql = "SELECT user_id, SUM(messages) FROM guild_user_activity_daily "
+                          "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                          "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
+                          "GROUP BY user_id ORDER BY SUM(messages) DESC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0] && row[1]) {
+                        entries.push_back({row[0], std::stoi(row[1])});
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
+    }
+
+    std::vector<TopCmdEntry> get_top_commands(const std::string& guild_id, int days, int limit = 10) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<TopCmdEntry> entries;
+        if (!mysql_) return entries;
+
+        std::string sql = "SELECT command_name, SUM(use_count) FROM guild_command_usage "
+                          "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                          "AND usage_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
+                          "GROUP BY command_name ORDER BY SUM(use_count) DESC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0] && row[1]) {
+                        entries.push_back({row[0], std::stoi(row[1])});
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
+    }
+
+    ServerTotals get_server_totals(const std::string& guild_id, int days) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        ServerTotals totals;
+        if (!mysql_) return totals;
+
+        std::string msg_sql = "SELECT SUM(messages) FROM guild_user_activity_daily "
+                              "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                              "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY)";
+        if (mysql_query(mysql_, msg_sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row && row[0]) {
+                    totals.total_messages = std::stoi(row[0]);
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        std::string cmd_sql = "SELECT SUM(use_count) FROM guild_command_usage "
+                              "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                              "AND usage_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY)";
+        if (mysql_query(mysql_, cmd_sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row && row[0]) {
+                    totals.total_commands = std::stoi(row[0]);
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        std::string users_sql = "SELECT COUNT(DISTINCT user_id) FROM guild_user_activity_daily "
+                                "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                                "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY)";
+        if (mysql_query(mysql_, users_sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row && row[0]) {
+                    totals.active_users = std::stoi(row[0]);
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        return totals;
+    }
+
+    struct EconomyUser {
+        std::string user_id;
+        int64_t wallet = 0;
+        int64_t bank = 0;
+        int64_t bank_limit = 10000;
+        int prestige = 0;
+        std::string last_beg;
+        std::string last_work;
+        std::string last_rob;
+    };
+
+    bool ensure_economy_user(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT IGNORE INTO users (user_id) VALUES ('" + escape_string(user_id) + "')";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    std::optional<EconomyUser> get_economy_user(const std::string& user_id) {
+        ensure_economy_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return std::nullopt;
+
+        std::string sql = "SELECT wallet, bank, bank_limit, prestige, "
+                          "IFNULL(last_beg, ''), IFNULL(last_work, ''), IFNULL(last_rob, '') "
+                          "FROM users WHERE user_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    EconomyUser u;
+                    u.user_id = user_id;
+                    u.wallet = std::stoll(row[0]);
+                    u.bank = std::stoll(row[1]);
+                    u.bank_limit = std::stoll(row[2]);
+                    u.prestige = std::stoi(row[3]);
+                    u.last_beg = row[4];
+                    u.last_work = row[5];
+                    u.last_rob = row[6];
+                    mysql_free_result(res);
+                    return u;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool update_balances(const std::string& user_id, int64_t wallet_delta, int64_t bank_delta) {
+        ensure_economy_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "UPDATE users SET wallet = wallet + " + std::to_string(wallet_delta) + 
+                          ", bank = bank + " + std::to_string(bank_delta) + 
+                          " WHERE user_id = '" + escape_string(user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool update_beg_cooldown(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "UPDATE users SET last_beg = CURRENT_TIMESTAMP WHERE user_id = '" + escape_string(user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool update_work_cooldown(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "UPDATE users SET last_work = CURRENT_TIMESTAMP WHERE user_id = '" + escape_string(user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool update_rob_cooldown(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "UPDATE users SET last_rob = CURRENT_TIMESTAMP WHERE user_id = '" + escape_string(user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    int get_cooldown_remaining(const std::string& user_id, const std::string& field, int cooldown_seconds) {
+        ensure_economy_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return 0;
+        std::string sql = "SELECT GREATEST(0, CAST(" + std::to_string(cooldown_seconds) + " AS SIGNED) - TIMESTAMPDIFF(SECOND, " + field + ", CURRENT_TIMESTAMP)) "
+                          "FROM users WHERE user_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row && row[0]) {
+                    int remaining = std::stoi(row[0]);
+                    mysql_free_result(res);
+                    return remaining;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return 0;
+    }
+
+    struct TopEcoEntry {
+        std::string user_id;
+        int64_t networth;
+    };
+
+    std::vector<TopEcoEntry> get_top_economy_users(int limit = 10) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<TopEcoEntry> entries;
+        if (!mysql_) return entries;
+
+        std::string sql = "SELECT user_id, (wallet + bank) AS networth FROM users "
+                          "ORDER BY networth DESC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0] && row[1]) {
+                        entries.push_back({row[0], std::stoll(row[1])});
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
     }
 };
 

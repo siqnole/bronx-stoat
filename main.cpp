@@ -7,6 +7,8 @@
 #include <thread>
 #include <chrono>
 #include <cstdlib>
+#include <algorithm>
+#include <sstream>
 #include "stoatpp/cluster.h"
 #include "stoatpp/bot_module.h"
 #include "stoatpp/utils/ulid.h"
@@ -20,6 +22,10 @@
 #include "cogs/prefix.h"
 #include "cogs/reaction_roles.h"
 #include "cogs/emoji.h"
+#include "cogs/help.h"
+#include "cogs/stats.h"
+#include "cogs/economy.h"
+#include "cogs/blackjack.h"
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string& filepath = ".env") {
@@ -103,6 +109,7 @@ int main(int argc, char* argv[]) {
 
     stoatpp::ClientConfig cfg;
     cfg.log_level = verbose ? stoatpp::LogLevel::TRACE : stoatpp::LogLevel::INFO;
+    cfg.enable_default_help = false;
     
     cfg.command_prefix = "!";
     if (const char* pfx = std::getenv("COMMAND_PREFIX")) {
@@ -117,26 +124,30 @@ int main(int argc, char* argv[]) {
     }
 
     cfg.prefix_resolver = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg) -> std::vector<std::string> {
-        if (!bronx::g_db) {
-            return {bot.config().command_prefix};
-        }
-        
-        // 1. Check user prefixes
-        std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
-        if (!user_pfx.empty()) {
-            return user_pfx;
-        }
-        
-        // 2. Check server prefixes
-        if (!msg.server_id.empty()) {
-            std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
-            if (!server_pfx.empty()) {
-                return server_pfx;
+        std::vector<std::string> prefixes;
+        if (bronx::g_db) {
+            // 1. Check user prefixes
+            std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
+            prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
+            
+            // 2. Check server prefixes
+            if (!msg.server_id.empty()) {
+                std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
+                prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
             }
         }
         
-        // 3. Fallback
-        return {bot.config().command_prefix};
+        // 3. Fallback/Default prefix
+        prefixes.push_back(bot.config().command_prefix);
+        
+        // Remove duplicates to be clean and efficient
+        std::vector<std::string> unique_prefixes;
+        for (const auto& p : prefixes) {
+            if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) == unique_prefixes.end()) {
+                unique_prefixes.push_back(p);
+            }
+        }
+        return unique_prefixes;
     };
 
     std::cout << "[bronx] initialising stoatpp cluster...\n";
@@ -147,6 +158,7 @@ int main(int argc, char* argv[]) {
     stoatpp::cluster bot(token, cfg);
 
     // Register our Cogs/Modules
+    bot.use(std::make_unique<bronx::cogs::HelpModule>());
     bot.use(std::make_unique<bronx::cogs::GeneralModule>());
     bot.use(std::make_unique<bronx::cogs::ModerationModule>());
     bot.use(std::make_unique<bronx::cogs::RolesModule>());
@@ -154,6 +166,9 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::PrefixModule>());
     bot.use(std::make_unique<bronx::cogs::ReactionRolesModule>());
     bot.use(std::make_unique<bronx::cogs::EmojiModule>());
+    bot.use(std::make_unique<bronx::cogs::StatsModule>());
+    bot.use(std::make_unique<bronx::cogs::EconomyModule>());
+    bot.use(std::make_unique<bronx::cogs::BlackjackModule>());
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
         std::cout << "[bronx event] ready! logged in as: " << e.user.username 
@@ -171,10 +186,64 @@ int main(int argc, char* argv[]) {
         });
     });
 
-    bot.on_message([](const stoatpp::events::Message& msg) {
+    bot.on_message([&bot](const stoatpp::events::Message& msg) {
         if (msg.author.bot) return;
         std::cout << "[bronx event] message in channel " << msg.channel_id
                   << " by " << msg.author.username << ": " << msg.content << "\n";
+
+        if (bronx::g_db) {
+            // 1. Message Telemetry
+            bronx::g_db->increment_user_daily_messages(msg.server_id, msg.author.id, "message");
+
+            // 2. Command Telemetry
+            std::vector<std::string> prefixes;
+            std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
+            prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
+            
+            if (!msg.server_id.empty()) {
+                std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
+                prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
+            }
+            prefixes.push_back(bot.config().command_prefix);
+
+            std::vector<std::string> unique_prefixes;
+            for (const auto& p : prefixes) {
+                if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) == unique_prefixes.end()) {
+                    unique_prefixes.push_back(p);
+                }
+            }
+
+            std::string matched_prefix;
+            for (const auto& p : unique_prefixes) {
+                if (!p.empty() && msg.content.rfind(p, 0) == 0) {
+                    matched_prefix = p;
+                    break;
+                }
+            }
+
+            if (!matched_prefix.empty()) {
+                std::stringstream ss(msg.content.substr(matched_prefix.size()));
+                std::string cmd_name;
+                ss >> cmd_name;
+
+                if (!cmd_name.empty()) {
+                    bool cmd_exists = false;
+                    std::string normalized_name = cmd_name;
+                    for (const auto& cmd : bot.get_commands()) {
+                        if (cmd.name == cmd_name || std::find(cmd.aliases.begin(), cmd.aliases.end(), cmd_name) != cmd.aliases.end()) {
+                            cmd_exists = true;
+                            normalized_name = cmd.name;
+                            break;
+                        }
+                    }
+
+                    if (cmd_exists) {
+                        bronx::g_db->increment_command_usage(msg.server_id, normalized_name, msg.channel_id);
+                        bronx::g_db->increment_user_daily_commands(msg.server_id, msg.author.id);
+                    }
+                }
+            }
+        }
     });
 
     bot.on_message_update([](const stoatpp::events::MessageUpdate& e) {
@@ -230,6 +299,28 @@ int main(int argc, char* argv[]) {
             std::cout << "[bronx audit raw] " << type << " payload size: " << data.dump().size() << "\n";
         });
     }
+
+    bot.on_command_cooldown([](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const stoatpp::Command& cmd, int64_t remaining) {
+        if (cmd.category == "Economy") {
+            std::string time_str = "";
+            if (remaining >= 3600) {
+                int64_t hours = remaining / 3600;
+                int64_t mins = (remaining % 3600) / 60;
+                time_str = std::to_string(hours) + "h " + std::to_string(mins) + "m";
+            } else if (remaining >= 60) {
+                time_str = std::to_string(remaining / 60) + "m " + std::to_string(remaining % 60) + "s";
+            } else {
+                time_str = std::to_string(remaining) + "s";
+            }
+            bot.send_message(msg.channel_id, "you are on cooldown. please wait " + time_str + ".");
+        } else {
+            auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch()
+            ).count();
+            std::string ts_tag = stoatpp::utils::format_timestamp(now_unix + remaining, "R");
+            bot.send_message(msg.channel_id, "you are on cooldown. please wait " + ts_tag + ".");
+        }
+    });
 
     std::cout << "[bronx] starting cluster start() loop. press ctrl+c to terminate.\n";
     bot.start();
