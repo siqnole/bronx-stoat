@@ -25,6 +25,23 @@ struct PendingScan {
 inline std::unordered_map<std::string, PendingScan> g_pending_scans;
 inline std::mutex g_pending_scans_mutex;
 
+inline std::string clean_emoji(const std::string& emoji_arg) {
+    if (emoji_arg.size() >= 28 && emoji_arg.front() == ':' && emoji_arg.back() == ':') {
+        std::string inner = emoji_arg.substr(1, emoji_arg.size() - 2);
+        if (inner.size() == 26 && inner.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
+            return inner;
+        }
+    }
+    return emoji_arg;
+}
+
+inline std::string display_emoji(const std::string& raw_emoji) {
+    if (raw_emoji.size() == 26 && raw_emoji.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
+        return ":" + raw_emoji + ":";
+    }
+    return raw_emoji;
+}
+
 inline std::vector<EmojiRolePair> parse_emoji_role_pairs(const std::string& text, stoatpp::cluster& bot, const std::string& server_id) {
     std::vector<EmojiRolePair> pairs;
     size_t i = 0;
@@ -40,7 +57,13 @@ inline std::vector<EmojiRolePair> parse_emoji_role_pairs(const std::string& text
         if (text[i] == ':') {
             size_t close = text.find(':', i + 1);
             if (close != std::string::npos && close - i >= 2) {
-                emoji = text.substr(i, close - i + 1);
+                std::string inner = text.substr(i + 1, close - i - 1);
+                // If it's a 26-character ULID, strip the colons
+                if (inner.size() == 26 && inner.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
+                    emoji = inner;
+                } else {
+                    emoji = text.substr(i, close - i + 1);
+                }
                 i = close + 1;
             }
         }
@@ -251,7 +274,7 @@ public:
                     std::string desc = "react below to obtain roles:\n\n";
                     if (!rr_msg_opt->rules.empty()) {
                         for (const auto& rule : rr_msg_opt->rules) {
-                            desc += "• " + rule.emoji_id + " ➔ <@&" + rule.role_id + ">\n";
+                            desc += "• " + display_emoji(rule.emoji_id) + " ➔ <@&" + rule.role_id + ">\n";
                         }
                     } else {
                         std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
@@ -277,64 +300,247 @@ public:
                 }
 
                 if (subcommand == "add") {
-                    if (args.size() < 4) {
-                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
-                        bot.send_message(msg.channel_id, "usage: `" + pfx + "rr add <modalname> <emoji> <role>` (or list multiple)");
-                        return;
-                    }
-                    std::string modalname = args[1];
+                    std::string target = "";
+                    std::string raw_emoji = "";
+                    std::string role_query = "";
+                    bool resolved_target = false;
 
-                    std::vector<std::string> msg_ids = g_db->get_message_ids_by_modal(msg.server_id, modalname);
-                    if (msg_ids.empty()) {
-                        bot.send_message(msg.channel_id, "could not find any active modals named `" + modalname + "` in this server.");
-                        return;
-                    }
+                    // Case A: User is replying to a message
+                    if (!msg.replies.empty() && args.size() >= 3) {
+                        if (args[1] == "^") {
+                            target = msg.replies[0];
+                            raw_emoji = args[2];
+                            for (size_t i = 3; i < args.size(); ++i) {
+                                if (i > 3) role_query += " ";
+                                role_query += args[i];
+                            }
+                            resolved_target = true;
+                        } else {
+                            bool arg1_is_target = false;
+                            if (args[1].size() == 26 && args[1].find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
+                                arg1_is_target = true;
+                            } else {
+                                std::vector<std::string> msg_ids = g_db->get_message_ids_by_modal(msg.server_id, args[1]);
+                                if (!msg_ids.empty()) {
+                                    arg1_is_target = true;
+                                }
+                            }
 
-                    // Parse all mapping pairs from remainder string
-                    std::string rest = "";
-                    for (size_t i = 2; i < args.size(); ++i) {
-                        rest += args[i] + " ";
-                    }
-
-                    std::vector<EmojiRolePair> parsed = parse_emoji_role_pairs(rest, bot, msg.server_id);
-                    if (parsed.empty()) {
-                        bot.send_message(msg.channel_id, "failed to parse any valid emoji-to-role mappings. check names/mentions.");
-                        return;
-                    }
-
-                    // Add mapping to all instances of this modal
-                    for (const auto& target_msg_id : msg_ids) {
-                        auto rr_msg_opt = g_db->get_rr_message(target_msg_id);
-                        if (!rr_msg_opt) continue;
-
-                        for (const auto& pair : parsed) {
-                            if (g_db->add_rr_rule(target_msg_id, pair.emoji, pair.role_id)) {
-                                bot.react_to_message(rr_msg_opt->channel_id, target_msg_id, pair.emoji);
-                                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                            if (!arg1_is_target) {
+                                target = msg.replies[0];
+                                raw_emoji = args[1];
+                                for (size_t i = 2; i < args.size(); ++i) {
+                                    if (i > 2) role_query += " ";
+                                    role_query += args[i];
+                                }
+                                resolved_target = true;
                             }
                         }
+                    }
 
-                        // Reload rules and rebuild embed description
-                        auto updated_rr = g_db->get_rr_message(target_msg_id);
-                        if (updated_rr) {
-                            stoatpp::models::MessagePayload payload;
-                            nlohmann::json embed = nlohmann::json::object();
-                            embed["title"] = "reaction roles: " + modalname;
-                            embed["colour"] = "#6C5CE7";
-
-                            std::string desc = "react below to obtain roles:\n\n";
-                            for (const auto& rule : updated_rr->rules) {
-                                desc += "• " + rule.emoji_id + " ➔ <@&" + rule.role_id + ">\n";
+                    // Case B: Not resolved yet
+                    if (!resolved_target) {
+                        if (args.size() < 4) {
+                            std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                            bot.send_message(msg.channel_id, "usage:\n"
+                                                             "• `" + pfx + "rr add <modalname> <emoji> <role>`\n"
+                                                             "• `" + pfx + "rr add <messageID> <emoji> <role>`\n"
+                                                             "• `" + pfx + "rr add ^ <emoji> <role>` (use message above, or reply target)");
+                            return;
+                        }
+                        if (args[1] == "^") {
+                            // Fetch the message immediately above the command message
+                            stoatpp::models::MessageQuery query;
+                            query.before = msg.id;
+                            query.limit = 1;
+                            auto res = bot.rest().get_messages(msg.channel_id, query);
+                            std::string found_id = "";
+                            if (res.success()) {
+                                if (res.body.is_array() && !res.body.empty()) {
+                                    auto m = stoatpp::models::Message::from_json(res.body[0]);
+                                    found_id = m.id;
+                                } else if (res.body.is_object() && res.body.contains("messages") && res.body["messages"].is_array() && !res.body["messages"].empty()) {
+                                    auto m = stoatpp::models::Message::from_json(res.body["messages"][0]);
+                                    found_id = m.id;
+                                }
                             }
-                            embed["description"] = desc;
-                            payload.embeds.push_back(embed);
-                            payload.content = " ";
 
-                            bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
+                            if (found_id.empty()) {
+                                bot.send_message(msg.channel_id, "failed to find the message above.");
+                                return;
+                            }
+                            target = found_id;
+                            raw_emoji = args[2];
+                            for (size_t i = 3; i < args.size(); ++i) {
+                                if (i > 3) role_query += " ";
+                                role_query += args[i];
+                            }
+                        } else {
+                            target = args[1];
+                            raw_emoji = args[2];
+                            for (size_t i = 3; i < args.size(); ++i) {
+                                if (i > 3) role_query += " ";
+                                role_query += args[i];
+                            }
+                        }
+                    }
+                    std::string emoji = clean_emoji(raw_emoji);
+
+                    std::vector<stoatpp::models::Role> matching_roles;
+                    std::string lower_query = role_query;
+                    std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(), ::tolower);
+
+                    if (role_query.rfind("<@&", 0) == 0 && role_query.back() == '>') {
+                        std::string rid = role_query.substr(3, role_query.size() - 4);
+                        for (const auto& r : server_opt->roles) {
+                            if (r.id == rid) {
+                                matching_roles.push_back(r);
+                                break;
+                            }
+                        }
+                    } else {
+                        // 1. Search for exact case-insensitive match on name or ID
+                        for (const auto& r : server_opt->roles) {
+                            std::string lower_name = r.name;
+                            std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+                            if (r.id == role_query || lower_name == lower_query) {
+                                matching_roles.push_back(r);
+                            }
+                        }
+                        
+                        // 2. If no exact matches, search for substring matches
+                        if (matching_roles.empty()) {
+                            for (const auto& r : server_opt->roles) {
+                                std::string lower_name = r.name;
+                                std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+                                if (lower_name.find(lower_query) != std::string::npos) {
+                                    matching_roles.push_back(r);
+                                }
+                            }
                         }
                     }
 
-                    bot.send_message(msg.channel_id, "successfully added reaction roles to all instances of `" + modalname + "`.");
+                    bool is_message_id = (target.size() == 26 && 
+                                          target.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
+
+                    auto execute_add = [&bot, msg, target, emoji, is_message_id](stoatpp::models::Role selected_role) {
+                        if (is_message_id) {
+                            std::thread([&bot, msg, target, emoji, selected_role]() {
+                                auto existing_rr = g_db->get_rr_message(target);
+                                std::string channel_id = msg.channel_id;
+
+                                if (!existing_rr) {
+                                    auto res = bot.rest().get("/channels/" + msg.channel_id + "/messages/" + target);
+                                    if (!res.success()) {
+                                        bot.send_message(msg.channel_id, "failed to verify message ID `" + target + "` in this channel.");
+                                        return;
+                                    }
+                                    if (!g_db->add_rr_message(target, msg.channel_id, msg.server_id, "")) {
+                                        bot.send_message(msg.channel_id, "failed to register message `" + target + "` in database.");
+                                        return;
+                                    }
+                                } else {
+                                    channel_id = existing_rr->channel_id;
+                                }
+
+                                if (g_db->add_rr_rule(target, emoji, selected_role.id)) {
+                                    bot.react_to_message(channel_id, target, emoji);
+                                    bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on message `" + target + "`.");
+                                } else {
+                                    bot.send_message(msg.channel_id, "failed to add reaction role mapping.");
+                                }
+                            }).detach();
+                        } else {
+                            std::vector<std::string> msg_ids = g_db->get_message_ids_by_modal(msg.server_id, target);
+                            if (msg_ids.empty()) {
+                                bot.send_message(msg.channel_id, "could not find any active modals named `" + target + "` in this server.");
+                                return;
+                            }
+
+                            std::thread([&bot, msg, target, emoji, selected_role, msg_ids]() {
+                                for (const auto& target_msg_id : msg_ids) {
+                                    auto rr_msg_opt = g_db->get_rr_message(target_msg_id);
+                                    if (!rr_msg_opt) continue;
+
+                                    if (g_db->add_rr_rule(target_msg_id, emoji, selected_role.id)) {
+                                        bot.react_to_message(rr_msg_opt->channel_id, target_msg_id, emoji);
+                                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                                    }
+
+                                    auto updated_rr = g_db->get_rr_message(target_msg_id);
+                                    if (updated_rr) {
+                                        stoatpp::models::MessagePayload payload;
+                                        nlohmann::json embed = nlohmann::json::object();
+                                        embed["title"] = "reaction roles: " + target;
+                                        embed["colour"] = "#6C5CE7";
+
+                                        std::string desc = "react below to obtain roles:\n\n";
+                                        for (const auto& rule : updated_rr->rules) {
+                                            desc += "• " + display_emoji(rule.emoji_id) + " ➔ <@&" + rule.role_id + ">\n";
+                                        }
+                                        embed["description"] = desc;
+                                        payload.embeds.push_back(embed);
+                                        payload.content = " ";
+
+                                        bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
+                                    }
+                                }
+
+                                bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on modal `" + target + "`.");
+                            }).detach();
+                        }
+                    };
+
+                    if (matching_roles.empty()) {
+                        bot.send_message(msg.channel_id, "could not find any role matching \"" + role_query + "\".");
+                        return;
+                    }
+
+                    if (matching_roles.size() == 1) {
+                        execute_add(matching_roles[0]);
+                    } else {
+                        stoatpp::models::MessagePayload payload;
+                        nlohmann::json embed = nlohmann::json::object();
+                        embed["title"] = "i found some conflicts";
+                        embed["colour"] = "#F1C40F";
+
+                        std::string desc = "";
+                        for (size_t i = 0; i < matching_roles.size(); ++i) {
+                            desc += std::to_string(i + 1) + ". " + matching_roles[i].name + "\n";
+                        }
+                        desc += "\nyou only asked for \"" + role_query + "\"... which should I choose?\n*please reply with the option number within 30 seconds!*";
+                        embed["description"] = desc;
+                        payload.embeds.push_back(embed);
+
+                        bot.send_message(msg.channel_id, payload, [&bot, msg, execute_add, matching_roles](stoatpp::models::Message prompt, bool ok) {
+                            if (!ok) return;
+
+                            bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, prompt, execute_add, matching_roles](std::optional<stoatpp::events::Message> reply) {
+                                // Clean up prompt and user reply
+                                bot.delete_message(prompt.channel, prompt.id);
+                                if (reply) {
+                                    bot.delete_message(reply->channel_id, reply->id);
+                                }
+
+                                if (!reply) {
+                                    bot.send_reply(msg, "timed out waiting for selection. cancelled.", true);
+                                    return;
+                                }
+
+                                int choice = 0;
+                                try {
+                                    choice = std::stoi(reply->content);
+                                } catch (...) {}
+
+                                if (choice < 1 || choice > static_cast<int>(matching_roles.size())) {
+                                    bot.send_reply(msg, "invalid selection. cancelled.", true);
+                                    return;
+                                }
+
+                                execute_add(matching_roles[choice - 1]);
+                            });
+                        });
+                    }
                     return;
                 }
 
@@ -790,8 +996,49 @@ public:
                 }
 
                 if (!match_role.empty()) {
+                    std::string role_name = match_role;
+                    auto server_opt = bot.get_server(rr_msg->server_id);
+                    if (server_opt) {
+                        for (const auto& r : server_opt->roles) {
+                            if (r.id == match_role) {
+                                role_name = r.name;
+                                break;
+                            }
+                        }
+                    }
+
                     std::cout << "[bronx rr] adding role " << match_role << " to user " << e.user_id << "\n";
-                    bot.add_role_to_member(rr_msg->server_id, e.user_id, match_role);
+                    bot.add_role_to_member(rr_msg->server_id, e.user_id, match_role, [&bot, e, match_role, role_name, server_opt, rr_msg](bool success, std::string err) {
+                        std::cout << "[bronx rr] role add " << (success ? "succeeded" : "failed") 
+                                  << " for user " << e.user_id << " (role: " << match_role << ") error: " << err << "\n";
+                        if (!success) {
+                            if (err == "NotElevated" || err == "HierarchyError") {
+                                bot.fetch_member(rr_msg->server_id, e.user_id, [&bot, e, role_name, server_opt](stoatpp::models::Member target_member, bool member_ok) {
+                                    std::string top_role_name = "your highest role";
+                                    if (member_ok && server_opt) {
+                                        int highest_rank = 999999;
+                                        std::string highest_name = "";
+                                        for (const auto& r_id : target_member.roles) {
+                                            for (const auto& r : server_opt->roles) {
+                                                if (r.id == r_id) {
+                                                    if (r.rank < highest_rank) {
+                                                        highest_rank = r.rank;
+                                                        highest_name = r.name;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (!highest_name.empty()) {
+                                            top_role_name = "**" + highest_name + "**";
+                                        }
+                                    }
+                                    bot.send_message(e.channel_id, "⚠️ failed to assign role **" + role_name + "**. Revolt requires the bot's role to be positioned above your top role (" + top_role_name + "). please go to Server Settings -> Roles and drag my role above it.");
+                                });
+                            } else {
+                                bot.send_message(e.channel_id, "⚠️ failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                            }
+                        }
+                    });
                 }
             }
         });
@@ -810,8 +1057,49 @@ public:
                 }
 
                 if (!match_role.empty()) {
+                    std::string role_name = match_role;
+                    auto server_opt = bot.get_server(rr_msg->server_id);
+                    if (server_opt) {
+                        for (const auto& r : server_opt->roles) {
+                            if (r.id == match_role) {
+                                role_name = r.name;
+                                break;
+                            }
+                        }
+                    }
+
                     std::cout << "[bronx rr] removing role " << match_role << " from user " << e.user_id << "\n";
-                    bot.remove_role_from_member(rr_msg->server_id, e.user_id, match_role);
+                    bot.remove_role_from_member(rr_msg->server_id, e.user_id, match_role, [&bot, e, match_role, role_name, server_opt, rr_msg](bool success, std::string err) {
+                        std::cout << "[bronx rr] role remove " << (success ? "succeeded" : "failed") 
+                                  << " for user " << e.user_id << " (role: " << match_role << ") error: " << err << "\n";
+                        if (!success) {
+                            if (err == "NotElevated" || err == "HierarchyError") {
+                                bot.fetch_member(rr_msg->server_id, e.user_id, [&bot, e, role_name, server_opt](stoatpp::models::Member target_member, bool member_ok) {
+                                    std::string top_role_name = "your highest role";
+                                    if (member_ok && server_opt) {
+                                        int highest_rank = 999999;
+                                        std::string highest_name = "";
+                                        for (const auto& r_id : target_member.roles) {
+                                            for (const auto& r : server_opt->roles) {
+                                                if (r.id == r_id) {
+                                                    if (r.rank < highest_rank) {
+                                                        highest_rank = r.rank;
+                                                        highest_name = r.name;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if (!highest_name.empty()) {
+                                            top_role_name = "**" + highest_name + "**";
+                                        }
+                                    }
+                                    bot.send_message(e.channel_id, "⚠️ failed to remove role **" + role_name + "**. Revolt requires the bot's role to be positioned above your top role (" + top_role_name + "). please go to Server Settings -> Roles and drag my role above it.");
+                                });
+                            } else {
+                                bot.send_message(e.channel_id, "⚠️ failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                            }
+                        }
+                    });
                 }
             }
         });

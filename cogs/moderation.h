@@ -357,6 +357,112 @@ public:
             "Moderation",
             stoatpp::permissions::ManageMessages
         });
+
+        bot.register_command({
+            "cleanup",
+            {"cu"},
+            "delete bot messages and command invocations.",
+            "",
+            {"[amount]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling cleanup...\n";
+
+                int amount = 100;
+                bool has_limit = false;
+                if (!args.empty()) {
+                    try {
+                        amount = std::stoi(args[0]);
+                        has_limit = true;
+                    } catch (...) {
+                        bot.send_message(msg.channel_id, "amount must be a valid number.");
+                        return;
+                    }
+                }
+
+                if (amount < 1 || amount > 100) {
+                    bot.send_message(msg.channel_id, "amount must be between 1 and 100.");
+                    return;
+                }
+
+                std::vector<std::string> prefixes = { bot.config().command_prefix };
+                if (bot.config().prefix_resolver) {
+                    prefixes = bot.config().prefix_resolver(bot, msg);
+                }
+
+                auto starts_with_prefix = [](const std::string& content, const std::vector<std::string>& pfxs) {
+                    for (const auto& p : pfxs) {
+                        if (content.rfind(p, 0) == 0) return true;
+                    }
+                    return false;
+                };
+
+                stoatpp::models::MessageQuery query;
+                query.limit = 100;
+
+                std::thread([&bot, msg, amount, has_limit, prefixes, starts_with_prefix, query]() {
+                    auto res = bot.rest().get_messages(msg.channel_id, query);
+                    if (!res.success() || !res.body.is_array()) {
+                        bot.send_message(msg.channel_id, "failed to fetch messages for cleanup.");
+                        return;
+                    }
+
+                    std::vector<stoatpp::models::Message> messages;
+                    for (const auto& item : res.body) {
+                        messages.push_back(stoatpp::models::Message::from_json(item));
+                    }
+
+                    std::vector<std::string> ids_to_delete;
+                    ids_to_delete.push_back(msg.id); // delete the cleanup command itself
+
+                    int bot_msgs_deleted = 0;
+                    for (size_t i = 0; i < messages.size(); ++i) {
+                        const auto& m = messages[i];
+                        if (m.id == msg.id) continue;
+
+                        if (m.author == bot.current_user().id) {
+                            if (has_limit && bot_msgs_deleted >= amount) {
+                                continue;
+                            }
+
+                            ids_to_delete.push_back(m.id);
+                            bot_msgs_deleted++;
+
+                            // Check replies first
+                            if (!m.replies.empty()) {
+                                ids_to_delete.push_back(m.replies[0]);
+                            } else if (i + 1 < messages.size()) {
+                                const auto& prev = messages[i + 1];
+                                if (prev.content && starts_with_prefix(*prev.content, prefixes)) {
+                                    ids_to_delete.push_back(prev.id);
+                                }
+                            }
+                        }
+                    }
+
+                    // Deduplicate IDs
+                    std::sort(ids_to_delete.begin(), ids_to_delete.end());
+                    ids_to_delete.erase(std::unique(ids_to_delete.begin(), ids_to_delete.end()), ids_to_delete.end());
+
+                    if (ids_to_delete.empty()) {
+                        bot.send_message(msg.channel_id, "no messages found to clean up.");
+                        return;
+                    }
+
+                    auto del_res = bot.rest().delete_messages_bulk(msg.channel_id, ids_to_delete);
+                    if (del_res.success()) {
+                        std::cout << "[bronx command] successfully cleaned up " << ids_to_delete.size() << " messages.\n";
+                        stoatpp::models::MessagePayload confirm_payload;
+                        confirm_payload.content = "successfully cleaned up " + std::to_string(ids_to_delete.size()) + " messages.";
+                        confirm_payload.delete_after = 5;
+                        bot.send_message(msg.channel_id, confirm_payload);
+                    } else {
+                        bot.send_message(msg.channel_id, "failed to delete messages: " + del_res.error_message());
+                    }
+                }).detach();
+            },
+            "Moderation",
+            stoatpp::permissions::ManageMessages
+        });
     }
 };
 

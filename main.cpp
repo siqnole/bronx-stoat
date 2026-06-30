@@ -110,6 +110,8 @@ int main(int argc, char* argv[]) {
     stoatpp::ClientConfig cfg;
     cfg.log_level = verbose ? stoatpp::LogLevel::TRACE : stoatpp::LogLevel::INFO;
     cfg.enable_default_help = false;
+    cfg.dispatch_commands_on_edit = true;
+    cfg.case_insensitive_commands = true;
     
     cfg.command_prefix = "!";
     if (const char* pfx = std::getenv("COMMAND_PREFIX")) {
@@ -288,6 +290,10 @@ int main(int argc, char* argv[]) {
 
     bot.on_error([](const stoatpp::events::Error& e) {
         std::cerr << "[bronx event] gateway error: " << e.error_id << "\n";
+    });
+
+    bot.on_rest_error([](const std::string& method, const std::string& path, int status_code, const std::string& error_msg) {
+        std::cerr << "[bronx rest error] " << method << " " << path << " -> " << status_code << ": " << error_msg << "\n";
     });
 
     bot.on_logout([](const stoatpp::events::Logout&) {
