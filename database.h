@@ -400,8 +400,26 @@ public:
             return false;
         }
 
-        // Create Table reminders
-        std::string create_reminders = 
+        // Create Table moderation_logs
+        std::string create_modlogs =
+            "CREATE TABLE IF NOT EXISTS moderation_logs ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  action VARCHAR(30) NOT NULL,"
+            "  moderator_id VARCHAR(30) NOT NULL,"
+            "  target_id VARCHAR(30) NOT NULL,"
+            "  reason TEXT DEFAULT NULL,"
+            "  extra_details TEXT DEFAULT NULL,"
+            "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  INDEX idx_target (server_id, target_id),"
+            "  INDEX idx_moderator (server_id, moderator_id)"
+            ")";
+        if (mysql_query(mysql_, create_modlogs.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'moderation_logs': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        std::string create_reminders =
             "CREATE TABLE IF NOT EXISTS reminders ("
             "  id INT AUTO_INCREMENT PRIMARY KEY,"
             "  user_id VARCHAR(30) NOT NULL,"
@@ -1924,6 +1942,98 @@ public:
             }
         }
         return res;
+    }
+
+    // ── Moderation logs ───────────────────────────────────────────────────────
+
+    struct ModLogEntry {
+        int         id;
+        std::string action;
+        std::string moderator_id;
+        std::string target_id;
+        std::string reason;
+        std::string extra_details;
+        std::string created_at;  // YYYY-MM-DD HH:MM:SS
+    };
+
+    bool record_moderation_action(const std::string& server_id, const std::string& action,
+                                   const std::string& moderator_id, const std::string& target_id,
+                                   const std::string& reason, const std::string& extra_details = "") {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql =
+            "INSERT INTO moderation_logs (server_id, action, moderator_id, target_id, reason, extra_details) VALUES ('"
+            + escape_string(server_id) + "', '"
+            + escape_string(action) + "', '"
+            + escape_string(moderator_id) + "', '"
+            + escape_string(target_id) + "', '"
+            + escape_string(reason) + "', '"
+            + escape_string(extra_details) + "')";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    // Returns the moderation history FOR a user (actions taken against them)
+    std::vector<ModLogEntry> get_mod_logs(const std::string& server_id, const std::string& target_id, int limit = 10) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<ModLogEntry> entries;
+        if (!mysql_) return entries;
+        std::string sql =
+            "SELECT id, action, moderator_id, target_id, COALESCE(reason,''), COALESCE(extra_details,''), "
+            "DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') FROM moderation_logs "
+            "WHERE server_id = '" + escape_string(server_id) + "' "
+            "AND target_id = '" + escape_string(target_id) + "' "
+            "ORDER BY id DESC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    ModLogEntry e;
+                    e.id            = row[0] ? std::stoi(row[0]) : 0;
+                    e.action        = row[1] ? row[1] : "";
+                    e.moderator_id  = row[2] ? row[2] : "";
+                    e.target_id     = row[3] ? row[3] : "";
+                    e.reason        = row[4] ? row[4] : "";
+                    e.extra_details = row[5] ? row[5] : "";
+                    e.created_at    = row[6] ? row[6] : "";
+                    entries.push_back(e);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
+    }
+
+    // Returns the moderation actions BY a user (actions they invoked against others)
+    std::vector<ModLogEntry> get_mod_actions(const std::string& server_id, const std::string& moderator_id, int limit = 10) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<ModLogEntry> entries;
+        if (!mysql_) return entries;
+        std::string sql =
+            "SELECT id, action, moderator_id, target_id, COALESCE(reason,''), COALESCE(extra_details,''), "
+            "DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') FROM moderation_logs "
+            "WHERE server_id = '" + escape_string(server_id) + "' "
+            "AND moderator_id = '" + escape_string(moderator_id) + "' "
+            "ORDER BY id DESC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    ModLogEntry e;
+                    e.id            = row[0] ? std::stoi(row[0]) : 0;
+                    e.action        = row[1] ? row[1] : "";
+                    e.moderator_id  = row[2] ? row[2] : "";
+                    e.target_id     = row[3] ? row[3] : "";
+                    e.reason        = row[4] ? row[4] : "";
+                    e.extra_details = row[5] ? row[5] : "";
+                    e.created_at    = row[6] ? row[6] : "";
+                    entries.push_back(e);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
     }
 };
 

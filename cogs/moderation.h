@@ -816,6 +816,115 @@ public:
             "Moderation",
             stoatpp::permissions::ManageServer
         });
+
+        bot.register_command({
+            "modlogs",
+            {"ml"},
+            "view moderation history for a user. use 'actions' to see what actions they've invoked on others.",
+            "modlogs <@user|id> [actions]",
+            {"<@user|id>", "[actions]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (msg.server_id.empty()) {
+                    bot.send_message(msg.channel_id, "this command can only be used inside a server.");
+                    return;
+                }
+                if (!g_db) {
+                    bot.send_message(msg.channel_id, "database unavailable.");
+                    return;
+                }
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id,
+                        "**modlogs** — view moderation history\n"
+                        "`.modlogs <@user|id>` — history of actions taken against a user\n"
+                        "`.modlogs <@user|id> actions` — actions a user has invoked on others");
+                    return;
+                }
+
+                std::string query = args[0];
+                bool show_actions = args.size() > 1 && (args[1] == "actions" || args[1] == "action" || args[1] == "a");
+
+                helpers::resolve_user(bot, msg.server_id, query,
+                    [&bot, msg, show_actions](stoatpp::models::User target_user, stoatpp::models::Member, bool success) {
+                        if (!success) {
+                            bot.send_message(msg.channel_id, "could not resolve user.");
+                            return;
+                        }
+
+                        stoatpp::models::MessagePayload payload;
+                        payload.content = " ";
+                        stoatpp::models::Embed embed;
+                        embed.set_colour(0x2f3136);
+
+                        std::string display = target_user.username.empty()
+                            ? ("<@" + target_user.id + ">")
+                            : target_user.username;
+
+                        // Action emoji map
+                        auto action_emoji = [](const std::string& a) -> std::string {
+                            if (a == "Ban")     return "🔨";
+                            if (a == "Kick")    return "👢";
+                            if (a == "Timeout") return "🔇";
+                            if (a == "Warn")    return "⚠️";
+                            if (a == "Unban")   return "✅";
+                            return "🛡️";
+                        };
+
+                        if (!show_actions) {
+                            // Moderation history FOR the user (victim view)
+                            auto entries = g_db->get_mod_logs(msg.server_id, target_user.id, 10);
+                            embed.set_title("📋 modlogs — " + display);
+
+                            if (entries.empty()) {
+                                embed.set_description("*no moderation history for this user.*");
+                            } else {
+                                std::string desc;
+                                for (const auto& e : entries) {
+                                    desc += action_emoji(e.action) + " **" + e.action + "**";
+                                    desc += " `#" + std::to_string(e.id) + "`\n";
+                                    desc += "  **time:** " + e.created_at + "\n";
+                                    desc += "  **invoker:** <@" + e.moderator_id + ">\n";
+                                    if (!e.reason.empty())
+                                        desc += "  **reason:** " + e.reason + "\n";
+                                    if (!e.extra_details.empty())
+                                        desc += "  **details:** " + e.extra_details + "\n";
+                                    desc += "\n";
+                                }
+                                embed.set_description(desc);
+                                desc += "-# showing latest " + std::to_string(entries.size()) + " entries";
+                                embed.set_description(desc);
+                            }
+                        } else {
+                            // Moderation actions BY the user (moderator view)
+                            auto entries = g_db->get_mod_actions(msg.server_id, target_user.id, 10);
+                            embed.set_title("⚖️ mod actions — " + display);
+
+                            if (entries.empty()) {
+                                embed.set_description("*no moderation actions recorded for this user.*");
+                            } else {
+                                std::string desc;
+                                for (const auto& e : entries) {
+                                    desc += action_emoji(e.action) + " **" + e.action + "**";
+                                    desc += " `#" + std::to_string(e.id) + "`\n";
+                                    desc += "  **time:** " + e.created_at + "\n";
+                                    desc += "  **target:** <@" + e.target_id + ">\n";
+                                    if (!e.reason.empty())
+                                        desc += "  **reason:** " + e.reason + "\n";
+                                    if (!e.extra_details.empty())
+                                        desc += "  **details:** " + e.extra_details + "\n";
+                                    desc += "\n";
+                                }
+                                desc += "-# showing latest " + std::to_string(entries.size()) + " entries";
+                                embed.set_description(desc);
+                            }
+                        }
+
+                        payload.add_embed(embed);
+                        bot.send_message(msg.channel_id, payload);
+                    });
+            },
+            "Moderation",
+            stoatpp::permissions::KickMembers
+        });
     }
 };
 

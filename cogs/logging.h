@@ -145,6 +145,11 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
 }
 
 inline void log_moderation_action(stoatpp::cluster& bot, const std::string& server_id, const std::string& action, const std::string& mod_id, const std::string& target_id, const std::string& reason, const std::string& extra_details = "") {
+    // Persist to DB so .modlogs can query history
+    if (g_db && !server_id.empty()) {
+        g_db->record_moderation_action(server_id, action, mod_id, target_id, reason, extra_details);
+    }
+
     std::unordered_map<std::string, std::string> placeholders = {
         {"action", action},
         {"moderator", "<@" + mod_id + ">"},
