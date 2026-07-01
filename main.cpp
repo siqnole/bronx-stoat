@@ -31,6 +31,7 @@
 #include "cogs/command_config.h"
 #include "cogs/media.h"
 #include "cogs/reminders.h"
+#include "cogs/antiraid.h"
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string& filepath = ".env") {
@@ -192,6 +193,7 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::CommandConfigModule>());
     bot.use(std::make_unique<bronx::cogs::MediaModule>());
     bot.use(std::make_unique<bronx::cogs::RemindersModule>());
+    bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
         std::cout << "[bronx event] ready! logged in as: " << e.user.username 

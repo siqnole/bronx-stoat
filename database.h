@@ -79,6 +79,17 @@ public:
         std::string embed_json;
     };
 
+    struct AntiRaidConfig {
+        std::string server_id;
+        int joins_threshold_count = 5;
+        int joins_threshold_seconds = 60;
+        std::string joins_action = "none";
+        int spam_threshold_count = 5;
+        int spam_threshold_seconds = 2;
+        std::string spam_action = "none";
+        std::string default_profile_action = "none";
+    };
+
 private:
     MYSQL* mysql_ = nullptr;
     std::unordered_map<std::string, std::vector<std::string>> cache_;
@@ -92,6 +103,10 @@ private:
     // Server ID -> WelcomeLeaveConfig
     std::unordered_map<std::string, WelcomeLeaveConfig> wl_cache_;
     std::shared_mutex wl_cache_mutex_;
+
+    // Server ID -> AntiRaidConfig
+    std::unordered_map<std::string, AntiRaidConfig> ar_cache_;
+    std::shared_mutex ar_cache_mutex_;
 
     // Server ID -> {Event Type -> Channel ID}
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> log_cache_;
@@ -457,6 +472,23 @@ public:
             return false;
         }
 
+        // Create Table antiraid_configs
+        std::string create_ar = 
+            "CREATE TABLE IF NOT EXISTS antiraid_configs ("
+            "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  joins_threshold_count INT NOT NULL DEFAULT 5,"
+            "  joins_threshold_seconds INT NOT NULL DEFAULT 60,"
+            "  joins_action VARCHAR(20) NOT NULL DEFAULT 'none',"
+            "  spam_threshold_count INT NOT NULL DEFAULT 5,"
+            "  spam_threshold_seconds INT NOT NULL DEFAULT 2,"
+            "  spam_action VARCHAR(20) NOT NULL DEFAULT 'none',"
+            "  default_profile_action VARCHAR(20) NOT NULL DEFAULT 'none'"
+            ")";
+        if (mysql_query(mysql_, create_ar.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'antiraid_configs': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes, default_enabled FROM prefixes";
         if (mysql_query(mysql_, select_query.c_str())) {
@@ -710,6 +742,31 @@ public:
             }
         }
 
+        // Load antiraid_configs
+        std::string select_ar = "SELECT server_id, joins_threshold_count, joins_threshold_seconds, joins_action, "
+                                "spam_threshold_count, spam_threshold_seconds, spam_action, default_profile_action FROM antiraid_configs";
+        if (mysql_query(mysql_, select_ar.c_str()) == 0) {
+            MYSQL_RES* ar_res = mysql_store_result(mysql_);
+            if (ar_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> ar_lock(ar_cache_mutex_);
+                while ((row = mysql_fetch_row(ar_res))) {
+                    std::string s_id = row[0];
+                    AntiRaidConfig ar;
+                    ar.server_id = s_id;
+                    ar.joins_threshold_count = row[1] ? std::stoi(row[1]) : 5;
+                    ar.joins_threshold_seconds = row[2] ? std::stoi(row[2]) : 60;
+                    ar.joins_action = row[3] ? row[3] : "none";
+                    ar.spam_threshold_count = row[4] ? std::stoi(row[4]) : 5;
+                    ar.spam_threshold_seconds = row[5] ? std::stoi(row[5]) : 2;
+                    ar.spam_action = row[6] ? row[6] : "none";
+                    ar.default_profile_action = row[7] ? row[7] : "none";
+                    ar_cache_[s_id] = ar;
+                }
+                mysql_free_result(ar_res);
+            }
+        }
+
         std::cout << "[bronx db] database successfully initialized.\n"
                   << "           loaded " << cache_.size() << " prefix configurations.\n"
                   << "           loaded " << rr_cache_.size() << " reaction role messages.\n"
@@ -720,7 +777,8 @@ public:
                   << "           loaded " << trusted_cache_.size() << " trusted servers configurations.\n"
                   << "           loaded " << restrictions_cache_.size() << " server commands restrictions.\n"
                   << "           loaded " << disabled_cache_.size() << " server disabled commands.\n"
-                  << "           loaded " << action_msg_cache_.size() << " action message configurations.\n";
+                  << "           loaded " << action_msg_cache_.size() << " action message configurations.\n"
+                  << "           loaded " << ar_cache_.size() << " antiraid configurations.\n";
         return true;
     }
 
@@ -1539,6 +1597,48 @@ public:
             return it->second;
         }
         return {};
+    }
+
+    std::optional<AntiRaidConfig> get_antiraid_config(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(ar_cache_mutex_);
+        auto it = ar_cache_.find(server_id);
+        if (it != ar_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool save_antiraid_config(const AntiRaidConfig& ar) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_srv = escape_string(ar.server_id);
+        std::string esc_joins_act = escape_string(ar.joins_action);
+        std::string esc_spam_act = escape_string(ar.spam_action);
+        std::string esc_profile_act = escape_string(ar.default_profile_action);
+
+        std::string query = 
+            "INSERT INTO antiraid_configs (server_id, joins_threshold_count, joins_threshold_seconds, joins_action, "
+            "spam_threshold_count, spam_threshold_seconds, spam_action, default_profile_action) VALUES ("
+            "'" + esc_srv + "', " + std::to_string(ar.joins_threshold_count) + ", " + std::to_string(ar.joins_threshold_seconds) + ", "
+            "'" + esc_joins_act + "', " + std::to_string(ar.spam_threshold_count) + ", " + std::to_string(ar.spam_threshold_seconds) + ", "
+            "'" + esc_spam_act + "', '" + esc_profile_act + "') "
+            "ON DUPLICATE KEY UPDATE "
+            "joins_threshold_count = VALUES(joins_threshold_count), "
+            "joins_threshold_seconds = VALUES(joins_threshold_seconds), "
+            "joins_action = VALUES(joins_action), "
+            "spam_threshold_count = VALUES(spam_threshold_count), "
+            "spam_threshold_seconds = VALUES(spam_threshold_seconds), "
+            "spam_action = VALUES(spam_action), "
+            "default_profile_action = VALUES(default_profile_action)";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save antiraid config: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        std::lock_guard<std::shared_mutex> cache_lock(ar_cache_mutex_);
+        ar_cache_[ar.server_id] = ar;
+        return true;
     }
 
     bool save_logging_channel(const std::string& server_id, const std::string& event_type, const std::string& channel_id) {

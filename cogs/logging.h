@@ -208,6 +208,30 @@ inline void log_moderation_action(stoatpp::cluster& bot, const std::string& serv
     dispatch_log(bot, server_id, "moderation", placeholders, default_fallback);
 }
 
+inline void log_antiraid_action(stoatpp::cluster& bot, const std::string& server_id, const std::string& action, const std::string& rule, const std::string& user_id, const std::string& username, const std::string& details) {
+    std::unordered_map<std::string, std::string> placeholders = {
+        {"action", action},
+        {"rule", rule},
+        {"user", "<@" + user_id + ">"},
+        {"username", username},
+        {"details", details}
+    };
+
+    auto default_fallback = [action, rule, placeholders]() {
+        nlohmann::json embed = nlohmann::json::object();
+        embed["title"] = "🛡️ AntiRaid Triggered: " + rule;
+        embed["colour"] = "#d12222"; // Premium dark red
+
+        std::string desc = "• **Action:** " + placeholders.at("action") + "\n"
+                           "• **User:** " + placeholders.at("user") + " (" + placeholders.at("username") + ")\n"
+                           "• **Details:** " + placeholders.at("details") + "\n";
+        embed["description"] = desc;
+        return std::make_pair("", embed);
+    };
+
+    dispatch_log(bot, server_id, "antiraid", placeholders, default_fallback);
+}
+
 class LoggingModule : public stoatpp::bot_module {
 private:
     std::unordered_map<std::string, stoatpp::events::Message> msg_cache_;

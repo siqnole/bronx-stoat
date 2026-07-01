@@ -1,6 +1,6 @@
 # bronx
 
-Server management bot built on stoat++. Features MariaDB configurations, custom prefixes, welcome/leave actions, reaction roles, cleanups, reminders, command override rules, and a highly customizable event logging engine.
+Server management bot built on stoat++. Features MariaDB configurations, custom prefixes, welcome/leave actions, reaction roles, cleanups, reminders, command override rules, anti-raid protection, and a highly customizable event logging engine.
 
 ---
 
@@ -35,8 +35,12 @@ The bot checks for appropriate user/bot permissions. The default permissions req
   * `cleanup` / `pin` / `unpin` — Requires `Manage Messages` permission.
 * **Welcome / Leave & Logs Setup**:
   * `welcome` / `leave` / `log` — Requires `Manage Server` permission.
+* **Anti-Raid**:
+  * `antiraid` / `ar` — Requires `Manage Server` permission (or being the Server Owner / trusted user).
 * **Reaction Roles**:
   * `rr` — Requires `Manage Roles` permission.
+* **Roles**:
+  * `role` / `roleinfo` — Requires `Manage Roles` permission (changed from Assign Roles).
 * **General / Utility**:
   * `ping` / `uptime` / `say` / `remind` — Available to all users by default.
 
@@ -193,7 +197,65 @@ Audit trail tracking for edits, deletes, joins, leaves, mod actions, and global 
 
 ---
 
-### 8. Custom Message Overrides (`.message`)
+### 8. Anti-Raid Protection (`.antiraid` / `.ar`)
+
+Automated protection against join floods, message spam, and suspicious account profiles. Settings are server-scoped and persist in the database. Only the **server owner**, **bot owner**, or **trusted users / Manage Server** members may configure these rules.
+
+#### Subcommands
+
+* **`.antiraid`** / **`.antiraid status`**
+  * Displays the current configuration for all anti-raid rules.
+* **`.antiraid setup`**
+  * Launches an interactive 5-step wizard to configure all rules at once.
+* **`.antiraid join <count> <seconds> [action]`**
+  * Configure join flood detection. Triggers when `<count>` or more users join within `<seconds>` seconds.
+  * *Example*: `.antiraid join 5 60 kick` — kicks the triggering user when 5+ users join in 60 s.
+* **`.antiraid spam <count> <seconds> [action]`**
+  * Configure message spam detection. Triggers when a single user sends `<count>` messages within `<seconds>` seconds.
+  * *Example*: `.antiraid spam 5 2 timeout` — times out users who send 5 messages in 2 s.
+* **`.antiraid profile <action>`**
+  * Set the action taken when a user joins with a default (no-avatar) profile.
+  * *Example*: `.antiraid profile ban`
+* **`.antiraid reset`**
+  * Resets all thresholds and actions back to defaults (all actions: `none`).
+
+#### Actions
+
+| Action | Behaviour |
+| :--- | :--- |
+| `ban` | Permanently bans the user from the server. Reason includes the rule name. |
+| `kick` | Removes the user from the server. |
+| `timeout` | Applies a 10-minute server timeout (mute). |
+| `warn` | Sends a DM warning to the user explaining which rule was triggered. |
+| `none` | Logs the event (if a logging channel is configured) but takes no further action. |
+
+#### Anti-Raid Event Logging
+
+All triggered anti-raid events are dispatched through the standard logging system under the event key **`antiraid`**. During `.log aio` setup, antiraid events are automatically routed to the **#moderation** channel.
+
+To manually route antiraid logs:
+```
+.log channel antiraid #your-log-channel
+```
+
+To customise the embed appearance:
+```
+.log edit antiraid title:🛡️ Raid Detected color:#D63031
+```
+
+#### Default Thresholds
+
+| Rule | Default Threshold | Default Action |
+| :--- | :--- | :--- |
+| Join Flood | 5 joins / 60 s | `none` |
+| Spam | 5 messages / 2 s | `none` |
+| Default Profile | On any join with no avatar | `none` |
+
+> **Note**: All rules default to `none` until explicitly configured — antiraid is passive until you set an action.
+
+---
+
+### 9. Custom Message Overrides (`.message`)
 
 Configure the customized DM or public channel notification dispatched when a moderation action (ban, kick, timeout, warn) is executed.
 

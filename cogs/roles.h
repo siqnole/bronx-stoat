@@ -827,7 +827,7 @@ public:
                 });
             },
             "Roles",
-            stoatpp::permissions::AssignRoles
+            stoatpp::permissions::ManageRole
         });
 
         bot.register_command({
@@ -861,7 +861,7 @@ public:
                 bot.send_message(msg.channel_id, out);
             },
             "Roles",
-            stoatpp::permissions::AssignRoles
+            stoatpp::permissions::ManageRole
         });
     }
 };
