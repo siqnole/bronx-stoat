@@ -1034,7 +1034,28 @@ public:
 
                     // Fetch the target message content
                     std::thread([&bot, msg, target_msg_id]() {
-                        auto res = bot.rest().get("/channels/" + msg.channel_id + "/messages/" + target_msg_id);
+                        std::string actual_msg_id = target_msg_id;
+                        if (actual_msg_id == "^") {
+                            stoatpp::models::MessageQuery query;
+                            query.before = msg.id;
+                            query.limit = 1;
+                            auto history_res = bot.rest().get_messages(msg.channel_id, query);
+                            if (history_res.success()) {
+                                if (history_res.body.is_array() && !history_res.body.empty()) {
+                                    auto m = stoatpp::models::Message::from_json(history_res.body[0]);
+                                    actual_msg_id = m.id;
+                                } else if (history_res.body.is_object() && history_res.body.contains("messages") && history_res.body["messages"].is_array() && !history_res.body["messages"].empty()) {
+                                    auto m = stoatpp::models::Message::from_json(history_res.body["messages"][0]);
+                                    actual_msg_id = m.id;
+                                }
+                            }
+                            if (actual_msg_id == "^") {
+                                bot.send_reply(msg, "failed to find the message above.", true);
+                                return;
+                            }
+                        }
+
+                        auto res = bot.rest().get("/channels/" + msg.channel_id + "/messages/" + actual_msg_id);
                         if (!res.success()) {
                             bot.send_reply(msg, "failed to download target message. make sure the message ID is correct and in this channel.", true);
                             return;
@@ -1072,7 +1093,7 @@ public:
                         embed["title"] = "reaction roles scanner";
                         embed["colour"] = "#00CEC9";
 
-                        std::string desc = "i detected the following reaction roles rules in message `" + target_msg_id + "`:\n\n";
+                        std::string desc = "i detected the following reaction roles rules in message `" + actual_msg_id + "`:\n\n";
                         std::vector<bronx::Database::RRRule> converted_rules;
                         for (const auto& r : rules) {
                             converted_rules.push_back({r.emoji, r.role_id});
@@ -1082,12 +1103,12 @@ public:
                         embed["description"] = desc;
                         confirm_payload.embeds.push_back(embed);
 
-                        bot.send_message(msg.channel_id, confirm_payload, [target_msg_id, rules, msg, &bot](stoatpp::models::Message confirm_res, bool ok) {
+                        bot.send_message(msg.channel_id, confirm_payload, [actual_msg_id, rules, msg, &bot](stoatpp::models::Message confirm_res, bool ok) {
                             if (ok) {
                                 {
                                     std::lock_guard<std::mutex> lock(g_pending_scans_mutex);
                                     PendingScan scan;
-                                    scan.target_message_id = target_msg_id;
+                                    scan.target_message_id = actual_msg_id;
                                     scan.target_channel_id = confirm_res.channel;
                                     scan.target_server_id = msg.server_id;
                                     scan.rules = rules;
