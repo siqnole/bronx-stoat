@@ -132,22 +132,33 @@ int main(int argc, char* argv[]) {
 
     cfg.prefix_resolver = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg) -> std::vector<std::string> {
         std::vector<std::string> prefixes;
+        bool server_has_custom = false;
+
         if (bronx::g_db) {
-            // 1. Check user prefixes
+            // 1. User prefixes always apply
             std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
             prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
-            
-            // 2. Check server prefixes
+
+            // 2. Server custom prefixes
             if (!msg.server_id.empty()) {
                 std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
-                prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
+                if (!server_pfx.empty()) {
+                    server_has_custom = true;
+                    prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
+                }
             }
         }
-        
-        // 3. Fallback/Default prefix
-        prefixes.push_back(bot.config().command_prefix);
-        
-        // Remove duplicates to be clean and efficient
+
+        // 3. Default prefix — skip if the server has custom prefixes AND default is disabled
+        bool add_default = true;
+        if (server_has_custom && !msg.server_id.empty() && bronx::g_db) {
+            add_default = bronx::g_db->get_prefix_default_enabled(msg.server_id);
+        }
+        if (add_default) {
+            prefixes.push_back(bot.config().command_prefix);
+        }
+
+        // Deduplicate
         std::vector<std::string> unique_prefixes;
         for (const auto& p : prefixes) {
             if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) == unique_prefixes.end()) {
