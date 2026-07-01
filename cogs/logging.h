@@ -82,7 +82,9 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
     }
 
     // Run the webhook resolution and execution logic in a separate thread so it doesn't block the gateway thread
-    std::thread([&bot, log_chan, payload]() {
+    std::string server_id_copy = server_id;
+    std::string event_type_copy = event_type;
+    std::thread([&bot, server_id_copy, event_type_copy, log_chan, payload]() {
         bool sent_via_webhook = false;
         
         auto wh_opt = g_db->get_logging_webhook(log_chan);
@@ -106,6 +108,11 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
                         }
                     }
                 }
+            } else if (get_res.status_code == 404) {
+                // Channel does not exist! Evict configuration from DB
+                std::cout << "[bronx logging] Evicting deleted log channel " << log_chan << " for event " << event_type_copy << "\n";
+                g_db->remove_logging_channel(server_id_copy, event_type_copy);
+                return;
             }
             
             if (wh_id.empty()) {
@@ -118,6 +125,11 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
                         wh_token = *wh.token;
                         g_db->save_logging_webhook(log_chan, wh_id, wh_token);
                     }
+                } else if (create_res.status_code == 404) {
+                    // Channel does not exist! Evict configuration from DB
+                    std::cout << "[bronx logging] Evicting deleted log channel " << log_chan << " for event " << event_type_copy << "\n";
+                    g_db->remove_logging_channel(server_id_copy, event_type_copy);
+                    return;
                 }
             }
         }
@@ -132,14 +144,31 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
             if (exec_res.success()) {
                 sent_via_webhook = true;
             } else if (exec_res.status_code == 404) {
-                // Webhook was deleted on the server, evict from DB cache
-                g_db->remove_logging_webhook(log_chan);
+                // Check if the channel is deleted or just the webhook
+                auto ch_res = bot.rest().get_channel(log_chan);
+                if (!ch_res.success() && ch_res.status_code == 404) {
+                    std::cout << "[bronx logging] Evicting deleted log channel " << log_chan << " for event " << event_type_copy << "\n";
+                    g_db->remove_logging_channel(server_id_copy, event_type_copy);
+                    return;
+                } else {
+                    // Webhook was deleted on the server, evict from DB cache
+                    g_db->remove_logging_webhook(log_chan);
+                }
             }
         }
         
         if (!sent_via_webhook) {
             // Fallback to sending standard bot message
-            bot.send_message(log_chan, payload);
+            bot.send_message(log_chan, payload, [&bot, server_id_copy, event_type_copy, log_chan](stoatpp::models::Message, bool success) {
+                if (!success) {
+                    // Check if channel is deleted
+                    auto ch_res = bot.rest().get_channel(log_chan);
+                    if (!ch_res.success() && ch_res.status_code == 404) {
+                        std::cout << "[bronx logging] Evicting deleted log channel " << log_chan << " for event " << event_type_copy << "\n";
+                        g_db->remove_logging_channel(server_id_copy, event_type_copy);
+                    }
+                }
+            });
         }
     }).detach();
 }
