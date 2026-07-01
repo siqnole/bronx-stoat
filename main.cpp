@@ -26,6 +26,11 @@
 #include "cogs/stats.h"
 #include "cogs/economy.h"
 #include "cogs/blackjack.h"
+#include "cogs/welcome_leave.h"
+#include "cogs/logging.h"
+#include "cogs/command_config.h"
+#include "cogs/media.h"
+#include "cogs/reminders.h"
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string& filepath = ".env") {
@@ -171,6 +176,11 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::StatsModule>());
     bot.use(std::make_unique<bronx::cogs::EconomyModule>());
     bot.use(std::make_unique<bronx::cogs::BlackjackModule>());
+    bot.use(std::make_unique<bronx::cogs::WelcomeLeaveModule>());
+    bot.use(std::make_unique<bronx::cogs::LoggingModule>());
+    bot.use(std::make_unique<bronx::cogs::CommandConfigModule>());
+    bot.use(std::make_unique<bronx::cogs::MediaModule>());
+    bot.use(std::make_unique<bronx::cogs::RemindersModule>());
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
         std::cout << "[bronx event] ready! logged in as: " << e.user.username 
@@ -189,15 +199,20 @@ int main(int argc, char* argv[]) {
     });
 
     bot.on_message([&bot](const stoatpp::events::Message& msg) {
-        if (msg.author.bot) return;
         std::cout << "[bronx event] message in channel " << msg.channel_id
                   << " by " << msg.author.username << ": " << msg.content << "\n";
 
         if (bronx::g_db) {
             // 1. Message Telemetry
-            bronx::g_db->increment_user_daily_messages(msg.server_id, msg.author.id, "message");
+            bronx::g_db->increment_user_daily_messages(msg.server_id, msg.author.id, msg.author.bot, "message");
 
-            // 2. Command Telemetry
+            // 2. Channel Telemetry
+            bronx::g_db->increment_channel_daily_messages(msg.server_id, msg.channel_id);
+
+            // Skip command telemetry tracking for bots
+            if (msg.author.bot) return;
+
+            // 3. Command Telemetry
             std::vector<std::string> prefixes;
             std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
             prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
@@ -241,7 +256,7 @@ int main(int argc, char* argv[]) {
 
                     if (cmd_exists) {
                         bronx::g_db->increment_command_usage(msg.server_id, normalized_name, msg.channel_id);
-                        bronx::g_db->increment_user_daily_commands(msg.server_id, msg.author.id);
+                        bronx::g_db->increment_user_daily_commands(msg.server_id, msg.author.id, msg.author.bot);
                     }
                 }
             }
@@ -279,14 +294,7 @@ int main(int argc, char* argv[]) {
         std::cout << "[bronx event] server added: " << e.server.name << " (id: " << e.server.id << ")\n";
     });
 
-    // autorole: assign default role on join
-    bot.on_server_member_join([&bot](const stoatpp::events::ServerMemberJoin& e) {
-        const std::string autorole_server = "01KW4BF8E9KY0MV8TA355372H0";
-        const std::string autorole_role   = "01KW4QC7RQPKY4DE02EFF8E5NE";
-        if (e.server_id != autorole_server) return;
-        std::cout << "[bronx autorole] assigning role to " << e.user_id << " in " << e.server_id << "\n";
-        bot.add_role_to_member(e.server_id, e.user_id, autorole_role);
-    });
+
 
     bot.on_error([](const stoatpp::events::Error& e) {
         std::cerr << "[bronx event] gateway error: " << e.error_id << "\n";
@@ -326,6 +334,164 @@ int main(int argc, char* argv[]) {
             std::string ts_tag = stoatpp::utils::format_timestamp(now_unix + remaining, "R");
             bot.send_message(msg.channel_id, "you are on cooldown. please wait " + ts_tag + ".");
         }
+    });
+
+    bot.on_command_error([](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const stoatpp::Command& cmd, const std::string& error_type) {
+        if (error_type == "member_fetch_failed") {
+            bot.send_message(msg.channel_id, "failed to verify your server member details.");
+        } else if (error_type == "server_resolve_failed") {
+            bot.send_message(msg.channel_id, "failed to verify server configuration.");
+        } else if (error_type == "permission_denied") {
+            bot.send_message(msg.channel_id, "permission error: you do not have the required permissions to use this command.");
+        } else if (error_type == "server_only") {
+            bot.send_message(msg.channel_id, "this command can only be used in a server.");
+        }
+    });
+
+    bot.on_command_run([](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const stoatpp::Command& cmd, const std::optional<stoatpp::models::Member>& mem_opt, const std::vector<std::string>& args) {
+        if (msg.server_id.empty()) return true; 
+        if (!bronx::g_db) return true;
+
+        std::string cmd_name = cmd.name;
+        std::string mod_name = cmd.category;
+        std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), ::tolower);
+        std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), ::tolower);
+
+        // 1. Completely Disabled Commands/Modules Check (ignores invocation completely)
+        if (bronx::g_db->is_disabled(msg.server_id, cmd_name, mod_name)) {
+            // Bypass for Server Owner or Bot Owner on command config commands to avoid locked out state
+            if (bot.is_owner(msg.author.id) || bot.is_server_owner(msg.server_id, msg.author.id)) {
+                if (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd") {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Emergency Override: Bot Owner always bypasses. Server Owner and ManageServer users only bypass config commands
+        bool bypass = bot.is_owner(msg.author.id);
+        if (!bypass) {
+            bool is_admin = bot.is_server_owner(msg.server_id, msg.author.id);
+            if (!is_admin && mem_opt) {
+                auto server_opt = bot.get_server(msg.server_id);
+                if (server_opt && bot.has_permission(*server_opt, *mem_opt, stoatpp::permissions::ManageServer)) {
+                    is_admin = true;
+                }
+            }
+            if (is_admin && (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd")) {
+                bypass = true;
+            }
+        }
+
+        // Whitelist/blacklist restrictions check
+        if (!bypass) {
+            auto rules = bronx::g_db->get_restrictions(msg.server_id, "command", cmd_name);
+            auto mod_rules = bronx::g_db->get_restrictions(msg.server_id, "module", mod_name);
+            rules.insert(rules.end(), mod_rules.begin(), mod_rules.end());
+
+            if (!rules.empty()) {
+                std::vector<std::string> whitelist_roles;
+                std::vector<std::string> whitelist_channels;
+                std::vector<int64_t> whitelist_permissions;
+
+                std::vector<std::string> blacklist_roles;
+                std::vector<std::string> blacklist_channels;
+                std::vector<int64_t> blacklist_permissions;
+
+                for (const auto& re : rules) {
+                    if (re.restriction_type == "allow") {
+                        if (re.entity_type == "role") whitelist_roles.push_back(re.entity_id);
+                        else if (re.entity_type == "channel") whitelist_channels.push_back(re.entity_id);
+                        else if (re.entity_type == "permission") {
+                            whitelist_permissions.push_back(bronx::cogs::parse_permission_name(re.entity_id));
+                        }
+                    } else if (re.restriction_type == "restrict") {
+                        if (re.entity_type == "role") blacklist_roles.push_back(re.entity_id);
+                        else if (re.entity_type == "channel") blacklist_channels.push_back(re.entity_id);
+                        else if (re.entity_type == "permission") {
+                            blacklist_permissions.push_back(bronx::cogs::parse_permission_name(re.entity_id));
+                        }
+                    }
+                }
+
+                bool has_channel_whitelist = !whitelist_channels.empty();
+                bool has_member_whitelist = !whitelist_roles.empty() || !whitelist_permissions.empty();
+
+                if (has_channel_whitelist) {
+                    bool channel_ok = (std::find(whitelist_channels.begin(), whitelist_channels.end(), msg.channel_id) != whitelist_channels.end());
+                    if (!channel_ok) {
+                        bot.send_message(msg.channel_id, "⚠️ This command/module is allowed only in specific channels.");
+                        return false;
+                    }
+                }
+
+                if (has_member_whitelist) {
+                    bool member_ok = false;
+                    if (mem_opt) {
+                        for (const auto& r : mem_opt->roles) {
+                            if (std::find(whitelist_roles.begin(), whitelist_roles.end(), r) != whitelist_roles.end()) {
+                                member_ok = true;
+                                break;
+                            }
+                        }
+                        auto server_opt = bot.get_server(msg.server_id);
+                        if (server_opt && !member_ok) {
+                            for (auto mask : whitelist_permissions) {
+                                if (bot.has_permission(*server_opt, *mem_opt, mask)) {
+                                    member_ok = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!member_ok) {
+                        bot.send_message(msg.channel_id, "⚠️ This command/module is whitelisted and not accessible by your current roles or permissions.");
+                        return false;
+                    }
+                }
+
+                // Check blacklist
+                bool matches_blacklist = false;
+                if (std::find(blacklist_channels.begin(), blacklist_channels.end(), msg.channel_id) != blacklist_channels.end()) {
+                    matches_blacklist = true;
+                }
+                if (mem_opt) {
+                    for (const auto& r : mem_opt->roles) {
+                        if (std::find(blacklist_roles.begin(), blacklist_roles.end(), r) != blacklist_roles.end()) {
+                            matches_blacklist = true;
+                            break;
+                        }
+                    }
+                    // Check permissions
+                    auto server_opt = bot.get_server(msg.server_id);
+                    if (server_opt) {
+                        for (auto mask : blacklist_permissions) {
+                            if (bot.has_permission(*server_opt, *mem_opt, mask)) {
+                                matches_blacklist = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (matches_blacklist) {
+                    bot.send_message(msg.channel_id, "⚠️ This command/module has been blacklisted for your current roles, permissions, or channel.");
+                    return false;
+                }
+            }
+        }
+
+        // 3. Config commands protection (trust, command)
+        if (cmd_name == "trust" || cmd_name == "command" || cmd_name == "cmd") {
+            if (mem_opt) {
+                if (!bronx::cogs::is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, *mem_opt)) {
+                    bot.send_message(msg.channel_id, "permission error: you need to be trusted or have Manage Server permission to configure command permissions.");
+                    return false;
+                }
+            }
+        }
+
+        return true;
     });
 
     std::cout << "[bronx] starting cluster start() loop. press ctrl+c to terminate.\n";

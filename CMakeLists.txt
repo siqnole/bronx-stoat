@@ -27,7 +27,11 @@ if(NOT MARIADB_INCLUDE_DIR OR NOT MARIADB_LIBRARY)
     message(FATAL_ERROR "MariaDB client library (mysql.h or libmariadb) not found!")
 endif()
 
-target_include_directories(bronx PRIVATE ${MARIADB_INCLUDE_DIR})
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(TESSERACT REQUIRED tesseract)
+pkg_check_modules(LEPTONICA REQUIRED lept)
 
-# Link against the stoatpp and mariadb libraries
-target_link_libraries(bronx PRIVATE stoatpp ${MARIADB_LIBRARY})
+target_include_directories(bronx PRIVATE ${MARIADB_INCLUDE_DIR} ${TESSERACT_INCLUDE_DIRS} ${LEPTONICA_INCLUDE_DIRS})
+
+# Link against the stoatpp, mariadb, tesseract, and leptonica libraries
+target_link_libraries(bronx PRIVATE stoatpp ${MARIADB_LIBRARY} ${TESSERACT_LIBRARIES} ${LEPTONICA_LIBRARIES})
