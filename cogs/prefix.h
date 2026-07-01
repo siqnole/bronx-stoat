@@ -10,14 +10,22 @@ public:
         bot.register_command({
             "prefix",
             {},
-            "manage custom command prefixes (subcommands: list, add, remove).",
+            "manage custom command prefixes (subcommands: list, add, remove, default).",
             "",
             {"<subcommand>", "[args...]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling prefix...\n";
                 if (args.empty()) {
                     std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
-                    bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix <list|add|remove> [args...]`\nexamples:\n• `" + pfx + "prefix list`\n• `" + pfx + "prefix add ?`\n• `" + pfx + "prefix add user .`\n• `" + pfx + "prefix remove user .`");
+                    bot.send_message(msg.channel_id,
+                        "usage: `" + pfx + "prefix <list|add|remove|default> [args...]`\n"
+                        "examples:\n"
+                        "• `" + pfx + "prefix list`\n"
+                        "• `" + pfx + "prefix add ?`\n"
+                        "• `" + pfx + "prefix add user .`\n"
+                        "• `" + pfx + "prefix remove user .`\n"
+                        "• `" + pfx + "prefix default off` — stop responding to default prefix when custom server prefix is set\n"
+                        "• `" + pfx + "prefix default on` — always respond to default prefix");
                     return;
                 }
 
@@ -31,8 +39,10 @@ public:
                 if (subcommand == "list") {
                     std::vector<std::string> user_pfx = g_db->get_prefixes("user", msg.author.id);
                     std::vector<std::string> server_pfx;
+                    bool default_enabled = true;
                     if (!msg.server_id.empty()) {
                         server_pfx = g_db->get_prefixes("server", msg.server_id);
+                        default_enabled = g_db->get_prefix_default_enabled(msg.server_id);
                     }
 
                     stoatpp::models::MessagePayload payload;
@@ -41,11 +51,17 @@ public:
                     embed["colour"] = "#FFD700";
 
                     std::string desc = "";
-                    desc += "• **default prefix**: `" + bot.config().command_prefix + "`\n\n";
+                    desc += "• **default prefix**: `" + bot.config().command_prefix + "` — ";
+                    if (!msg.server_id.empty() && !server_pfx.empty()) {
+                        desc += default_enabled ? "**on** (active alongside server prefixes)\n" : "**off** (suppressed by server prefixes)\n";
+                    } else {
+                        desc += "**on** (always active)\n";
+                    }
+                    desc += "\n";
 
                     desc += "• **your custom user prefixes**: ";
                     if (user_pfx.empty()) {
-                        desc += "none configured (falling back)\n";
+                        desc += "none configured\n";
                     } else {
                         for (size_t i = 0; i < user_pfx.size(); ++i) {
                             desc += "`" + user_pfx[i] + "`" + (i + 1 < user_pfx.size() ? ", " : "\n");
@@ -55,7 +71,7 @@ public:
                     if (!msg.server_id.empty()) {
                         desc += "• **server custom prefixes**: ";
                         if (server_pfx.empty()) {
-                            desc += "none configured (falling back)\n";
+                            desc += "none configured\n";
                         } else {
                             for (size_t i = 0; i < server_pfx.size(); ++i) {
                                 desc += "`" + server_pfx[i] + "`" + (i + 1 < server_pfx.size() ? ", " : "\n");
@@ -68,10 +84,85 @@ public:
                     return;
                 }
 
+                if (subcommand == "default") {
+                    if (msg.server_id.empty()) {
+                        bot.send_message(msg.channel_id, "this command can only be used inside a server.");
+                        return;
+                    }
+                    if (args.size() < 2) {
+                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                        bool cur = g_db->get_prefix_default_enabled(msg.server_id);
+                        bot.send_message(msg.channel_id,
+                            "default prefix is currently **" + std::string(cur ? "on" : "off") + "**.\n"
+                            "use `" + pfx + "prefix default on` or `" + pfx + "prefix default off` to change it.");
+                        return;
+                    }
+
+                    std::string val = args[1];
+                    std::transform(val.begin(), val.end(), val.begin(), [](unsigned char c){ return std::tolower(c); });
+                    bool enable;
+                    if (val == "on" || val == "true" || val == "1" || val == "yes") {
+                        enable = true;
+                    } else if (val == "off" || val == "false" || val == "0" || val == "no") {
+                        enable = false;
+                    } else {
+                        bot.send_message(msg.channel_id, "invalid value. use `on` or `off`.");
+                        return;
+                    }
+
+                    auto server_opt = bot.get_server(msg.server_id);
+                    if (!server_opt) {
+                        bot.send_message(msg.channel_id, "failed to resolve server details.");
+                        return;
+                    }
+
+                    bot.fetch_member(msg.server_id, msg.author.id,
+                        [&bot, msg, server_opt, enable](stoatpp::models::Member member, bool success) {
+                            if (!success) {
+                                bot.send_message(msg.channel_id, "failed to verify your server member permissions.");
+                                return;
+                            }
+                            if (!bot.is_owner(msg.author.id) &&
+                                !bot.has_permission(*server_opt, member, stoatpp::permissions::ManageServer)) {
+                                bot.send_message(msg.channel_id,
+                                    "permission error: you need the Manage Server permission to change this.");
+                                return;
+                            }
+
+                            if (g_db->set_prefix_default_enabled(msg.server_id, enable)) {
+                                std::string def_pfx = bot.config().command_prefix;
+                                if (enable) {
+                                    bot.send_message(msg.channel_id,
+                                        "✅ default prefix `" + def_pfx + "` is now **enabled** — "
+                                        "the bot will respond to both server custom prefixes and `" + def_pfx + "`.");
+                                } else {
+                                    auto server_pfx = g_db->get_prefixes("server", msg.server_id);
+                                    if (server_pfx.empty()) {
+                                        bot.send_message(msg.channel_id,
+                                            "⚠️ no custom server prefixes are set. the default prefix `" + def_pfx + "` will remain active "
+                                            "until you add a custom server prefix first (`.prefix add <prefix>`).");
+                                    } else {
+                                        bot.send_message(msg.channel_id,
+                                            "✅ default prefix `" + def_pfx + "` is now **disabled** — "
+                                            "the bot will only respond to custom server prefixes.");
+                                    }
+                                }
+                            } else {
+                                bot.send_message(msg.channel_id, "failed to save setting to database.");
+                            }
+                        });
+                    return;
+                }
+
                 if (subcommand == "add") {
                     if (args.size() < 2) {
                         std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
                         bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix add [user|server] <prefix>`");
+                        return;
+                    }
+                    if (args.size() == 2 && (args[1] == "user" || args[1] == "server")) {
+                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix add " + args[1] + " <prefix>`");
                         return;
                     }
 
@@ -163,6 +254,11 @@ public:
                     if (args.size() < 2) {
                         std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
                         bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix remove [user|server] <prefix>`");
+                        return;
+                    }
+                    if (args.size() == 2 && (args[1] == "user" || args[1] == "server")) {
+                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "prefix remove " + args[1] + " <prefix>`");
                         return;
                     }
 
@@ -268,12 +364,12 @@ public:
                     return;
                 }
 
-                bot.send_message(msg.channel_id, "unknown subcommand. use list, add, or remove.");
+                bot.send_message(msg.channel_id, "unknown subcommand. use list, add, remove, or default.");
             },
             "Prefix",
             0,
             0,
-            {"list", "add [user|server] <prefix>", "remove [user|server] <prefix>"}
+            {"list", "add [user|server] <prefix>", "remove [user|server] <prefix>", "default [on|off]"}
         });
     }
 };
