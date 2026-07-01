@@ -98,6 +98,17 @@ inline std::vector<EmojiRolePair> parse_emoji_role_pairs(const std::string& text
         // If not custom emoji, check if next sequence represents a unicode emoji / symbol
         if (emoji.empty()) {
             unsigned char c = text[i];
+            
+            // Skip PUA characters (U+E000 to U+F8FF)
+            if (c == 0xEE || (c == 0xEF && i + 1 < text.size() && static_cast<unsigned char>(text[i+1]) < 0xB8)) {
+                size_t len = 1;
+                if ((c & 0xE0) == 0xC0) len = 2;
+                else if ((c & 0xF0) == 0xE0) len = 3;
+                else if ((c & 0xF8) == 0xF0) len = 4;
+                i += len;
+                continue;
+            }
+
             // Match UTF-8 lead bytes and common symbol characters
             if (c >= 0x80 || (c < 128 && !std::isalnum(c) && c != '<' && c != '@' && c != '&' && !std::isspace(c) && c != ',')) {
                 size_t len = 1;
@@ -1348,12 +1359,33 @@ public:
                             rules = permitted_rules;
                         }
 
+                        std::vector<std::string> physical_reactions;
+                        if (target_msg.raw.contains("reactions") && target_msg.raw["reactions"].is_object()) {
+                            for (auto& element : target_msg.raw["reactions"].items()) {
+                                physical_reactions.push_back(element.key());
+                            }
+                        }
+
                         if (rules.empty()) {
-                            bot.send_reply(msg, "no reaction role rules detected in target message.\n"
-                                                "make sure patterns write like:\n"
-                                                "• `:emoji: @role`\n"
-                                                "• `:emoji: - @role`\n"
-                                                "• `:emoji: > @role`", true);
+                            std::string reply_msg = "no reaction role rules detected in target message.\n"
+                                                    "make sure patterns write like:\n"
+                                                    "• `:emoji: @role`\n"
+                                                    "• `:emoji: - @role`\n"
+                                                    "• `:emoji: > @role`";
+                            
+                            auto existing_rr = g_db->get_rr_message(actual_msg_id);
+                            if (existing_rr && !existing_rr->rules.empty()) {
+                                reply_msg += "\n\n⚙️ **Note**: This message already has reaction roles configured in my database:\n";
+                                for (const auto& r : existing_rr->rules) {
+                                    reply_msg += display_emoji(r.emoji_id) + " ➔ <@&" + r.role_id + ">\n";
+                                }
+                            } else if (!physical_reactions.empty()) {
+                                reply_msg += "\n\n⚠️ **Note**: This message has the following existing reactions on it:\n";
+                                for (const auto& r : physical_reactions) {
+                                    reply_msg += display_emoji(r) + " ";
+                                }
+                            }
+                            bot.send_reply(msg, reply_msg, true);
                             return;
                         }
 
