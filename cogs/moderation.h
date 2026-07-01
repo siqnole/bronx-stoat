@@ -1,9 +1,74 @@
 #pragma once
 #include "stoatpp/bot_module.h"
 #include "helpers.h"
+#include "logging.h"
 #include <chrono>
 
 namespace bronx::cogs {
+
+inline void send_action_response(stoatpp::cluster& bot, const std::string& server_id, const std::string& channel_id,
+                                 const std::string& action_type, const std::unordered_map<std::string, std::string>& placeholders,
+                                 const std::string& default_msg, int delete_after = 0) {
+    if (server_id.empty() || !g_db) {
+        stoatpp::models::MessagePayload payload;
+        payload.content = default_msg;
+        if (delete_after > 0) payload.delete_after = delete_after;
+        bot.send_message(channel_id, payload);
+        return;
+    }
+
+    auto cfg_opt = g_db->get_action_message(server_id, action_type);
+    if (!cfg_opt || (cfg_opt->content.empty() && cfg_opt->embed_json.empty())) {
+        stoatpp::models::MessagePayload payload;
+        payload.content = default_msg;
+        if (delete_after > 0) payload.delete_after = delete_after;
+        bot.send_message(channel_id, payload);
+        return;
+    }
+
+    auto replace_tokens = [&placeholders](std::string text) {
+        for (const auto& [token, val] : placeholders) {
+            size_t pos = 0;
+            while ((pos = text.find(token, pos)) != std::string::npos) {
+                text.replace(pos, token.length(), val);
+                pos += val.length();
+            }
+        }
+        return text;
+    };
+
+    stoatpp::models::MessagePayload payload;
+    if (delete_after > 0) payload.delete_after = delete_after;
+
+    if (cfg_opt->message_type == "text" || cfg_opt->embed_json.empty()) {
+        std::string text = cfg_opt->content.empty() ? default_msg : cfg_opt->content;
+        payload.content = replace_tokens(text);
+    } else {
+        if (!cfg_opt->content.empty()) {
+            payload.content = replace_tokens(cfg_opt->content);
+        }
+        try {
+            nlohmann::json emb = nlohmann::json::parse(cfg_opt->embed_json);
+            if (emb.contains("title") && emb["title"].is_string()) {
+                emb["title"] = replace_tokens(emb["title"].get<std::string>());
+            }
+            if (emb.contains("description") && emb["description"].is_string()) {
+                emb["description"] = replace_tokens(emb["description"].get<std::string>());
+            }
+            if (emb.contains("content") && emb["content"].is_string()) {
+                std::string c = replace_tokens(emb["content"].get<std::string>());
+                if (payload.content.empty()) {
+                    payload.content = c;
+                }
+                emb.erase("content");
+            }
+            payload.embeds.push_back(emb);
+        } catch (...) {
+            payload.content = replace_tokens(cfg_opt->content.empty() ? default_msg : cfg_opt->content);
+        }
+    }
+    bot.send_message(channel_id, payload);
+}
 
 class ModerationModule : public stoatpp::bot_module {
 public:
@@ -52,9 +117,17 @@ public:
                                 return;
                             }
 
-                            bot.ban_user(msg.server_id, target_user.id, reason, [&bot, msg, target_user](bool action_success) {
+                            bot.ban_user(msg.server_id, target_user.id, reason, [&bot, msg, target_user, reason](bool action_success) {
                                 if (action_success) {
-                                    bot.send_message(msg.channel_id, "successfully banned **" + target_user.username + "**.");
+                                    std::unordered_map<std::string, std::string> tokens = {
+                                        {"{user}", "<@" + target_user.id + ">"},
+                                        {"{username}", target_user.username},
+                                        {"{reason}", reason},
+                                        {"{moderator}", "<@" + msg.author.id + ">"},
+                                        {"{modname}", msg.author.username}
+                                    };
+                                    send_action_response(bot, msg.server_id, msg.channel_id, "ban", tokens, "successfully banned **" + target_user.username + "**.");
+                                    log_moderation_action(bot, msg.server_id, "Ban", msg.author.id, target_user.id, reason);
                                 } else {
                                     bot.send_message(msg.channel_id, "failed to ban user. do i have target permissions?");
                                 }
@@ -112,7 +185,14 @@ public:
 
                             bot.kick_member(msg.server_id, target_user.id, [&bot, msg, target_user](bool action_success) {
                                 if (action_success) {
-                                    bot.send_message(msg.channel_id, "successfully kicked **" + target_user.username + "**.");
+                                    std::unordered_map<std::string, std::string> tokens = {
+                                        {"{user}", "<@" + target_user.id + ">"},
+                                        {"{username}", target_user.username},
+                                        {"{moderator}", "<@" + msg.author.id + ">"},
+                                        {"{modname}", msg.author.username}
+                                    };
+                                    send_action_response(bot, msg.server_id, msg.channel_id, "kick", tokens, "successfully kicked **" + target_user.username + "**.");
+                                    log_moderation_action(bot, msg.server_id, "Kick", msg.author.id, target_user.id, "");
                                 } else {
                                     bot.send_message(msg.channel_id, "failed to kick user.");
                                 }
@@ -180,7 +260,16 @@ public:
                                  if (action_success) {
                                      auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
                                      auto expires_unix = now_unix + seconds;
-                                     bot.send_message(msg.channel_id, "successfully timed out **" + target_user.username + "** until " + stoatpp::utils::format_timestamp(expires_unix, "R") + ".");
+                                     std::unordered_map<std::string, std::string> tokens = {
+                                         {"{user}", "<@" + target_user.id + ">"},
+                                         {"{username}", target_user.username},
+                                         {"{duration}", std::to_string(seconds) + " seconds"},
+                                         {"{expires}", stoatpp::utils::format_timestamp(expires_unix, "R")},
+                                         {"{moderator}", "<@" + msg.author.id + ">"},
+                                         {"{modname}", msg.author.username}
+                                     };
+                                     send_action_response(bot, msg.server_id, msg.channel_id, "timeout", tokens, "successfully timed out **" + target_user.username + "** until " + stoatpp::utils::format_timestamp(expires_unix, "R") + ".");
+                                     log_moderation_action(bot, msg.server_id, "Timeout", msg.author.id, target_user.id, "", "Duration: " + std::to_string(seconds) + " seconds");
                                  } else {
                                      bot.send_message(msg.channel_id, "failed to set timeout.");
                                  }
@@ -266,10 +355,12 @@ public:
                         auto del_res = bot.rest().delete_messages_bulk(msg.channel_id, ids);
                         if (del_res.success()) {
                             std::cout << "[bronx command] successfully purged " << ids.size() << " messages.\n";
-                            stoatpp::models::MessagePayload confirm_payload;
-                            confirm_payload.content = "successfully purged " + std::to_string(ids.size()) + " messages.";
-                            confirm_payload.delete_after = 5;
-                            bot.send_message(msg.channel_id, confirm_payload);
+                            std::unordered_map<std::string, std::string> tokens = {
+                                {"{amount}", std::to_string(ids.size())},
+                                {"{moderator}", "<@" + msg.author.id + ">"},
+                                {"{modname}", msg.author.username}
+                            };
+                            send_action_response(bot, msg.server_id, msg.channel_id, "purge", tokens, "successfully purged " + std::to_string(ids.size()) + " messages.", 5);
                         } else {
                             bot.send_message(msg.channel_id, "failed to bulk delete messages: " + del_res.error_message());
                         }
@@ -462,6 +553,268 @@ public:
             },
             "Moderation",
             stoatpp::permissions::ManageMessages
+        });
+
+        bot.register_command({
+            "message",
+            {"actionmsg", "actionmessage"},
+            "configure customized responses for moderation actions (ban, kick, timeout, purge).",
+            "",
+            {"<subcommand|action>", "[args...]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling message config...\n";
+                std::vector<std::string> prefixes = { bot.config().command_prefix };
+                if (bot.config().prefix_resolver) {
+                    prefixes = bot.config().prefix_resolver(bot, msg);
+                }
+                std::string pfx = bot.config().command_prefix;
+                for (const auto& p : prefixes) {
+                    if (msg.content.rfind(p, 0) == 0) { pfx = p; break; }
+                }
+
+                auto send_help = [&bot, msg, pfx]() {
+                    bot.send_message(msg.channel_id,
+                        "usage: `" + pfx + "message <subcommand|action> [args...]`\n"
+                        "Shortcut: `" + pfx + "message <action> <custom text...>` (sets text response directly)\n\n"
+                        "**Subcommands:**\n"
+                        "• `type <action> <text|embed>` — Set response format to plain text or embed.\n"
+                        "• `text <action> <message...>` — Set custom plain text response (aliases: `message`, `set`).\n"
+                        "• `edit <action> key:value...` — Customize embed properties (`title`, `description`, `color`, `image`, `content`).\n"
+                        "• `json <action> <raw_json>` — Import full JSON embed.\n"
+                        "• `reset <action>` — Revert an action response to the bot default (aliases: `clear`).\n"
+                        "• `list` — List all customized action responses.\n\n"
+                        "**Supported Actions & Tokens:**\n"
+                        "• **Ban (`ban`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
+                        "• **Kick (`kick`):** `{user}`, `{username}`, `{moderator}`, `{modname}`\n"
+                        "• **Timeout (`timeout`):** `{user}`, `{username}`, `{duration}`, `{expires}`, `{moderator}`, `{modname}`\n"
+                        "• **Purge (`purge`):** `{amount}`, `{moderator}`, `{modname}`\n\n"
+                        "**Examples:**\n"
+                        "• `" + pfx + "message ban {user} was sent into the stratosphere! Reason: {reason}`\n"
+                        "• `" + pfx + "message edit ban title:🔨 Banned! color:#ff0000 description:{user} was banned by {moderator}`"
+                    );
+                };
+
+                if (args.empty()) {
+                    send_help();
+                    return;
+                }
+
+                std::string sub = args[0];
+                std::transform(sub.begin(), sub.end(), sub.begin(), ::tolower);
+
+                auto normalize_action = [](std::string act) -> std::string {
+                    std::transform(act.begin(), act.end(), act.begin(), ::tolower);
+                    if (act == "bans") return "ban";
+                    if (act == "kicks") return "kick";
+                    if (act == "timeouts" || act == "mute") return "timeout";
+                    if (act == "purges" || act == "clear") return "purge";
+                    return act;
+                };
+
+                auto is_valid_action = [](const std::string& act) {
+                    return act == "ban" || act == "kick" || act == "timeout" || act == "purge";
+                };
+
+                if (sub == "list") {
+                    auto cfgs = g_db->list_action_messages(msg.server_id);
+                    if (cfgs.empty()) {
+                        bot.send_message(msg.channel_id, "ℹ️ No custom action messages configured for this server.");
+                        return;
+                    }
+                    std::string out = "**Custom Action Responses:**\n";
+                    for (const auto& c : cfgs) {
+                        out += "• **" + c.action_type + "** (`" + c.message_type + "`): " + (c.content.empty() ? "(Embed configured)" : c.content) + "\n";
+                    }
+                    bot.send_message(msg.channel_id, out);
+                    return;
+                }
+
+                // Check shortcut: !message <action> <text...>
+                std::string norm_sub = normalize_action(sub);
+                if (is_valid_action(norm_sub)) {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "message " + norm_sub + " <custom text...>` or `" + pfx + "message reset " + norm_sub + "`");
+                        return;
+                    }
+                    size_t pos = msg.content.find(args[0]);
+                    if (pos != std::string::npos) {
+                        pos += args[0].size();
+                        while (pos < msg.content.size() && msg.content[pos] == ' ') pos++;
+                    }
+                    std::string text = (pos != std::string::npos && pos < msg.content.size()) ? msg.content.substr(pos) : "";
+                    if (text.empty()) {
+                        bot.send_message(msg.channel_id, "⚠️ Please provide message text.");
+                        return;
+                    }
+                    auto cfg = g_db->get_action_message(msg.server_id, norm_sub).value_or(Database::ActionMessageConfig{msg.server_id, norm_sub});
+                    cfg.message_type = "text";
+                    cfg.content = text;
+                    if (g_db->save_action_message(cfg)) {
+                        bot.send_message(msg.channel_id, "✅ Custom response for `" + norm_sub + "` set successfully!");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                    }
+                    return;
+                }
+
+                if (sub == "reset" || sub == "clear" || sub == "delete" || sub == "remove") {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "message reset <ban|kick|timeout|purge>`");
+                        return;
+                    }
+                    std::string act = normalize_action(args[1]);
+                    if (!is_valid_action(act)) {
+                        bot.send_message(msg.channel_id, "⚠️ Invalid action type. Choose from: `ban`, `kick`, `timeout`, `purge`.");
+                        return;
+                    }
+                    if (g_db->remove_action_message(msg.server_id, act)) {
+                        bot.send_message(msg.channel_id, "✅ Reset response message for `" + act + "` to default.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to reset configuration.");
+                    }
+                    return;
+                }
+
+                if (args.size() < 2) {
+                    send_help();
+                    return;
+                }
+
+                std::string act = normalize_action(args[1]);
+                if (!is_valid_action(act)) {
+                    bot.send_message(msg.channel_id, "⚠️ Invalid action type. Choose from: `ban`, `kick`, `timeout`, `purge`.");
+                    return;
+                }
+
+                if (sub == "type") {
+                    if (args.size() < 3) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "message type <action> <text|embed>`");
+                        return;
+                    }
+                    std::string type = args[2];
+                    std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+                    if (type != "text" && type != "embed") {
+                        bot.send_message(msg.channel_id, "⚠️ Type must be `text` or `embed`.");
+                        return;
+                    }
+                    auto cfg = g_db->get_action_message(msg.server_id, act).value_or(Database::ActionMessageConfig{msg.server_id, act});
+                    cfg.message_type = type;
+                    if (g_db->save_action_message(cfg)) {
+                        bot.send_message(msg.channel_id, "✅ Response type for `" + act + "` set to **" + type + "**.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                    }
+                    return;
+                }
+
+                if (sub == "text" || sub == "set" || sub == "message" || sub == "content") {
+                    size_t pos = msg.content.find(args[1]);
+                    if (pos != std::string::npos) {
+                        pos += args[1].size();
+                        while (pos < msg.content.size() && msg.content[pos] == ' ') pos++;
+                    }
+                    std::string text = (pos != std::string::npos && pos < msg.content.size()) ? msg.content.substr(pos) : "";
+                    if (text.empty()) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "message text <action> <text...>`");
+                        return;
+                    }
+                    auto cfg = g_db->get_action_message(msg.server_id, act).value_or(Database::ActionMessageConfig{msg.server_id, act});
+                    cfg.content = text;
+                    if (g_db->save_action_message(cfg)) {
+                        bot.send_message(msg.channel_id, "✅ Custom text content for `" + act + "` updated successfully.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                    }
+                    return;
+                }
+
+                if (sub == "edit") {
+                    size_t pos = msg.content.find(args[1]);
+                    if (pos != std::string::npos) {
+                        pos += args[1].size();
+                        while (pos < msg.content.size() && msg.content[pos] == ' ') pos++;
+                    }
+                    std::string text = (pos != std::string::npos && pos < msg.content.size()) ? msg.content.substr(pos) : "";
+                    if (text.empty()) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "message edit <action> key:value ...`\nkeys: `title`, `description`, `color`, `image`, `content`");
+                        return;
+                    }
+
+                    auto pairs = LoggingModule::parse_pairs(text);
+                    if (pairs.empty()) {
+                        bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found. Format must be `key:value`.");
+                        return;
+                    }
+
+                    auto cfg = g_db->get_action_message(msg.server_id, act).value_or(Database::ActionMessageConfig{msg.server_id, act});
+                    nlohmann::json emb = nlohmann::json::object();
+                    if (!cfg.embed_json.empty()) {
+                        try { emb = nlohmann::json::parse(cfg.embed_json); } catch (...) {}
+                    }
+
+                    for (const auto& [key, val] : pairs) {
+                        if (key == "content") {
+                            if (val == "none" || val == "null" || val == "clear") cfg.content = "";
+                            else cfg.content = val;
+                        } else if (val == "none" || val == "null" || val == "clear") {
+                            emb.erase(key);
+                        } else {
+                            emb[key] = val;
+                        }
+                    }
+
+                    cfg.embed_json = emb.dump();
+                    if (g_db->save_action_message(cfg)) {
+                        bot.send_message(msg.channel_id, "✅ Custom embed fields for `" + act + "` updated successfully.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                    }
+                    return;
+                }
+
+                if (sub == "json") {
+                    size_t pos = msg.content.find(args[1]);
+                    if (pos != std::string::npos) {
+                        pos += args[1].size();
+                        while (pos < msg.content.size() && msg.content[pos] == ' ') pos++;
+                    }
+                    std::string text = (pos != std::string::npos && pos < msg.content.size()) ? msg.content.substr(pos) : "";
+                    if (text.empty()) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "message json <action> <raw_json_embed>`");
+                        return;
+                    }
+
+                    nlohmann::json emb;
+                    try {
+                        emb = nlohmann::json::parse(text);
+                    } catch (const std::exception& e) {
+                        bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(e.what()));
+                        return;
+                    }
+
+                    auto cfg = g_db->get_action_message(msg.server_id, act).value_or(Database::ActionMessageConfig{msg.server_id, act});
+                    if (emb.contains("content") && emb["content"].is_string()) {
+                        cfg.content = emb["content"].get<std::string>();
+                        emb.erase("content");
+                    }
+                    if (emb.contains("colour")) {
+                        emb["color"] = emb["colour"];
+                        emb.erase("colour");
+                    }
+
+                    cfg.embed_json = emb.dump();
+                    if (g_db->save_action_message(cfg)) {
+                        bot.send_message(msg.channel_id, "✅ Custom embed for `" + act + "` imported successfully.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                    }
+                    return;
+                }
+
+                send_help();
+            },
+            "Moderation",
+            stoatpp::permissions::ManageServer
         });
     }
 };
