@@ -203,14 +203,22 @@ int main(int argc, char* argv[]) {
                   << " by " << msg.author.username << ": " << msg.content << "\n";
 
         if (bronx::g_db) {
+            // Resolve bot flag — Revolt sometimes omits "bot" in message payloads,
+            // so fall back to the user cache if the field isn't set on this message.
+            bool is_bot = msg.author.bot;
+            if (!is_bot) {
+                auto cached = bot.get_user(msg.author.id);
+                if (cached && cached->bot) is_bot = true;
+            }
+
             // 1. Message Telemetry
-            bronx::g_db->increment_user_daily_messages(msg.server_id, msg.author.id, msg.author.bot, "message");
+            bronx::g_db->increment_user_daily_messages(msg.server_id, msg.author.id, is_bot, "message");
 
             // 2. Channel Telemetry
             bronx::g_db->increment_channel_daily_messages(msg.server_id, msg.channel_id);
 
             // Skip command telemetry tracking for bots
-            if (msg.author.bot) return;
+            if (is_bot) return;
 
             // 3. Command Telemetry
             std::vector<std::string> prefixes;

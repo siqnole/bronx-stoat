@@ -199,6 +199,10 @@ public:
                                 summary += "• ❌ Failed to create role **" + name + "**: " + res.error_message() + "\n";
                             }
                         }
+                        auto fresh_res = bot.rest().get_server(msg.server_id);
+                        if (fresh_res.success()) {
+                            bot.cache_server(stoatpp::models::Server::from_json(fresh_res.body));
+                        }
                         stoatpp::models::MessagePayload payload;
                         nlohmann::json embed = nlohmann::json::object();
                         embed["title"] = "✨ Role Creation Summary";
@@ -278,6 +282,27 @@ public:
                             matched_found = true;
                             updates_str = rem_str.substr(tag.size());
                             break;
+                        }
+                    }
+
+                    if (!matched_found) {
+                        auto srv_res = bot.rest().get_server(msg.server_id);
+                        if (srv_res.success()) {
+                            auto fresh_srv = stoatpp::models::Server::from_json(srv_res.body);
+                            bot.cache_server(fresh_srv);
+                            for (const auto& r : fresh_srv.roles) {
+                                std::string lower_rem = to_lower(rem_str);
+                                std::string lower_r = to_lower(r.name);
+                                if (lower_rem.rfind(lower_r + " ", 0) == 0 || to_lower(rem_str) == lower_r || rem_str.rfind(r.id + " ", 0) == 0 || rem_str.rfind("<%" + r.id + "> ", 0) == 0) {
+                                    matched = r;
+                                    matched_found = true;
+                                    if (to_lower(rem_str) == lower_r) updates_str = "";
+                                    else if (lower_rem.rfind(lower_r + " ", 0) == 0) updates_str = rem_str.substr(r.name.size());
+                                    else if (rem_str.rfind(r.id + " ", 0) == 0) updates_str = rem_str.substr(r.id.size());
+                                    else updates_str = rem_str.substr(std::string("<%" + r.id + ">").size());
+                                    break;
+                                }
+                            }
                         }
                     }
 
@@ -445,6 +470,28 @@ public:
                     if (!found) missing_roles.push_back(rq);
                 }
 
+                if (!missing_roles.empty()) {
+                    auto srv_res = bot.rest().get_server(msg.server_id);
+                    if (srv_res.success()) {
+                        auto fresh_srv = stoatpp::models::Server::from_json(srv_res.body);
+                        bot.cache_server(fresh_srv);
+                        server_opt = fresh_srv;
+                        std::vector<std::string> still_missing;
+                        for (const auto& rq : missing_roles) {
+                            bool found = false;
+                            for (const auto& r : server_opt->roles) {
+                                if (r.id == rq || to_lower(r.name) == to_lower(rq)) {
+                                    resolved_roles.push_back(r);
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) still_missing.push_back(rq);
+                        }
+                        missing_roles = still_missing;
+                    }
+                }
+
                 if (resolved_roles.empty()) {
                     bot.send_message(msg.channel_id, "could not find any of the specified roles.");
                     return;
@@ -556,6 +603,8 @@ public:
                             auto cb = [&bot, msg, completed, total](bool ok) {
                                 size_t comp = ++(*completed);
                                 if (comp == total) {
+                                    auto srv_res = bot.rest().get_server(msg.server_id);
+                                    if (srv_res.success()) bot.cache_server(stoatpp::models::Server::from_json(srv_res.body));
                                     bot.send_message(msg.channel_id, "successfully finished updating roles for all members.");
                                 }
                             };

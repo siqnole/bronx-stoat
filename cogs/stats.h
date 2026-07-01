@@ -54,6 +54,7 @@ public:
 
                 std::string sub = "overview";
                 std::string tf_str = "";
+                bool global_top = false;
 
                 if (!args.empty()) {
                     std::string first = args[0];
@@ -61,7 +62,17 @@ public:
 
                     if (first == "top" || first == "t") {
                         sub = "top";
-                        if (args.size() > 1) tf_str = args[1];
+                        // Check if next arg is a global qualifier
+                        if (args.size() > 1) {
+                            std::string second = args[1];
+                            std::transform(second.begin(), second.end(), second.begin(), [](unsigned char c) { return std::tolower(c); });
+                            if (second == "g" || second == "global" || second == "all") {
+                                global_top = true;
+                                if (args.size() > 2) tf_str = args[2];
+                            } else {
+                                tf_str = args[1];
+                            }
+                        }
                     } else if (first == "user" || first == "users" || first == "member" || first == "members" || first == "u" || first == "m") {
                         sub = "users";
                         if (args.size() > 1) tf_str = args[1];
@@ -93,7 +104,8 @@ public:
                         "commands used: **" + std::to_string(totals.total_commands) + "**\n";
                     embed.set_description(desc);
                 } 
-                else if (sub == "top") {
+                else if (sub == "top" && global_top) {
+                    // Global leaderboard across all servers
                     auto top_srv = g_db->get_top_servers(days, 10);
                     auto top_usr = g_db->get_top_users_global(days, false, 10);
                     auto top_bot = g_db->get_top_users_global(days, true, 10);
@@ -143,6 +155,48 @@ public:
                         }
                     }
 
+                    embed.set_description(desc);
+                }
+                else if (sub == "top") {
+                    // Server-scoped leaderboard (default)
+                    if (msg.server_id.empty()) {
+                        bot.send_message(msg.channel_id, "⚠️ run this inside a server, or use `.stats top g` for the global leaderboard.");
+                        return;
+                    }
+
+                    auto top_usr  = g_db->get_top_users(msg.server_id, days, 10);
+                    auto top_chan = g_db->get_top_channels(msg.server_id, days, 10);
+
+                    auto srv_opt = bot.get_server(msg.server_id);
+                    std::string srv_name = srv_opt ? srv_opt->name : "this server";
+                    embed.set_title("🏆 top 10 — " + srv_name + " (" + std::to_string(days) + "d)");
+
+                    std::string desc = "";
+
+                    desc += "### 👤 Top Members\n";
+                    if (top_usr.empty()) {
+                        desc += "*No member activity recorded.*\n";
+                    } else {
+                        int rank = 1;
+                        for (const auto& u : top_usr) {
+                            desc += std::to_string(rank) + ". <@" + u.user_id + "> — " + std::to_string(u.message_count) + " msgs\n";
+                            rank++;
+                        }
+                    }
+                    desc += "\n";
+
+                    desc += "### 💬 Top Channels\n";
+                    if (top_chan.empty()) {
+                        desc += "*No channel activity recorded.*\n";
+                    } else {
+                        int rank = 1;
+                        for (const auto& c : top_chan) {
+                            desc += std::to_string(rank) + ". <#" + c.channel_id + "> — " + std::to_string(c.message_count) + " msgs\n";
+                            rank++;
+                        }
+                    }
+
+                    desc += "\n-# use `.stats top g` to see the global leaderboard";
                     embed.set_description(desc);
                 } 
                 else if (sub == "users") {
