@@ -8,18 +8,42 @@
 
 namespace bronx::cogs {
 
+inline int parse_timeframe(const std::string& input, int default_days = 7) {
+    if (input.empty()) return default_days;
+    std::string clean = input;
+    std::transform(clean.begin(), clean.end(), clean.begin(), [](unsigned char c) { return std::tolower(c); });
+    
+    try {
+        if (clean.back() == 'd') {
+            return std::max(1, std::stoi(clean.substr(0, clean.size() - 1)));
+        }
+        if (clean.back() == 'w') {
+            return std::max(1, std::stoi(clean.substr(0, clean.size() - 1)) * 7);
+        }
+        if (clean.back() == 'm') {
+            return std::max(1, std::stoi(clean.substr(0, clean.size() - 1)) * 30);
+        }
+        if (clean.back() == 'y') {
+            return std::max(1, std::stoi(clean.substr(0, clean.size() - 1)) * 365);
+        }
+        int days = std::stoi(clean);
+        if (days > 0) return days;
+    } catch (...) {}
+    return default_days;
+}
+
 class StatsModule : public stoatpp::bot_module {
 public:
     void register_handlers(stoatpp::cluster& bot) override {
         bot.register_command({
             "stats",
             {"serverstats", "telemetry"},
-            "shows server telemetry: overview, top message senders, or top commands.",
-            "stats [overview/top/commands] [days]",
-            {"[subcommand]", "[days]"},
+            "shows server telemetry: overview, top active users, channels, or global top lists.",
+            "stats [overview/top/users/channels] [timeframe]",
+            {"[subcommand]", "[timeframe]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "this command can only be used inside a server.");
+                if (msg.server_id.empty() && !args.empty() && args[0] != "top" && args[0] != "t") {
+                    bot.send_message(msg.channel_id, "⚠️ Non-global stats commands can only be used inside a server.");
                     return;
                 }
 
@@ -29,34 +53,39 @@ public:
                 }
 
                 std::string sub = "overview";
-                int days = 7;
+                std::string tf_str = "";
 
                 if (!args.empty()) {
-                    if (args[0] == "top" || args[0] == "commands" || args[0] == "overview") {
-                        sub = args[0];
-                        if (args.size() > 1) {
-                            try {
-                                int d = std::stoi(args[1]);
-                                if (d > 0 && d <= 365) days = d;
-                            } catch (...) {}
-                        }
+                    std::string first = args[0];
+                    std::transform(first.begin(), first.end(), first.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                    if (first == "top" || first == "t") {
+                        sub = "top";
+                        if (args.size() > 1) tf_str = args[1];
+                    } else if (first == "user" || first == "users" || first == "member" || first == "members" || first == "u" || first == "m") {
+                        sub = "users";
+                        if (args.size() > 1) tf_str = args[1];
+                    } else if (first == "channel" || first == "channels" || first == "c") {
+                        sub = "channels";
+                        if (args.size() > 1) tf_str = args[1];
+                    } else if (first == "overview" || first == "o") {
+                        sub = "overview";
+                        if (args.size() > 1) tf_str = args[1];
                     } else {
-                        try {
-                            int d = std::stoi(args[0]);
-                            if (d > 0 && d <= 365) days = d;
-                        } catch (...) {}
+                        tf_str = args[0];
                     }
                 }
 
-                stoatpp::models::MessagePayload payload;
-                payload.content = " "; // Prevent empty content Revolt validation error
+                int days = parse_timeframe(tf_str, 7);
 
+                stoatpp::models::MessagePayload payload;
+                payload.content = " "; 
                 stoatpp::models::Embed embed;
                 embed.set_colour(0x5865F2);
 
                 if (sub == "overview") {
                     auto totals = g_db->get_server_totals(msg.server_id, days);
-                    embed.set_title("bronx stats — overview (" + std::to_string(days) + "d)");
+                    embed.set_title("📈 bronx stats — overview (" + std::to_string(days) + "d)");
                     
                     std::string desc = 
                         "total messages: **" + std::to_string(totals.total_messages) + "**\n"
@@ -65,12 +94,64 @@ public:
                     embed.set_description(desc);
                 } 
                 else if (sub == "top") {
+                    auto top_srv = g_db->get_top_servers(days, 10);
+                    auto top_usr = g_db->get_top_users_global(days, false, 10);
+                    auto top_bot = g_db->get_top_users_global(days, true, 10);
+
+                    embed.set_title("🌐 global stats leaderboard (" + std::to_string(days) + "d)");
+
+                    std::string desc = "";
+
+                    // 1. Top Servers
+                    desc += "### 🌐 Top Active Servers\n";
+                    if (top_srv.empty()) {
+                        desc += "*No server activity recorded.*\n";
+                    } else {
+                        int rank = 1;
+                        for (const auto& s : top_srv) {
+                            std::string s_name = "Server " + s.guild_id;
+                            auto s_opt = bot.get_server(s.guild_id);
+                            if (s_opt) s_name = s_opt->name;
+                            desc += std::to_string(rank) + ". **" + s_name + "** — " + std::to_string(s.message_count) + " msgs\n";
+                            rank++;
+                        }
+                    }
+                    desc += "\n";
+
+                    // 2. Top Users
+                    desc += "### 👤 Top Active Users\n";
+                    if (top_usr.empty()) {
+                        desc += "*No user activity recorded.*\n";
+                    } else {
+                        int rank = 1;
+                        for (const auto& u : top_usr) {
+                            desc += std::to_string(rank) + ". <@" + u.user_id + "> — " + std::to_string(u.message_count) + " msgs\n";
+                            rank++;
+                        }
+                    }
+                    desc += "\n";
+
+                    // 3. Top Bots
+                    desc += "### 🤖 Top Active Bots\n";
+                    if (top_bot.empty()) {
+                        desc += "*No bot activity recorded.*\n";
+                    } else {
+                        int rank = 1;
+                        for (const auto& b : top_bot) {
+                            desc += std::to_string(rank) + ". <@" + b.user_id + "> — " + std::to_string(b.message_count) + " msgs\n";
+                            rank++;
+                        }
+                    }
+
+                    embed.set_description(desc);
+                } 
+                else if (sub == "users") {
                     auto top_users = g_db->get_top_users(msg.server_id, days, 10);
-                    embed.set_title("bronx stats — top users (" + std::to_string(days) + "d)");
+                    embed.set_title("👤 active members leaderboard (" + std::to_string(days) + "d)");
                     
                     std::string desc;
                     if (top_users.empty()) {
-                        desc = "no user activity recorded in this period.";
+                        desc = "no member activity recorded in this period.";
                     } else {
                         int rank = 1;
                         for (const auto& u : top_users) {
@@ -80,17 +161,17 @@ public:
                     }
                     embed.set_description(desc);
                 } 
-                else if (sub == "commands") {
-                    auto top_cmds = g_db->get_top_commands(msg.server_id, days, 10);
-                    embed.set_title("bronx stats — top commands (" + std::to_string(days) + "d)");
+                else if (sub == "channels") {
+                    auto top_chans = g_db->get_top_channels(msg.server_id, days, 10);
+                    embed.set_title("💬 active channels leaderboard (" + std::to_string(days) + "d)");
                     
                     std::string desc;
-                    if (top_cmds.empty()) {
-                        desc = "no command usage recorded in this period.";
+                    if (top_chans.empty()) {
+                        desc = "no channel message telemetry recorded in this period.";
                     } else {
                         int rank = 1;
-                        for (const auto& c : top_cmds) {
-                            desc += std::to_string(rank) + ". " + c.command_name + " — " + std::to_string(c.use_count) + " hits\n";
+                        for (const auto& c : top_chans) {
+                            desc += std::to_string(rank) + ". <#" + c.channel_id + "> — " + std::to_string(c.message_count) + " messages\n";
                             rank++;
                         }
                     }

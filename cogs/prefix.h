@@ -115,23 +115,46 @@ public:
                             bot.send_message(msg.channel_id, "failed to resolve server details.");
                             return;
                         }
-                        if (server_opt->owner != msg.author.id) {
-                            bot.send_message(msg.channel_id, "permission error: only the server owner can modify server prefixes.");
+                        
+                        auto proceed_add = [&bot, msg, target_type, target_id, new_prefix]() {
+                            std::vector<std::string> current = g_db->get_prefixes(target_type, target_id);
+                            if (std::find(current.begin(), current.end(), new_prefix) != current.end()) {
+                                bot.send_message(msg.channel_id, "prefix `" + new_prefix + "` is already configured for this " + target_type + ".");
+                                return;
+                            }
+
+                            current.push_back(new_prefix);
+                            if (g_db->set_prefixes(target_type, target_id, current)) {
+                                bot.send_message(msg.channel_id, "successfully added custom prefix `" + new_prefix + "` to " + target_type + ".");
+                            } else {
+                                bot.send_message(msg.channel_id, "failed to save prefix configuration to database.");
+                            }
+                        };
+
+                        bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, server_opt, proceed_add](stoatpp::models::Member member, bool success) {
+                            if (!success) {
+                                bot.send_message(msg.channel_id, "failed to verify your server member permissions.");
+                                return;
+                            }
+                            if (!bot.is_owner(msg.author.id) && !bot.has_permission(*server_opt, member, stoatpp::permissions::ManageServer)) {
+                                bot.send_message(msg.channel_id, "permission error: you need the Manage Server permission to modify server prefixes.");
+                                return;
+                            }
+                            proceed_add();
+                        });
+                    } else {
+                        std::vector<std::string> current = g_db->get_prefixes(target_type, target_id);
+                        if (std::find(current.begin(), current.end(), new_prefix) != current.end()) {
+                            bot.send_message(msg.channel_id, "prefix `" + new_prefix + "` is already configured for this " + target_type + ".");
                             return;
                         }
-                    }
 
-                    std::vector<std::string> current = g_db->get_prefixes(target_type, target_id);
-                    if (std::find(current.begin(), current.end(), new_prefix) != current.end()) {
-                        bot.send_message(msg.channel_id, "prefix `" + new_prefix + "` is already configured for this " + target_type + ".");
-                        return;
-                    }
-
-                    current.push_back(new_prefix);
-                    if (g_db->set_prefixes(target_type, target_id, current)) {
-                        bot.send_message(msg.channel_id, "successfully added custom prefix `" + new_prefix + "` to " + target_type + ".");
-                    } else {
-                        bot.send_message(msg.channel_id, "failed to save prefix configuration to database.");
+                        current.push_back(new_prefix);
+                        if (g_db->set_prefixes(target_type, target_id, current)) {
+                            bot.send_message(msg.channel_id, "successfully added custom prefix `" + new_prefix + "` to " + target_type + ".");
+                        } else {
+                            bot.send_message(msg.channel_id, "failed to save prefix configuration to database.");
+                        }
                     }
                     return;
                 }
@@ -183,31 +206,63 @@ public:
                             bot.send_message(msg.channel_id, "failed to resolve server details.");
                             return;
                         }
-                        if (server_opt->owner != msg.author.id) {
-                            bot.send_message(msg.channel_id, "permission error: only the server owner can modify server prefixes.");
+
+                        auto proceed_remove = [&bot, msg, target_type, target_id, to_remove]() {
+                            std::vector<std::string> current = g_db->get_prefixes(target_type, target_id);
+                            auto it = std::find(current.begin(), current.end(), to_remove);
+                            if (it == current.end()) {
+                                bot.send_message(msg.channel_id, "prefix `" + to_remove + "` is not configured for this " + target_type + ".");
+                                return;
+                            }
+
+                            current.erase(it);
+                            if (current.empty()) {
+                                if (g_db->remove_prefixes(target_type, target_id)) {
+                                    bot.send_message(msg.channel_id, "removed last custom prefix. custom configuration cleared for " + target_type + " (reverting to fallbacks).");
+                                } else {
+                                    bot.send_message(msg.channel_id, "failed to delete configuration from database.");
+                                }
+                            } else {
+                                if (g_db->set_prefixes(target_type, target_id, current)) {
+                                    bot.send_message(msg.channel_id, "successfully removed prefix `" + to_remove + "` from " + target_type + ".");
+                                } else {
+                                    bot.send_message(msg.channel_id, "failed to save prefix configuration to database.");
+                                }
+                            }
+                        };
+
+                        bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, server_opt, proceed_remove](stoatpp::models::Member member, bool success) {
+                            if (!success) {
+                                bot.send_message(msg.channel_id, "failed to verify your server member permissions.");
+                                return;
+                            }
+                            if (!bot.is_owner(msg.author.id) && !bot.has_permission(*server_opt, member, stoatpp::permissions::ManageServer)) {
+                                bot.send_message(msg.channel_id, "permission error: you need the Manage Server permission to modify server prefixes.");
+                                return;
+                            }
+                            proceed_remove();
+                        });
+                    } else {
+                        std::vector<std::string> current = g_db->get_prefixes(target_type, target_id);
+                        auto it = std::find(current.begin(), current.end(), to_remove);
+                        if (it == current.end()) {
+                            bot.send_message(msg.channel_id, "prefix `" + to_remove + "` is not configured for this " + target_type + ".");
                             return;
                         }
-                    }
 
-                    std::vector<std::string> current = g_db->get_prefixes(target_type, target_id);
-                    auto it = std::find(current.begin(), current.end(), to_remove);
-                    if (it == current.end()) {
-                        bot.send_message(msg.channel_id, "prefix `" + to_remove + "` is not configured for this " + target_type + ".");
-                        return;
-                    }
-
-                    current.erase(it);
-                    if (current.empty()) {
-                        if (g_db->remove_prefixes(target_type, target_id)) {
-                            bot.send_message(msg.channel_id, "removed last custom prefix. custom configuration cleared for " + target_type + " (reverting to fallbacks).");
+                        current.erase(it);
+                        if (current.empty()) {
+                            if (g_db->remove_prefixes(target_type, target_id)) {
+                                bot.send_message(msg.channel_id, "removed last custom prefix. custom configuration cleared for " + target_type + " (reverting to fallbacks).");
+                            } else {
+                                bot.send_message(msg.channel_id, "failed to delete configuration from database.");
+                            }
                         } else {
-                            bot.send_message(msg.channel_id, "failed to delete configuration from database.");
-                        }
-                    } else {
-                        if (g_db->set_prefixes(target_type, target_id, current)) {
-                            bot.send_message(msg.channel_id, "successfully removed prefix `" + to_remove + "` from " + target_type + ".");
-                        } else {
-                            bot.send_message(msg.channel_id, "failed to save prefix configuration to database.");
+                            if (g_db->set_prefixes(target_type, target_id, current)) {
+                                bot.send_message(msg.channel_id, "successfully removed prefix `" + to_remove + "` from " + target_type + ".");
+                            } else {
+                                bot.send_message(msg.channel_id, "failed to save prefix configuration to database.");
+                            }
                         }
                     }
                     return;
@@ -215,7 +270,10 @@ public:
 
                 bot.send_message(msg.channel_id, "unknown subcommand. use list, add, or remove.");
             },
-            "Prefix"
+            "Prefix",
+            0,
+            0,
+            {"list", "add [user|server] <prefix>", "remove [user|server] <prefix>"}
         });
     }
 };
