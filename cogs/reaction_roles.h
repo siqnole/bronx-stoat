@@ -292,7 +292,8 @@ public:
                                                      "• `" + pfx + "rr send verified #general`\n"
                                                      "• `" + pfx + "rr add verified :thumbsup: Member`\n"
                                                      "• `" + pfx + "rr edit verified :thumbsup: emoji :heart:`\n"
-                                                     "• `" + pfx + "rr parse <message_id>`\n"
+                                                     "• `" + pfx + "rr parse <modal> <message_id>` — import rules into a new modal\n"
+                                                     "• `" + pfx + "rr parse <message_id>` — activate rules on the scanned message\n"
                                                      "• `" + pfx + "rr list`\n"
                                                      "• `" + pfx + "rr delete verified`");
                     return;
@@ -1278,13 +1279,33 @@ public:
 
                 if (subcommand == "parse" || subcommand == "scan") {
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "usage: `!rr parse <message_id>`");
+                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                        bot.send_message(msg.channel_id, "usage:\n"
+                            "• `" + pfx + "rr parse <modal> <message_id>` — import rules into a new modal\n"
+                            "• `" + pfx + "rr parse <message_id>` — activate rules directly on the scanned message");
                         return;
                     }
-                    std::string target_msg_id = args[1];
+
+                    // Determine if the user passed a modal name: .rr parse <modal> <msg>
+                    std::string parse_modal_name = "";
+                    std::string target_msg_id;
+                    if (args.size() >= 3) {
+                        parse_modal_name = args[1];
+                        target_msg_id    = args[2];
+                        // Reject immediately if modal already exists
+                        std::string existing_modal_id = g_db->get_message_id_by_modal_name(msg.server_id, parse_modal_name);
+                        if (!existing_modal_id.empty()) {
+                            std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                            bot.send_message(msg.channel_id, "a modal named `" + parse_modal_name + "` already exists. "
+                                "use `" + pfx + "rr edit` to change its rules, or `" + pfx + "rr delete` it first.");
+                            return;
+                        }
+                    } else {
+                        target_msg_id = args[1];
+                    }
 
                     // Fetch the target message content
-                    std::thread([&bot, msg, target_msg_id, member, server_opt]() {
+                    std::thread([&bot, msg, target_msg_id, parse_modal_name, member, server_opt]() {
                         std::string actual_msg_id = target_msg_id;
                         if (actual_msg_id == "^") {
                             stoatpp::models::MessageQuery query;
@@ -1389,6 +1410,69 @@ public:
                             return;
                         }
 
+                        // Check if these rules are already active in the database
+                        auto existing_rr = g_db->get_rr_message(actual_msg_id);
+                        if (existing_rr && !existing_rr->rules.empty()) {
+                            // Build a set of emoji->role from the DB
+                            std::map<std::string, std::string> db_rules;
+                            for (const auto& r : existing_rr->rules) {
+                                db_rules[r.emoji_id] = r.role_id;
+                            }
+                            // Build a set from what we just parsed
+                            std::map<std::string, std::string> parsed_rules;
+                            for (const auto& r : rules) {
+                                parsed_rules[r.emoji] = r.role_id;
+                            }
+                            if (db_rules == parsed_rules) {
+                                stoatpp::models::MessagePayload already_payload;
+                                nlohmann::json embed = nlohmann::json::object();
+                                embed["title"] = "reaction roles scanner";
+                                embed["colour"] = "#00B894";
+                                std::string desc = "these reaction role rules are already active on message `" + actual_msg_id + "`:\n\n";
+                                std::vector<bronx::Database::RRRule> converted_rules;
+                                for (const auto& r : rules) {
+                                    converted_rules.push_back({r.emoji, r.role_id});
+                                }
+                                desc += format_rr_description(converted_rules);
+                                desc += "\n\nno changes needed.";
+                                embed["description"] = desc;
+                                already_payload.embeds.push_back(embed);
+                                bot.send_message(msg.channel_id, already_payload);
+                                return;
+                            }
+                        }
+
+                        // --- MODAL IMPORT FLOW (.rr parse <modal> <msg>) ---
+                        if (!parse_modal_name.empty()) {
+                            // Build the modal message payload
+                            bronx::Database::RRMessage tmp_rr;
+                            tmp_rr.modal_name = parse_modal_name;
+                            for (const auto& r : rules) {
+                                tmp_rr.rules.push_back({r.emoji, r.role_id});
+                            }
+                            stoatpp::models::MessagePayload modal_payload = build_rr_payload(tmp_rr);
+
+                            bot.send_message(msg.channel_id, modal_payload, [parse_modal_name, rules, msg, &bot](stoatpp::models::Message res, bool ok) {
+                                if (!ok) {
+                                    bot.send_message(msg.channel_id, "failed to create the modal message.");
+                                    return;
+                                }
+                                g_db->add_rr_message(res.id, res.channel, msg.server_id, parse_modal_name);
+                                for (const auto& r : rules) {
+                                    g_db->add_rr_rule(res.id, r.emoji, r.role_id);
+                                    bot.react_to_message(res.channel, res.id, r.emoji);
+                                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                                }
+                                std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                                bot.send_message(msg.channel_id, "✅ created modal **" + parse_modal_name + "** with " +
+                                    std::to_string(rules.size()) + " rule" + (rules.size() == 1 ? "" : "s") + ". "
+                                    "use `" + pfx + "rr send " + parse_modal_name + " #channel` to deploy it.");
+                            });
+                            return;
+                        }
+
+                        // --- ACTIVATE-ON-MESSAGE FLOW (.rr parse <msg>) ---
+
                         // Check for dangerous permissions
                         std::vector<std::string> dangerous_roles;
                         for (const auto& r : rules) {
@@ -1453,7 +1537,7 @@ public:
             "Reaction Roles",
             0,
             0,
-            {"create <name>", "send <name> <#channel>", "add <name|message_id> <emoji> <role>", "edit <name> <emoji> <emoji|role> <new_val>", "parse <message_id>", "list", "delete <name>"}
+            {"create <name>", "send <name> <#channel>", "add <name|message_id> <emoji> <role>", "edit <name> <emoji> <emoji|role> <new_val>", "parse <modal> <message_id>", "parse <message_id>", "list", "delete <name>"}
         });
 
         // Gateway event handling for role assignments

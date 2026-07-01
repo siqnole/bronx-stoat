@@ -410,6 +410,7 @@ public:
 
                         bot.send_message(msg.channel_id, "⚙️ Creating Logging category grouping...");
 
+                        bool category_created = false;
                         auto srv_res = bot.rest().get_server(server_id);
                         if (srv_res.success()) {
                             nlohmann::json categories = nlohmann::json::array();
@@ -429,16 +430,24 @@ public:
 
                             nlohmann::json edit_fields = nlohmann::json::object();
                             edit_fields["categories"] = categories;
-                            bot.rest().edit_server(server_id, edit_fields);
+                            auto edit_res = bot.rest().edit_server(server_id, edit_fields);
+                            if (edit_res.success()) {
+                                category_created = true;
+                            }
                         }
 
-                        bot.send_message(msg.channel_id, "✅ **All-In-One Setup Complete!**\n"
-                                                          "• Created category **Logging**.\n"
-                                                          "• Created and configured log channels:\n"
-                                                          "  - <#" + edits_id + "> ➔ Message Edits\n"
-                                                          "  - <#" + deletes_id + "> ➔ Message Deletions\n"
-                                                          "  - <#" + joins_id + "> ➔ Joins & Leaves\n"
-                                                          "  - <#" + mod_id + "> ➔ Moderation Logs");
+                        std::string complete_msg = "✅ **All-In-One Setup Complete!**\n";
+                        if (category_created) {
+                            complete_msg += "• Created category **Logging**.\n";
+                        } else {
+                            complete_msg += "⚠️ *Note: I couldn't group the channels into a 'Logging' category (this action is restricted for bots on this server).* \n";
+                        }
+                        complete_msg += "• Created and configured log channels:\n"
+                                        "  - <#" + edits_id + "> ➔ Message Edits\n"
+                                        "  - <#" + deletes_id + "> ➔ Message Deletions\n"
+                                        "  - <#" + joins_id + "> ➔ Joins & Leaves\n"
+                                        "  - <#" + mod_id + "> ➔ Moderation Logs";
+                        bot.send_message(msg.channel_id, complete_msg);
                     }).detach();
                     return;
                 }
