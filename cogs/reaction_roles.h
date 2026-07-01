@@ -1,6 +1,7 @@
 #pragma once
 #include "stoatpp/bot_module.h"
 #include "helpers.h"
+#include "roles.h"
 #include <sstream>
 #include <algorithm>
 #include <cctype>
@@ -111,6 +112,16 @@ inline std::vector<EmojiRolePair> parse_emoji_role_pairs(const std::string& text
             }
         }
         
+        // Consume variation selector (U+FE0E or U+FE0F) if present immediately after the unicode emoji
+        if (!emoji.empty() && i + 3 <= text.size()) {
+            if (static_cast<unsigned char>(text[i]) == 0xEF && 
+                static_cast<unsigned char>(text[i+1]) == 0xB8 && 
+                (static_cast<unsigned char>(text[i+2]) == 0x8F || static_cast<unsigned char>(text[i+2]) == 0x8E)) {
+                emoji += text.substr(i, 3);
+                i += 3;
+            }
+        }
+        
         if (emoji.empty()) {
             // Skip to next word
             while (i < text.size() && !std::isspace(text[i])) {
@@ -142,8 +153,8 @@ inline std::vector<EmojiRolePair> parse_emoji_role_pairs(const std::string& text
         role_query.erase(0, role_query.find_first_not_of(" \t\r\n"));
         role_query.erase(role_query.find_last_not_of(" \t\r\n") + 1);
         
-        // Strip optional prefixes like '-' or '>'
-        while (!role_query.empty() && (role_query[0] == '-' || role_query[0] == '>' || std::isspace(role_query[0]))) {
+        // Strip optional prefixes like '-', '>', '@' or spaces
+        while (!role_query.empty() && (role_query[0] == '-' || role_query[0] == '>' || role_query[0] == '@' || std::isspace(role_query[0]))) {
             role_query = role_query.substr(1);
             role_query.erase(0, role_query.find_first_not_of(" \t\r\n"));
         }
@@ -155,25 +166,34 @@ inline std::vector<EmojiRolePair> parse_emoji_role_pairs(const std::string& text
             std::string resolved_role_id = "";
             std::string resolved_role_name = "";
             
-            if (role_query.rfind("<%", 0) == 0 && role_query.back() == '>') {
-                std::string rid = role_query.substr(2, role_query.size() - 3);
-                for (const auto& r : server_opt->roles) {
-                    if (r.id == rid) {
-                        resolved_role_id = r.id;
-                        resolved_role_name = r.name;
-                        break;
-                    }
+            std::string cleaned_query = clean_role_query(role_query);
+            for (const auto& r : server_opt->roles) {
+                if (r.id == cleaned_query || r.name == cleaned_query) {
+                    resolved_role_id = r.id;
+                    resolved_role_name = r.name;
+                    break;
                 }
-            } else {
+            }
+            
+            // Fallback: Case-insensitive, space-stripped comparison
+            if (resolved_role_id.empty()) {
+                std::string clean_query = cleaned_query;
+                clean_query.erase(std::remove_if(clean_query.begin(), clean_query.end(), [](unsigned char c) { return std::isspace(c); }), clean_query.end());
+                std::transform(clean_query.begin(), clean_query.end(), clean_query.begin(), [](unsigned char c) { return std::tolower(c); });
+
                 for (const auto& r : server_opt->roles) {
-                    if (r.id == role_query || r.name == role_query) {
+                    std::string clean_name = r.name;
+                    clean_name.erase(std::remove_if(clean_name.begin(), clean_name.end(), [](unsigned char c) { return std::isspace(c); }), clean_name.end());
+                    std::transform(clean_name.begin(), clean_name.end(), clean_name.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                    if (clean_name == clean_query) {
                         resolved_role_id = r.id;
                         resolved_role_name = r.name;
                         break;
                     }
                 }
             }
-            
+
             if (!resolved_role_id.empty()) {
                 pairs.push_back({emoji, resolved_role_id, resolved_role_name});
             }
@@ -221,6 +241,26 @@ inline stoatpp::models::MessagePayload build_rr_payload(const bronx::Database::R
     return payload;
 }
 
+inline bool is_role_dangerous(const stoatpp::models::Role& r) {
+    constexpr int64_t DANGEROUS_PERMISSIONS = 
+        stoatpp::permissions::ManageServer |
+        stoatpp::permissions::ManagePermissions |
+        stoatpp::permissions::ManageRole |
+        stoatpp::permissions::KickMembers |
+        stoatpp::permissions::BanMembers |
+        stoatpp::permissions::TimeoutMembers;
+
+    int64_t allowed = 0;
+    if (r.permissions.is_number()) {
+        allowed = r.permissions.get<int64_t>();
+    } else if (r.permissions.is_object() && r.permissions.contains("server")) {
+        if (r.permissions["server"].is_number()) {
+            allowed = r.permissions["server"].get<int64_t>();
+        }
+    }
+    return (allowed & DANGEROUS_PERMISSIONS) != 0;
+}
+
 class ReactionRolesModule : public stoatpp::bot_module {
 
 public:
@@ -257,14 +297,25 @@ public:
                     return;
                 }
 
-                // Verify Server Owner
+                // Verify ManageRole permission
                 auto server_opt = bot.get_server(msg.server_id);
                 if (!server_opt) {
                     bot.send_message(msg.channel_id, "failed to get server info.");
                     return;
                 }
-                if (server_opt->owner != msg.author.id) {
-                    bot.send_message(msg.channel_id, "permission error: only the server owner can manage reaction roles.");
+
+                auto member_res = bot.rest().get_server_member(msg.server_id, msg.author.id);
+                if (!member_res.success()) {
+                    bot.send_message(msg.channel_id, "failed to verify your server member details.");
+                    return;
+                }
+                auto member = stoatpp::models::Member::from_json(member_res.body);
+
+                bool allowed = (server_opt->owner == msg.author.id) ||
+                               bot.is_owner(msg.author.id) ||
+                               bot.has_permission(*server_opt, member, stoatpp::permissions::ManageRole);
+                if (!allowed) {
+                    bot.send_message(msg.channel_id, "permission error: you need the Manage Roles permission to manage reaction roles.");
                     return;
                 }
 
@@ -478,72 +529,112 @@ public:
                     bool is_message_id = (target.size() == 26 && 
                                           target.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
 
-                    auto execute_add = [&bot, msg, target, emoji, is_message_id](stoatpp::models::Role selected_role) {
-                        if (is_message_id) {
-                            std::thread([&bot, msg, target, emoji, selected_role]() {
-                                auto existing_rr = g_db->get_rr_message(target);
-                                std::string channel_id = msg.channel_id;
-
-                                if (!existing_rr) {
-                                    auto res = bot.rest().get("/channels/" + msg.channel_id + "/messages/" + target);
-                                    if (!res.success()) {
-                                        bot.send_message(msg.channel_id, "failed to verify message ID `" + target + "` in this channel.");
-                                        return;
-                                    }
-                                    if (!g_db->add_rr_message(target, msg.channel_id, msg.server_id, "")) {
-                                        bot.send_message(msg.channel_id, "failed to register message `" + target + "` in database.");
-                                        return;
-                                    }
-                                } else {
-                                    channel_id = existing_rr->channel_id;
-                                }
-
-                                if (g_db->add_rr_rule(target, emoji, selected_role.id)) {
-                                    bot.react_to_message(channel_id, target, emoji);
-                                    bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on message `" + target + "`.");
-                                } else {
-                                    bot.send_message(msg.channel_id, "failed to add reaction role mapping.");
-                                }
-                            }).detach();
-                        } else {
-                            std::vector<std::string> msg_ids = g_db->get_message_ids_by_modal(msg.server_id, target);
-                            if (msg_ids.empty()) {
-                                bot.send_message(msg.channel_id, "could not find any active modals named `" + target + "` in this server.");
+                    auto execute_add = [&bot, msg, target, emoji, is_message_id, member, server_opt](stoatpp::models::Role selected_role) {
+                        // Hierarchy check: role rank <= member rank (remember: lower is higher power)
+                        bool is_owner_or_bypass = (server_opt->owner == msg.author.id) || bot.is_owner(msg.author.id);
+                        if (!is_owner_or_bypass) {
+                            int member_rank = server_opt->get_highest_rank(member);
+                            if (selected_role.rank <= member_rank) {
+                                bot.send_message(msg.channel_id, "permission error: you cannot configure the role **" + selected_role.name + "** because it is at or above your highest role in the server hierarchy.");
                                 return;
                             }
+                        }
 
-                            std::thread([&bot, msg, target, emoji, selected_role, msg_ids]() {
-                                for (const auto& target_msg_id : msg_ids) {
-                                    auto rr_msg_opt = g_db->get_rr_message(target_msg_id);
-                                    if (!rr_msg_opt) continue;
+                        auto run_db_add = [&bot, msg, target, emoji, is_message_id, selected_role]() {
+                            if (is_message_id) {
+                                std::thread([&bot, msg, target, emoji, selected_role]() {
+                                    auto existing_rr = g_db->get_rr_message(target);
+                                    std::string channel_id = msg.channel_id;
 
-                                    bool is_duplicate = false;
-                                    for (const auto& rule : rr_msg_opt->rules) {
-                                        if (rule.emoji_id == emoji && rule.role_id == selected_role.id) {
-                                            is_duplicate = true;
-                                            break;
+                                    if (!existing_rr) {
+                                        auto res = bot.rest().get("/channels/" + msg.channel_id + "/messages/" + target);
+                                        if (!res.success()) {
+                                            bot.send_message(msg.channel_id, "failed to verify message ID `" + target + "` in this channel.");
+                                            return;
                                         }
-                                    }
-                                    if (is_duplicate) {
-                                        bot.send_message(msg.channel_id, "this emoji is already mapped to that exact role!");
-                                        return;
-                                    }
-
-                                    if (g_db->add_rr_rule(target_msg_id, emoji, selected_role.id)) {
-                                        bot.react_to_message(rr_msg_opt->channel_id, target_msg_id, emoji);
-                                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                                        if (!g_db->add_rr_message(target, msg.channel_id, msg.server_id, "")) {
+                                            bot.send_message(msg.channel_id, "failed to register message `" + target + "` in database.");
+                                            return;
+                                        }
+                                    } else {
+                                        channel_id = existing_rr->channel_id;
                                     }
 
-                                    auto updated_rr = g_db->get_rr_message(target_msg_id);
-                                    if (updated_rr) {
-                                        stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
-
-                                        bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
+                                    if (g_db->add_rr_rule(target, emoji, selected_role.id)) {
+                                        bot.react_to_message(channel_id, target, emoji);
+                                        bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on message `" + target + "`.");
+                                    } else {
+                                        bot.send_message(msg.channel_id, "failed to add reaction role mapping.");
                                     }
+                                }).detach();
+                            } else {
+                                std::vector<std::string> msg_ids = g_db->get_message_ids_by_modal(msg.server_id, target);
+                                if (msg_ids.empty()) {
+                                    bot.send_message(msg.channel_id, "could not find any active modals named `" + target + "` in this server.");
+                                    return;
                                 }
 
-                                bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on modal `" + target + "`.");
-                            }).detach();
+                                std::thread([&bot, msg, target, emoji, selected_role, msg_ids]() {
+                                    for (const auto& target_msg_id : msg_ids) {
+                                        auto rr_msg_opt = g_db->get_rr_message(target_msg_id);
+                                        if (!rr_msg_opt) continue;
+
+                                        bool is_duplicate = false;
+                                        for (const auto& rule : rr_msg_opt->rules) {
+                                            if (rule.emoji_id == emoji && rule.role_id == selected_role.id) {
+                                                is_duplicate = true;
+                                                break;
+                                            }
+                                        }
+                                        if (is_duplicate) {
+                                            bot.send_message(msg.channel_id, "this emoji is already mapped to that exact role!");
+                                            return;
+                                        }
+
+                                        if (g_db->add_rr_rule(target_msg_id, emoji, selected_role.id)) {
+                                            bot.react_to_message(rr_msg_opt->channel_id, target_msg_id, emoji);
+                                            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                                        }
+
+                                        auto updated_rr = g_db->get_rr_message(target_msg_id);
+                                        if (updated_rr) {
+                                            stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+
+                                            bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
+                                        }
+                                    }
+
+                                    bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on modal `" + target + "`.");
+                                }).detach();
+                            }
+                        };
+
+                        // Dangerous permission check
+                        if (is_role_dangerous(selected_role)) {
+                            stoatpp::models::MessagePayload payload;
+                            nlohmann::json embed = nlohmann::json::object();
+                            embed["title"] = "⚠️ Warning: Dangerous Role Permissions";
+                            embed["colour"] = "#F1C40F";
+                            embed["description"] = "The role **" + selected_role.name + "** contains administrative or moderator permissions (e.g. Manage Roles, Ban, Kick, etc.).\n"
+                                                  "Are you sure you want to add this role as a reaction role? Anyone will be able to get these permissions by reacting!\n\n"
+                                                  "Type **yes** to confirm and activate, or **no** to cancel.";
+                            payload.embeds.push_back(embed);
+
+                            bot.send_message(msg.channel_id, payload, [&bot, msg, run_db_add](stoatpp::models::Message prompt, bool ok) {
+                                if (!ok) return;
+                                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, prompt, run_db_add](std::optional<stoatpp::events::Message> reply) {
+                                    bot.delete_message(prompt.channel, prompt.id);
+                                    if (reply) bot.delete_message(reply->channel_id, reply->id);
+
+                                    if (reply && (reply->content == "yes" || reply->content == "YES" || reply->content == "confirm")) {
+                                        run_db_add();
+                                    } else {
+                                        bot.send_reply(msg, "cancelled adding dangerous role.", true);
+                                    }
+                                });
+                            });
+                        } else {
+                            run_db_add();
                         }
                     };
 
@@ -819,6 +910,155 @@ public:
                     std::string old_emoji_query = args[2];
                     bool updated = false;
 
+                    if (args.size() == 5) {
+                        std::string edit_type = args[3];
+                        std::string edit_value = args[4];
+                        if (edit_type == "role") {
+                            std::vector<EmojiRolePair> parsed = parse_emoji_role_pairs(old_emoji_query + " " + edit_value, bot, msg.server_id);
+                            if (parsed.empty()) {
+                                bot.send_message(msg.channel_id, "failed to parse/resolve the new role.");
+                                return;
+                            }
+                            std::string rid = parsed[0].role_id;
+                            stoatpp::models::Role selected_role;
+                            bool found = false;
+                            for (const auto& r : server_opt->roles) {
+                                if (r.id == rid) { selected_role = r; found = true; break; }
+                            }
+                            if (found) {
+                                // Hierarchy check
+                                bool is_owner_or_bypass = (server_opt->owner == msg.author.id) || bot.is_owner(msg.author.id);
+                                if (!is_owner_or_bypass) {
+                                    int member_rank = server_opt->get_highest_rank(member);
+                                    if (selected_role.rank <= member_rank) {
+                                        bot.send_message(msg.channel_id, "permission error: you cannot configure the role **" + selected_role.name + "** because it is at or above your highest role in the server hierarchy.");
+                                        return;
+                                    }
+                                }
+                                // Dangerous check
+                                if (is_role_dangerous(selected_role)) {
+                                    stoatpp::models::MessagePayload payload;
+                                    nlohmann::json embed = nlohmann::json::object();
+                                    embed["title"] = "⚠️ Warning: Dangerous Role Permissions";
+                                    embed["colour"] = "#F1C40F";
+                                    embed["description"] = "The role **" + selected_role.name + "** contains administrative or moderator permissions.\n"
+                                                          "Are you sure you want to map this role? Anyone will be able to get these permissions by reacting!\n\n"
+                                                          "Type **yes** to confirm and activate, or **no** to cancel.";
+                                    payload.embeds.push_back(embed);
+
+                                    bot.send_message(msg.channel_id, payload, [&bot, msg, msg_ids, old_emoji_query, rid](stoatpp::models::Message prompt, bool ok) {
+                                        if (!ok) return;
+                                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, prompt, msg_ids, old_emoji_query, rid](std::optional<stoatpp::events::Message> reply) {
+                                            bot.delete_message(prompt.channel, prompt.id);
+                                            if (reply) bot.delete_message(reply->channel_id, reply->id);
+
+                                            if (reply && (reply->content == "yes" || reply->content == "YES" || reply->content == "confirm")) {
+                                                for (const auto& target_msg_id : msg_ids) {
+                                                    g_db->remove_rr_rule(target_msg_id, old_emoji_query);
+                                                    g_db->add_rr_rule(target_msg_id, old_emoji_query, rid);
+                                                    auto updated_rr = g_db->get_rr_message(target_msg_id);
+                                                    if (updated_rr) {
+                                                        stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                                        bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
+                                                    }
+                                                }
+                                                bot.send_reply(msg, "successfully edited role mapping for all instances.", true);
+                                            } else {
+                                                bot.send_reply(msg, "cancelled editing dangerous role.", true);
+                                            }
+                                        });
+                                    });
+                                    return;
+                                }
+                            }
+                        }
+                    } else if (args.size() >= 6) {
+                        std::string new_emoji = args[3];
+                        std::string old_role_q = args[4];
+                        std::string new_role_q = args[5];
+                        std::vector<EmojiRolePair> old_parsed = parse_emoji_role_pairs(old_emoji_query + " " + old_role_q, bot, msg.server_id);
+                        std::vector<EmojiRolePair> new_parsed = parse_emoji_role_pairs(new_emoji + " " + new_role_q, bot, msg.server_id);
+                        if (old_parsed.empty() || new_parsed.empty()) {
+                            bot.send_message(msg.channel_id, "failed to parse/resolve the roles.");
+                            return;
+                        }
+                        
+                        std::string rid = new_parsed[0].role_id;
+                        stoatpp::models::Role selected_role;
+                        bool found = false;
+                        for (const auto& r : server_opt->roles) {
+                            if (r.id == rid) { selected_role = r; found = true; break; }
+                        }
+                        if (found) {
+                            // Hierarchy check
+                            bool is_owner_or_bypass = (server_opt->owner == msg.author.id) || bot.is_owner(msg.author.id);
+                            if (!is_owner_or_bypass) {
+                                int member_rank = server_opt->get_highest_rank(member);
+                                if (selected_role.rank <= member_rank) {
+                                    bot.send_message(msg.channel_id, "permission error: you cannot configure the role **" + selected_role.name + "** because it is at or above your highest role in the server hierarchy.");
+                                    return;
+                                }
+                            }
+                            
+                            // Dangerous check
+                            if (is_role_dangerous(selected_role)) {
+                                stoatpp::models::MessagePayload payload;
+                                nlohmann::json embed = nlohmann::json::object();
+                                embed["title"] = "⚠️ Warning: Dangerous Role Permissions";
+                                embed["colour"] = "#F1C40F";
+                                embed["description"] = "The role **" + selected_role.name + "** contains administrative or moderator permissions.\n"
+                                                      "Are you sure you want to map this role? Anyone will be able to get these permissions by reacting!\n\n"
+                                                      "Type **yes** to confirm and activate, or **no** to cancel.";
+                                payload.embeds.push_back(embed);
+
+                                bot.send_message(msg.channel_id, payload, [&bot, msg, msg_ids, old_parsed, new_parsed](stoatpp::models::Message prompt, bool ok) {
+                                    if (!ok) return;
+                                    bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, prompt, msg_ids, old_parsed, new_parsed](std::optional<stoatpp::events::Message> reply) {
+                                        bot.delete_message(prompt.channel, prompt.id);
+                                        if (reply) bot.delete_message(reply->channel_id, reply->id);
+
+                                        if (reply && (reply->content == "yes" || reply->content == "YES" || reply->content == "confirm")) {
+                                            for (const auto& target_msg_id : msg_ids) {
+                                                auto rr_msg_opt = g_db->get_rr_message(target_msg_id);
+                                                if (!rr_msg_opt) continue;
+                                                
+                                                g_db->remove_rr_rule(target_msg_id, old_parsed[0].emoji, old_parsed[0].role_id);
+                                                g_db->add_rr_rule(target_msg_id, new_parsed[0].emoji, new_parsed[0].role_id);
+
+                                                auto updated_rr_temp = g_db->get_rr_message(target_msg_id);
+                                                if (updated_rr_temp) {
+                                                    bool still_has_old_emoji = false;
+                                                    for (const auto& r : updated_rr_temp->rules) {
+                                                        if (r.emoji_id == old_parsed[0].emoji) {
+                                                            still_has_old_emoji = true;
+                                                            break;
+                                                        }
+                                                    }
+                                                    if (!still_has_old_emoji) {
+                                                        bot.unreact_from_message(rr_msg_opt->channel_id, target_msg_id, old_parsed[0].emoji, bot.current_user().id);
+                                                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                                                    }
+                                                }
+                                                
+                                                bot.react_to_message(rr_msg_opt->channel_id, target_msg_id, new_parsed[0].emoji);
+                                                
+                                                auto updated_rr = g_db->get_rr_message(target_msg_id);
+                                                if (updated_rr) {
+                                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                                    bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
+                                                }
+                                            }
+                                            bot.send_reply(msg, "successfully edited role mapping for all instances.", true);
+                                        } else {
+                                            bot.send_reply(msg, "cancelled editing dangerous role.", true);
+                                        }
+                                    });
+                                });
+                                return;
+                            }
+                        }
+                    }
+
                     for (const auto& target_msg_id : msg_ids) {
                         auto rr_msg_opt = g_db->get_rr_message(target_msg_id);
                         if (!rr_msg_opt) continue;
@@ -1033,7 +1273,7 @@ public:
                     std::string target_msg_id = args[1];
 
                     // Fetch the target message content
-                    std::thread([&bot, msg, target_msg_id]() {
+                    std::thread([&bot, msg, target_msg_id, member, server_opt]() {
                         std::string actual_msg_id = target_msg_id;
                         if (actual_msg_id == "^") {
                             stoatpp::models::MessageQuery query;
@@ -1078,6 +1318,36 @@ public:
                             }
                         }
 
+                        // Hierarchy check: role rank <= member rank (remember: lower is higher power)
+                        bool is_owner_or_bypass = (server_opt->owner == msg.author.id) || bot.is_owner(msg.author.id);
+                        if (!is_owner_or_bypass) {
+                            int member_rank = server_opt->get_highest_rank(member);
+                            std::vector<EmojiRolePair> permitted_rules;
+                            std::vector<std::string> blocked_role_names;
+                            for (const auto& r : rules) {
+                                int role_rank = 999999;
+                                for (const auto& sr : server_opt->roles) {
+                                    if (sr.id == r.role_id) {
+                                        role_rank = sr.rank;
+                                        break;
+                                    }
+                                }
+                                if (role_rank <= member_rank) {
+                                    blocked_role_names.push_back(r.role_name);
+                                } else {
+                                    permitted_rules.push_back(r);
+                                }
+                            }
+                            if (!blocked_role_names.empty()) {
+                                std::string blocked_msg = "⚠️ permission warning: skipped the following roles because they are at or above your highest role in the server hierarchy: ";
+                                for (size_t i = 0; i < blocked_role_names.size(); ++i) {
+                                    blocked_msg += "**" + blocked_role_names[i] + "**" + (i + 1 < blocked_role_names.size() ? ", " : "");
+                                }
+                                bot.send_message(msg.channel_id, blocked_msg);
+                            }
+                            rules = permitted_rules;
+                        }
+
                         if (rules.empty()) {
                             bot.send_reply(msg, "no reaction role rules detected in target message.\n"
                                                 "make sure patterns write like:\n"
@@ -1087,11 +1357,24 @@ public:
                             return;
                         }
 
+                        // Check for dangerous permissions
+                        std::vector<std::string> dangerous_roles;
+                        for (const auto& r : rules) {
+                            for (const auto& sr : server_opt->roles) {
+                                if (sr.id == r.role_id) {
+                                    if (is_role_dangerous(sr)) {
+                                        dangerous_roles.push_back(sr.name);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+
                         // Send interactive confirmation
                         stoatpp::models::MessagePayload confirm_payload;
                         nlohmann::json embed = nlohmann::json::object();
                         embed["title"] = "reaction roles scanner";
-                        embed["colour"] = "#00CEC9";
+                        embed["colour"] = dangerous_roles.empty() ? "#00CEC9" : "#D63031";
 
                         std::string desc = "i detected the following reaction roles rules in message `" + actual_msg_id + "`:\n\n";
                         std::vector<bronx::Database::RRRule> converted_rules;
@@ -1099,7 +1382,16 @@ public:
                             converted_rules.push_back({r.emoji, r.role_id});
                         }
                         desc += format_rr_description(converted_rules);
-                        desc += "\nreact with ✅ below to confirm and activate, or ❌ to cancel.";
+
+                        if (!dangerous_roles.empty()) {
+                            desc += "\n\n⚠️ **WARNING: The following roles have dangerous administrative/moderator permissions (e.g. Manage Roles, Ban, Kick):**\n";
+                            for (const auto& dr : dangerous_roles) {
+                                desc += "• **" + dr + "**\n";
+                            }
+                            desc += "\n*Reacting to confirm will allow anyone to obtain these dangerous permissions!*";
+                        }
+
+                        desc += "\n\nreact with ✅ below to confirm and activate, or ❌ to cancel.";
                         embed["description"] = desc;
                         confirm_payload.embeds.push_back(embed);
 

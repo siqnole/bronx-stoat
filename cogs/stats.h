@@ -143,8 +143,19 @@ public:
                             } else if (chart_type == "bars") {
                                 auto top_users = g_db->get_top_users(server_id_copy, days, 10);
                                 std::vector<chart::BarItem> items;
-                                for (auto& u : top_users)
-                                    items.push_back({"<@" + u.user_id + ">", u.message_count});
+                                for (auto& u : top_users) {
+                                    std::string display = "User " + u.user_id.substr(0, 6);
+                                    auto u_opt = bot.get_user(u.user_id);
+                                    if (u_opt) {
+                                        display = u_opt->username;
+                                        if (!u_opt->discriminator.empty() && u_opt->discriminator != "0000") {
+                                            display += "#" + u_opt->discriminator;
+                                        } else {
+                                            display += "#0000";
+                                        }
+                                    }
+                                    items.push_back({display, u.message_count});
+                                }
                                 png = chart::render_horizontal_bar_chart(
                                     "top members — " + srv_name + " (" + std::to_string(days) + "d)",
                                     items);
@@ -315,7 +326,17 @@ public:
                             std::string text_desc = "";
                             int rank = 1;
                             for (const auto& u : top_users) {
-                                items.push_back({"<@" + u.user_id + ">", u.message_count});
+                                std::string display = "User " + u.user_id.substr(0, 6);
+                                auto u_opt = bot.get_user(u.user_id);
+                                if (u_opt) {
+                                    display = u_opt->username;
+                                    if (!u_opt->discriminator.empty() && u_opt->discriminator != "0000") {
+                                        display += "#" + u_opt->discriminator;
+                                    } else {
+                                        display += "#0000";
+                                    }
+                                }
+                                items.push_back({display, u.message_count});
                                 text_desc += std::to_string(rank++) + ". <@" + u.user_id + "> — " + std::to_string(u.message_count) + " messages\n";
                             }
 
