@@ -159,7 +159,22 @@ public:
                 for (const auto& r : due_reminders) {
                     stoatpp::models::MessagePayload payload;
                     payload.content = "<@" + r.user_id + "> reminder set on <t:" + std::to_string(r.timestamp_set) + ":f>:\n" + r.message;
-                    bot.send_message(r.channel_id, payload);
+                    
+                    bot.send_message(r.channel_id, payload, [&bot, r, payload](stoatpp::models::Message, bool success) {
+                        if (!success) {
+                            // Channel might have been deleted, try to DM the user.
+                            // rest client calls are synchronous, run in a background thread to avoid blocking callback dispatcher.
+                            std::thread([&bot, r, payload]() {
+                                auto dm_res = bot.rest().open_dm(r.user_id);
+                                if (dm_res.success() && dm_res.body.is_object() && dm_res.body.contains("_id")) {
+                                    std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
+                                    stoatpp::models::MessagePayload dm_payload = payload;
+                                    dm_payload.content = "⚠️ *Original channel was deleted. Sending reminder to DMs:*\n" + dm_payload.content;
+                                    bot.send_message(dm_channel_id, dm_payload);
+                                }
+                            }).detach();
+                        }
+                    });
                     g_db->delete_reminder(r.id);
                 }
                 std::this_thread::sleep_for(std::chrono::seconds(15));
