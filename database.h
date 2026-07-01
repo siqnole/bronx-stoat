@@ -983,6 +983,22 @@ public:
         return mysql_query(mysql_, sql.c_str()) == 0;
     }
 
+    // Corrects historical rows for a known-bot user that were stored with is_bot=FALSE.
+    // Called once on Ready for every bot user found in the Ready payload.
+    bool fix_bot_flags(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_ || user_id.empty()) return false;
+        std::string sql = "UPDATE guild_user_activity_daily SET is_bot = TRUE "
+                          "WHERE user_id = '" + escape_string(user_id) + "' AND is_bot = FALSE";
+        if (mysql_query(mysql_, sql.c_str()) != 0) return false;
+        auto affected = mysql_affected_rows(mysql_);
+        if (affected > 0) {
+            std::cout << "[bronx db] fixed " << affected << " row(s): marked user "
+                      << user_id << " as bot.\n";
+        }
+        return true;
+    }
+
 
     bool increment_command_usage(const std::string& guild_id, const std::string& command_name, const std::string& channel_id) {
         std::lock_guard<std::mutex> lock(db_mutex_);

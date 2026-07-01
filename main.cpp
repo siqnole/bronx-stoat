@@ -187,6 +187,7 @@ int main(int argc, char* argv[]) {
                   << " (id: " << e.user.id << ")\n";
         std::cout << "              serving: " << e.servers.size() << " servers, "
                   << e.channels.size() << " channels.\n";
+        std::cout << "              users in ready payload: " << e.users.size() << "\n";
 
         std::string status_text = "made with c++! | coming soon | " + std::to_string(e.servers.size()) + " servers";
         bot.update_status(status_text, "Online", [](bool success) {
@@ -196,6 +197,31 @@ int main(int argc, char* argv[]) {
                 std::cout << "[bronx] failed to set presence status.\n";
             }
         });
+
+        // Fix historical DB rows where bot users were mis-tagged as is_bot=FALSE.
+        // Revolt only sends "bot": true reliably in the Ready payload; message payloads
+        // omit it. We run this once per startup on a background thread.
+        if (bronx::g_db) {
+            // Collect bot user IDs: all users in Ready with bot=true, plus self
+            std::vector<std::string> bot_ids;
+            for (const auto& u : e.users) {
+                if (u.bot && !u.id.empty()) {
+                    bot_ids.push_back(u.id);
+                    std::cout << "[bronx] ready: detected bot user " << u.username
+                              << " (" << u.id << ")\n";
+                }
+            }
+            // bronx itself is always a bot
+            if (!e.user.id.empty()) {
+                bot_ids.push_back(e.user.id);
+            }
+
+            std::thread([bot_ids]() {
+                for (const auto& id : bot_ids) {
+                    bronx::g_db->fix_bot_flags(id);
+                }
+            }).detach();
+        }
     });
 
     bot.on_message([&bot](const stoatpp::events::Message& msg) {
