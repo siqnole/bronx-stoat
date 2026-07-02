@@ -90,6 +90,19 @@ public:
         std::string default_profile_action = "none";
     };
 
+    struct RecurringMessage {
+        int id = 0;
+        std::string server_id;
+        std::string channel_id;
+        std::string name;            // user-defined label
+        std::string message_type = "text"; // "text" or "embed"
+        std::string content;         // plain-text content / pre-embed text (supports tokens)
+        std::string embed_json;      // JSON object for embed fields (supports tokens)
+        uint64_t interval_seconds = 300; // >= 300 (5 min)
+        uint64_t last_sent = 0;      // unix timestamp
+        bool owner_tokens = false;   // if true, owner-only tokens are resolved
+    };
+
 private:
     MYSQL* mysql_ = nullptr;
     std::unordered_map<std::string, std::vector<std::string>> cache_;
@@ -127,6 +140,14 @@ private:
     };
     std::unordered_map<std::string, WebhookCacheEntry> webhook_cache_;
     std::shared_mutex webhook_cache_mutex_;
+
+    // id -> RecurringMessage
+    std::unordered_map<int, RecurringMessage> rm_cache_;
+    // server_id -> list of IDs
+    std::unordered_map<std::string, std::vector<int>> rm_server_index_;
+    // channel_id -> id (for uniqueness)
+    std::unordered_map<std::string, int> rm_channel_index_;
+    std::shared_mutex rm_cache_mutex_;
 
     // Server ID -> Set of "Type:ID"
     std::unordered_map<std::string, std::unordered_set<std::string>> trusted_cache_;
@@ -494,6 +515,27 @@ public:
         mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN spam_action VARCHAR(100) NOT NULL DEFAULT 'none'");
         mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN default_profile_action VARCHAR(100) NOT NULL DEFAULT 'none'");
 
+        // Create Table recurring_messages
+        std::string create_rm =
+            "CREATE TABLE IF NOT EXISTS recurring_messages ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  channel_id VARCHAR(30) NOT NULL,"
+            "  name VARCHAR(100) NOT NULL,"
+            "  message_type VARCHAR(10) NOT NULL DEFAULT 'text',"
+            "  content TEXT DEFAULT NULL,"
+            "  embed_json JSON DEFAULT NULL,"
+            "  interval_seconds INT UNSIGNED NOT NULL DEFAULT 300,"
+            "  last_sent BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+            "  owner_tokens TINYINT(1) NOT NULL DEFAULT 0,"
+            "  INDEX idx_rm_server (server_id),"
+            "  UNIQUE KEY uq_rm_channel (channel_id)"
+            ")";
+        if (mysql_query(mysql_, create_rm.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'recurring_messages': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes, default_enabled FROM prefixes";
         if (mysql_query(mysql_, select_query.c_str())) {
@@ -772,6 +814,35 @@ public:
             }
         }
 
+        // Load recurring_messages
+        std::string select_rm = "SELECT id, server_id, channel_id, name, message_type, "
+                                "COALESCE(content,''), COALESCE(embed_json,''), "
+                                "interval_seconds, last_sent, owner_tokens FROM recurring_messages";
+        if (mysql_query(mysql_, select_rm.c_str()) == 0) {
+            MYSQL_RES* rm_res = mysql_store_result(mysql_);
+            if (rm_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> rm_lock(rm_cache_mutex_);
+                while ((row = mysql_fetch_row(rm_res))) {
+                    RecurringMessage rm;
+                    rm.id               = row[0] ? std::stoi(row[0]) : 0;
+                    rm.server_id        = row[1] ? row[1] : "";
+                    rm.channel_id       = row[2] ? row[2] : "";
+                    rm.name             = row[3] ? row[3] : "";
+                    rm.message_type     = row[4] ? row[4] : "text";
+                    rm.content          = row[5] ? row[5] : "";
+                    rm.embed_json       = row[6] ? row[6] : "";
+                    rm.interval_seconds = row[7] ? std::stoull(row[7]) : 300;
+                    rm.last_sent        = row[8] ? std::stoull(row[8]) : 0;
+                    rm.owner_tokens     = row[9] ? (std::string(row[9]) != "0") : false;
+                    rm_cache_[rm.id] = rm;
+                    rm_server_index_[rm.server_id].push_back(rm.id);
+                    rm_channel_index_[rm.channel_id] = rm.id;
+                }
+                mysql_free_result(rm_res);
+            }
+        }
+
         std::cout << "[bronx db] database successfully initialized.\n"
                   << "           loaded " << cache_.size() << " prefix configurations.\n"
                   << "           loaded " << rr_cache_.size() << " reaction role messages.\n"
@@ -783,7 +854,8 @@ public:
                   << "           loaded " << restrictions_cache_.size() << " server commands restrictions.\n"
                   << "           loaded " << disabled_cache_.size() << " server disabled commands.\n"
                   << "           loaded " << action_msg_cache_.size() << " action message configurations.\n"
-                  << "           loaded " << ar_cache_.size() << " antiraid configurations.\n";
+                  << "           loaded " << ar_cache_.size() << " antiraid configurations.\n"
+                  << "           loaded " << rm_cache_.size() << " recurring messages.\n";
         return true;
     }
 
@@ -2261,6 +2333,206 @@ public:
         }
         return entries;
     }
+
+    // --- Recurring Messages CRUD ---
+
+    // Returns true if the channel already has a recurring message scheduled.
+    bool recurring_channel_occupied(const std::string& channel_id) {
+        std::shared_lock<std::shared_mutex> lock(rm_cache_mutex_);
+        return rm_channel_index_.count(channel_id) > 0;
+    }
+
+    // Returns number of recurring messages for a server (cached).
+    int count_recurring_for_server(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(rm_cache_mutex_);
+        auto it = rm_server_index_.find(server_id);
+        if (it != rm_server_index_.end()) return static_cast<int>(it->second.size());
+        return 0;
+    }
+
+    // Returns all recurring messages for a server (from cache).
+    std::vector<RecurringMessage> get_recurring_messages_for_server(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(rm_cache_mutex_);
+        std::vector<RecurringMessage> out;
+        auto it = rm_server_index_.find(server_id);
+        if (it != rm_server_index_.end()) {
+            for (int id : it->second) {
+                auto it2 = rm_cache_.find(id);
+                if (it2 != rm_cache_.end()) out.push_back(it2->second);
+            }
+        }
+        return out;
+    }
+
+    // Returns the recurring message for a channel if one exists.
+    std::optional<RecurringMessage> get_recurring_by_channel(const std::string& channel_id) {
+        std::shared_lock<std::shared_mutex> lock(rm_cache_mutex_);
+        auto it = rm_channel_index_.find(channel_id);
+        if (it != rm_channel_index_.end()) {
+            auto it2 = rm_cache_.find(it->second);
+            if (it2 != rm_cache_.end()) return it2->second;
+        }
+        return std::nullopt;
+    }
+
+    // Returns a recurring message by id, validating server ownership.
+    std::optional<RecurringMessage> get_recurring_by_id(int id, const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(rm_cache_mutex_);
+        auto it = rm_cache_.find(id);
+        if (it != rm_cache_.end() && it->second.server_id == server_id) return it->second;
+        return std::nullopt;
+    }
+
+    // Finds a recurring message by name (case-insensitive) within a server.
+    std::optional<RecurringMessage> get_recurring_by_name(const std::string& server_id, const std::string& name) {
+        std::shared_lock<std::shared_mutex> lock(rm_cache_mutex_);
+        std::string search = name;
+        std::transform(search.begin(), search.end(), search.begin(), ::tolower);
+        auto it = rm_server_index_.find(server_id);
+        if (it != rm_server_index_.end()) {
+            for (int id : it->second) {
+                auto it2 = rm_cache_.find(id);
+                if (it2 != rm_cache_.end()) {
+                    std::string cname = it2->second.name;
+                    std::transform(cname.begin(), cname.end(), cname.begin(), ::tolower);
+                    if (cname == search) return it2->second;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    // Returns all recurring messages whose next fire time (last_sent + interval) <= now.
+    std::vector<RecurringMessage> get_due_recurring_messages(uint64_t now) {
+        std::shared_lock<std::shared_mutex> lock(rm_cache_mutex_);
+        std::vector<RecurringMessage> out;
+        for (const auto& [id, rm] : rm_cache_) {
+            if (rm.last_sent + rm.interval_seconds <= now) {
+                out.push_back(rm);
+            }
+        }
+        return out;
+    }
+
+    // Inserts a new recurring message; updates rm.id with the auto-increment value.
+    bool add_recurring_message(RecurringMessage& rm) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string esc_server  = escape_string(rm.server_id);
+        std::string esc_channel = escape_string(rm.channel_id);
+        std::string esc_name    = escape_string(rm.name);
+        std::string esc_type    = escape_string(rm.message_type);
+        std::string esc_content = escape_string(rm.content);
+        std::string esc_embed_val = rm.embed_json.empty()
+            ? std::string("NULL") : ("'" + escape_string(rm.embed_json) + "'");
+        int owner_tok = rm.owner_tokens ? 1 : 0;
+
+        std::string sql =
+            "INSERT INTO recurring_messages "
+            "(server_id, channel_id, name, message_type, content, embed_json, interval_seconds, last_sent, owner_tokens) "
+            "VALUES ('" + esc_server + "', '" + esc_channel + "', '" + esc_name + "', '" + esc_type + "', "
+            "'" + esc_content + "', " + esc_embed_val + ", "
+            + std::to_string(rm.interval_seconds) + ", 0, " + std::to_string(owner_tok) + ")";
+
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] add_recurring_message failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        rm.id = static_cast<int>(mysql_insert_id(mysql_));
+        rm.last_sent = 0;
+
+        std::lock_guard<std::shared_mutex> cache_lock(rm_cache_mutex_);
+        rm_cache_[rm.id] = rm;
+        rm_server_index_[rm.server_id].push_back(rm.id);
+        rm_channel_index_[rm.channel_id] = rm.id;
+        return true;
+    }
+
+    // Removes a recurring message by id, validating server ownership.
+    bool remove_recurring_message(int id, const std::string& server_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string sql =
+            "DELETE FROM recurring_messages WHERE id = " + std::to_string(id) +
+            " AND server_id = '" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] remove_recurring_message failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        if (mysql_affected_rows(mysql_) == 0) return false;
+
+        std::lock_guard<std::shared_mutex> cache_lock(rm_cache_mutex_);
+        auto it = rm_cache_.find(id);
+        if (it != rm_cache_.end()) {
+            rm_channel_index_.erase(it->second.channel_id);
+            auto& sv = rm_server_index_[it->second.server_id];
+            sv.erase(std::remove(sv.begin(), sv.end(), id), sv.end());
+            rm_cache_.erase(it);
+        }
+        return true;
+    }
+
+    // Updates all mutable fields of an existing recurring message.
+    bool update_recurring_message(const RecurringMessage& rm) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string esc_channel = escape_string(rm.channel_id);
+        std::string esc_name    = escape_string(rm.name);
+        std::string esc_type    = escape_string(rm.message_type);
+        std::string esc_content = escape_string(rm.content);
+        std::string esc_embed_val = rm.embed_json.empty()
+            ? std::string("NULL") : ("'" + escape_string(rm.embed_json) + "'");
+
+        std::string sql =
+            "UPDATE recurring_messages SET "
+            "channel_id = '" + esc_channel + "', "
+            "name = '" + esc_name + "', "
+            "message_type = '" + esc_type + "', "
+            "content = '" + esc_content + "', "
+            "embed_json = " + esc_embed_val + ", "
+            "interval_seconds = " + std::to_string(rm.interval_seconds) + " "
+            "WHERE id = " + std::to_string(rm.id) +
+            " AND server_id = '" + escape_string(rm.server_id) + "'";
+
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] update_recurring_message failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        std::lock_guard<std::shared_mutex> cache_lock(rm_cache_mutex_);
+        auto it = rm_cache_.find(rm.id);
+        if (it != rm_cache_.end()) {
+            if (it->second.channel_id != rm.channel_id) {
+                rm_channel_index_.erase(it->second.channel_id);
+                rm_channel_index_[rm.channel_id] = rm.id;
+            }
+            it->second = rm;
+        }
+        return true;
+    }
+
+    // Updates only the last_sent timestamp after firing a recurring message.
+    bool update_recurring_last_sent(int id, uint64_t ts) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string sql =
+            "UPDATE recurring_messages SET last_sent = " + std::to_string(ts) +
+            " WHERE id = " + std::to_string(id);
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] update_recurring_last_sent failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        std::lock_guard<std::shared_mutex> cache_lock(rm_cache_mutex_);
+        auto it = rm_cache_.find(id);
+        if (it != rm_cache_.end()) it->second.last_sent = ts;
+        return true;
+    }
+
 };
 
 } // namespace bronx
