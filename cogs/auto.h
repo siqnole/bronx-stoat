@@ -382,6 +382,12 @@ static std::string apply_tokens(std::string text, stoatpp::cluster& bot,
     // ensure sname is set
     auto srv = bot.get_server(server_id);
     if (srv) sname = srv->name;
+    if(owner_tokens){
+        ra(text,"{ram}",get_ram_usage());
+        ra(text,"{cpu}",get_cpu_usage()+"%");
+        ra(text,"{threads}",get_thread_count());
+        ra(text,"{commands}",std::to_string(bot.get_commands_executed()));
+    }
     std::string scnt=std::to_string(bot.get_servers().size());
     uint64_t up=bot.uptime();
     uint64_t upd=up/86400,uph=(up%86400)/3600,upm=(up%3600)/60,ups=up%60;
@@ -402,11 +408,6 @@ static std::string apply_tokens(std::string text, stoatpp::cluster& bot,
     ra(text,"{uptime.seconds}",std::to_string(ups));
     ra(text,"{uptime}",upstr);
     ra(text,"{ping}",ping);
-    if(owner_tokens){
-        ra(text,"{ram}",get_ram_usage());
-        ra(text,"{cpu}",get_cpu_usage()+"%");
-        ra(text,"{threads}",get_thread_count());
-    }
     return text;
 }
 static void send_recurring_msg(stoatpp::cluster& bot, const Database::RecurringMessage& rm,
