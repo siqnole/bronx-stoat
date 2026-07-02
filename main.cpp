@@ -134,6 +134,11 @@ int main(int argc, char* argv[]) {
 
     cfg.prefix_resolver = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg) -> std::vector<std::string> {
         std::vector<std::string> prefixes;
+        std::string bot_id = bot.current_user().id;
+        if (!bot_id.empty()) {
+            prefixes.push_back("<@" + bot_id + "> ");
+            prefixes.push_back("<@" + bot_id + ">");
+        }
         bool server_has_custom = false;
 
         if (bronx::g_db) {
@@ -263,6 +268,11 @@ int main(int argc, char* argv[]) {
 
             // 3. Command Telemetry
             std::vector<std::string> prefixes;
+            std::string bot_id = bot.current_user().id;
+            if (!bot_id.empty()) {
+                prefixes.push_back("<@" + bot_id + "> ");
+                prefixes.push_back("<@" + bot_id + ">");
+            }
             std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
             prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
             

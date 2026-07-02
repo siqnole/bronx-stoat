@@ -25,8 +25,96 @@ inline std::string format_log_placeholders(std::string text, const std::unordere
     }
     return text;
 }
+inline std::string reconstruct_message_text(stoatpp::cluster& bot, const nlohmann::json& msg_raw, std::vector<std::string>& out_attachments) {
+    std::string text = "";
+    if (msg_raw.contains("content") && msg_raw["content"].is_string()) {
+        text = msg_raw["content"].get<std::string>();
+    }
 
-inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, const std::string& event_type, const std::unordered_map<std::string, std::string>& placeholders, const std::function<std::pair<std::string, nlohmann::json>()>& default_fallback) {
+    // Check standard attachments
+    if (msg_raw.contains("attachments") && msg_raw["attachments"].is_array()) {
+        for (const auto& att : msg_raw["attachments"]) {
+            std::string att_id = "";
+            if (att.is_string()) {
+                att_id = att.get<std::string>();
+            } else if (att.is_object()) {
+                if (att.contains("_id") && att["_id"].is_string()) {
+                    att_id = att["_id"].get<std::string>();
+                } else if (att.contains("id") && att["id"].is_string()) {
+                    att_id = att["id"].get<std::string>();
+                }
+            }
+            if (!att_id.empty()) {
+                out_attachments.push_back(att_id);
+            }
+        }
+    }
+
+    // Check embeds
+    if (msg_raw.contains("embeds") && msg_raw["embeds"].is_array()) {
+        for (const auto& emb : msg_raw["embeds"]) {
+            if (!emb.is_object()) continue;
+
+            std::string embed_text = "";
+            if (emb.contains("title") && emb["title"].is_string()) {
+                embed_text += "> " + emb["title"].get<std::string>() + "\n";
+            }
+            if (emb.contains("description") && emb["description"].is_string()) {
+                if (!embed_text.empty()) {
+                    embed_text += "> \n";
+                }
+                std::string desc = emb["description"].get<std::string>();
+                size_t pos = 0;
+                while (true) {
+                    size_t next = desc.find('\n', pos);
+                    std::string line = (next == std::string::npos) ? desc.substr(pos) : desc.substr(pos, next - pos);
+                    embed_text += "> " + line + "\n";
+                    if (next == std::string::npos) break;
+                    pos = next + 1;
+                }
+            }
+            if (!embed_text.empty()) {
+                if (!text.empty()) text += "\n\n";
+                text += embed_text;
+            }
+
+            // Extract images/media from embed to put in out_attachments
+            std::string img_url = "";
+            std::string media_id = "";
+
+            if (emb.contains("media")) {
+                if (emb["media"].is_string()) {
+                    media_id = emb["media"].get<std::string>();
+                } else if (emb["media"].is_object()) {
+                    if (emb["media"].contains("_id") && emb["media"]["_id"].is_string()) {
+                        media_id = emb["media"]["_id"].get<std::string>();
+                    } else if (emb["media"].contains("id") && emb["media"]["id"].is_string()) {
+                        media_id = emb["media"]["id"].get<std::string>();
+                    }
+                }
+            }
+
+            if (emb.contains("image") && emb["image"].is_object() && emb["image"].contains("url") && emb["image"]["url"].is_string()) {
+                img_url = emb["image"]["url"].get<std::string>();
+            } else if (emb.contains("type") && emb["type"].is_string() && emb["type"].get<std::string>() == "Image" && emb.contains("url") && emb["url"].is_string()) {
+                img_url = emb["url"].get<std::string>();
+            }
+
+            if (!media_id.empty()) {
+                out_attachments.push_back(media_id);
+            } else if (!img_url.empty()) {
+                std::string uploaded_id = bot.rest().upload_from_url(img_url);
+                if (!uploaded_id.empty()) {
+                    out_attachments.push_back(uploaded_id);
+                }
+            }
+        }
+    }
+
+    return text;
+}
+
+inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, const std::string& event_type, const std::unordered_map<std::string, std::string>& placeholders, const std::function<std::pair<std::string, nlohmann::json>()>& default_fallback, const std::vector<std::string>& log_attachments = {}) {
     if (!g_db) return;
     std::string log_chan = g_db->get_logging_channel(server_id, event_type);
     if (log_chan.empty()) return;
@@ -79,6 +167,10 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
         auto [content, embed] = default_fallback();
         payload.content = content;
         payload.embeds.push_back(embed);
+    }
+
+    for (const auto& att : log_attachments) {
+        payload.add_attachment(att);
     }
 
     // Run the webhook resolution and execution logic in a separate thread so it doesn't block the gateway thread
@@ -814,8 +906,7 @@ public:
 
         // --- GATEWAY EVENT: MESSAGE UPDATE (EDIT) ---
         bot.on_message_update([this, &bot](const stoatpp::events::MessageUpdate& e) {
-            if (!e.data.contains("content")) return;
-            std::string new_content = e.data["content"].get<std::string>();
+            if (!e.data.contains("content") && !e.data.contains("embeds") && !e.data.contains("attachments")) return;
 
             auto cached_opt = get_cached_message(e.id);
             std::string server_id = "";
@@ -830,55 +921,77 @@ public:
 
             if (server_id.empty() || !g_db) return;
 
-            if (cached_opt && cached_opt->content == new_content) return;
+            std::thread([this, &bot, e, cached_opt, server_id]() {
+                nlohmann::json new_raw = nlohmann::json::object();
+                if (cached_opt) {
+                    new_raw = cached_opt->raw;
+                }
+                for (auto it = e.data.begin(); it != e.data.end(); ++it) {
+                    new_raw[it.key()] = it.value();
+                }
 
-            std::string author_id = cached_opt ? cached_opt->author.id : "";
-            std::string username = cached_opt ? cached_opt->author.username : "";
-            std::string old_content = cached_opt ? cached_opt->content : "";
+                std::vector<std::string> old_attachments;
+                std::string old_content = cached_opt ? reconstruct_message_text(bot, cached_opt->raw, old_attachments) : "";
 
-            std::unordered_map<std::string, std::string> placeholders = {
-                {"author", "<@" + author_id + ">"},
-                {"username", username},
-                {"channel", "<#" + e.channel_id + ">"},
-                {"before", old_content},
-                {"after", new_content}
-            };
+                std::vector<std::string> new_attachments;
+                std::string new_content = reconstruct_message_text(bot, new_raw, new_attachments);
 
-            auto default_fallback = [e, author_id, old_content, new_content]() {
-                nlohmann::json embed = nlohmann::json::object();
-                embed["title"] = "✏️ Message Edited";
-                embed["colour"] = "#ffaa00"; // Orange
+                if (cached_opt && old_content == new_content && old_attachments == new_attachments) return;
 
-                std::string desc = "• **Channel:** <#" + e.channel_id + ">\n";
-                if (!author_id.empty()) {
-                    desc += "• **Author:** <@" + author_id + ">\n"
-                            "• **Before:**\n" + old_content + "\n\n"
-                            "• **After:**\n" + new_content + "\n";
+                std::string author_id = cached_opt ? cached_opt->author.id : "";
+                std::string username = cached_opt ? cached_opt->author.username : "";
+
+                std::unordered_map<std::string, std::string> placeholders = {
+                    {"author", "<@" + author_id + ">"},
+                    {"username", username},
+                    {"channel", "<#" + e.channel_id + ">"},
+                    {"before", old_content},
+                    {"after", new_content}
+                };
+
+                auto default_fallback = [e, author_id, old_content, new_content]() {
+                    nlohmann::json embed = nlohmann::json::object();
+                    embed["title"] = "✏️ Message Edited";
+                    embed["colour"] = "#ffaa00"; // Orange
+
+                    std::string desc = "• **Channel:** <#" + e.channel_id + ">\n";
+                    if (!author_id.empty()) {
+                        desc += "• **Author:** <@" + author_id + ">\n"
+                                "• **Before:**\n" + old_content + "\n\n"
+                                "• **After:**\n" + new_content + "\n";
+                    } else {
+                        desc += "• **Message ID:** `" + e.id + "` *(not cached)*\n"
+                                "• **After:**\n" + new_content + "\n";
+                    }
+                    embed["description"] = desc;
+                    return std::make_pair("", embed);
+                };
+
+                dispatch_log(bot, server_id, "message_edit", placeholders, default_fallback, new_attachments);
+
+                if (cached_opt) {
+                    auto updated_cached = *cached_opt;
+                    if (new_raw.contains("content") && new_raw["content"].is_string()) {
+                        updated_cached.content = new_raw["content"].get<std::string>();
+                    }
+                    updated_cached.raw = new_raw;
+                    std::lock_guard<std::mutex> lock(cache_mutex_);
+                    msg_cache_[e.id] = updated_cached;
                 } else {
-                    desc += "• **Message ID:** `" + e.id + "` *(not cached)*\n"
-                            "• **After:**\n" + new_content + "\n";
+                    stoatpp::events::Message msg;
+                    msg.id = e.id;
+                    msg.channel_id = e.channel_id;
+                    msg.server_id = server_id;
+                    if (new_raw.contains("content") && new_raw["content"].is_string()) {
+                        msg.content = new_raw["content"].get<std::string>();
+                    }
+                    if (e.data.contains("author")) {
+                        msg.author.id = e.data["author"].get<std::string>();
+                    }
+                    msg.raw = new_raw;
+                    cache_message(msg);
                 }
-                embed["description"] = desc;
-                return std::make_pair("", embed);
-            };
-
-            dispatch_log(bot, server_id, "message_edit", placeholders, default_fallback);
-
-            if (cached_opt) {
-                cached_opt->content = new_content;
-                std::lock_guard<std::mutex> lock(cache_mutex_);
-                msg_cache_[e.id] = *cached_opt;
-            } else {
-                stoatpp::events::Message msg;
-                msg.id = e.id;
-                msg.channel_id = e.channel_id;
-                msg.server_id = server_id;
-                msg.content = new_content;
-                if (e.data.contains("author")) {
-                    msg.author.id = e.data["author"].get<std::string>();
-                }
-                cache_message(msg);
-            }
+            }).detach();
         });
 
         // --- GATEWAY EVENT: SERVER MEMBER JOIN ---

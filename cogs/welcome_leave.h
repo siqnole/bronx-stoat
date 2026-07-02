@@ -466,7 +466,6 @@ public:
                                 server.name = "Test Server";
                             }
 
-                            stoatpp::models::MessagePayload payload;
                             if (config.welcome_type == "embed") {
                                 nlohmann::json emb_json = nlohmann::json::object();
                                 if (!config.welcome_embed_json.empty()) {
@@ -475,50 +474,66 @@ public:
                                     } catch(...) {}
                                 }
 
-                                std::string content = "";
-                                if (!config.welcome_content.empty()) {
-                                    content = format_placeholders(config.welcome_content, msg.author, server, final_count);
-                                }
-                                payload.content = content;
-
-                                nlohmann::json embed = nlohmann::json::object();
-                                if (emb_json.contains("title")) {
-                                    embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), msg.author, server, final_count);
-                                }
-                                if (emb_json.contains("description")) {
-                                    embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), msg.author, server, final_count);
-                                }
-                                if (emb_json.contains("color")) {
-                                    std::string col = emb_json["color"].get<std::string>();
-                                    if (col == "random") {
-                                        char hex[8];
-                                        snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
-                                        col = hex;
+                                std::thread([&bot, config, msg, server, final_count, emb_json]() {
+                                    stoatpp::models::MessagePayload payload;
+                                    std::string content = "";
+                                    if (!config.welcome_content.empty()) {
+                                        content = format_placeholders(config.welcome_content, msg.author, server, final_count);
                                     }
-                                    embed["colour"] = col;
-                                }
-                                if (emb_json.contains("image")) {
-                                    std::string img_url = emb_json["image"].get<std::string>();
-                                    std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
-                                    if (!desc.empty()) desc += "\n";
-                                    desc += "![](" + img_url + ")";
-                                    embed["description"] = desc;
-                                }
+                                    payload.content = content;
 
-                                if (!embed.empty()) {
-                                    payload.embeds.push_back(embed);
-                                }
+                                    nlohmann::json embed = nlohmann::json::object();
+                                    if (emb_json.contains("title")) {
+                                        embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), msg.author, server, final_count);
+                                    }
+                                    if (emb_json.contains("description")) {
+                                        embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), msg.author, server, final_count);
+                                    }
+                                    if (emb_json.contains("color")) {
+                                        std::string col = emb_json["color"].get<std::string>();
+                                        if (col == "random") {
+                                            char hex[8];
+                                            snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
+                                            col = hex;
+                                        }
+                                        embed["colour"] = col;
+                                    }
+                                    if (emb_json.contains("image")) {
+                                        std::string img_url = format_placeholders(emb_json["image"].get<std::string>(), msg.author, server, final_count);
+                                        std::string media_id = bot.rest().upload_from_url(img_url);
+                                        if (!media_id.empty()) {
+                                            embed["media"] = media_id;
+                                        } else {
+                                            std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
+                                            if (!desc.empty()) desc += "\n";
+                                            desc += "![](" + img_url + ")";
+                                            embed["description"] = desc;
+                                        }
+                                    }
+
+                                    if (!embed.empty()) {
+                                        payload.embeds.push_back(embed);
+                                    }
+
+                                    bot.send_message(config.welcome_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
+                                        if (sent_ok) {
+                                            bot.send_message(msg.channel_id, "✅ Test welcome message successfully sent to the configured channel.");
+                                        } else {
+                                            bot.send_message(msg.channel_id, "⚠️ Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
+                                        }
+                                    });
+                                }).detach();
                             } else {
+                                stoatpp::models::MessagePayload payload;
                                 payload.content = format_placeholders(config.welcome_content, msg.author, server, final_count);
+                                bot.send_message(config.welcome_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
+                                    if (sent_ok) {
+                                        bot.send_message(msg.channel_id, "✅ Test welcome message successfully sent to the configured channel.");
+                                    } else {
+                                        bot.send_message(msg.channel_id, "⚠️ Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
+                                    }
+                                });
                             }
-
-                            bot.send_message(config.welcome_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
-                                if (sent_ok) {
-                                    bot.send_message(msg.channel_id, "✅ Test welcome message successfully sent to the configured channel.");
-                                } else {
-                                    bot.send_message(msg.channel_id, "⚠️ Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
-                                }
-                            });
                         });
                     }
                     return;
@@ -955,59 +970,74 @@ public:
                             server.name = "Test Server";
                         }
 
-                        stoatpp::models::MessagePayload payload;
-                        if (config.leave_type == "embed") {
-                            nlohmann::json emb_json = nlohmann::json::object();
-                            if (!config.leave_embed_json.empty()) {
-                                try {
-                                    emb_json = nlohmann::json::parse(config.leave_embed_json);
-                                } catch(...) {}
-                            }
-
-                            std::string content = "";
-                            if (!config.leave_content.empty()) {
-                                content = format_placeholders(config.leave_content, msg.author, server, final_count);
-                            }
-                            payload.content = content;
-
-                            nlohmann::json embed = nlohmann::json::object();
-                            if (emb_json.contains("title")) {
-                                embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), msg.author, server, final_count);
-                            }
-                            if (emb_json.contains("description")) {
-                                embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), msg.author, server, final_count);
-                            }
-                            if (emb_json.contains("color")) {
-                                std::string col = emb_json["color"].get<std::string>();
-                                if (col == "random") {
-                                    char hex[8];
-                                    snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
-                                    col = hex;
+                            if (config.leave_type == "embed") {
+                                nlohmann::json emb_json = nlohmann::json::object();
+                                if (!config.leave_embed_json.empty()) {
+                                    try {
+                                        emb_json = nlohmann::json::parse(config.leave_embed_json);
+                                    } catch(...) {}
                                 }
-                                embed["colour"] = col;
-                            }
-                            if (emb_json.contains("image")) {
-                                std::string img_url = emb_json["image"].get<std::string>();
-                                std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
-                                if (!desc.empty()) desc += "\n";
-                                desc += "![](" + img_url + ")";
-                                embed["description"] = desc;
-                            }
 
-                            if (!embed.empty()) {
-                                payload.embeds.push_back(embed);
-                            }
-                        } else {
-                            payload.content = format_placeholders(config.leave_content, msg.author, server, final_count);
-                        }
+                                std::thread([&bot, config, msg, server, final_count, emb_json]() {
+                                    stoatpp::models::MessagePayload payload;
+                                    std::string content = "";
+                                    if (!config.leave_content.empty()) {
+                                        content = format_placeholders(config.leave_content, msg.author, server, final_count);
+                                    }
+                                    payload.content = content;
 
-                        bot.send_message(config.leave_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
-                            if (sent_ok) {
-                                bot.send_message(msg.channel_id, "✅ Test leave message successfully sent to the configured channel.");
+                                    nlohmann::json embed = nlohmann::json::object();
+                                    if (emb_json.contains("title")) {
+                                        embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), msg.author, server, final_count);
+                                    }
+                                    if (emb_json.contains("description")) {
+                                        embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), msg.author, server, final_count);
+                                    }
+                                    if (emb_json.contains("color")) {
+                                        std::string col = emb_json["color"].get<std::string>();
+                                        if (col == "random") {
+                                            char hex[8];
+                                            snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
+                                            col = hex;
+                                        }
+                                        embed["colour"] = col;
+                                    }
+                                    if (emb_json.contains("image")) {
+                                        std::string img_url = format_placeholders(emb_json["image"].get<std::string>(), msg.author, server, final_count);
+                                        std::string media_id = bot.rest().upload_from_url(img_url);
+                                        if (!media_id.empty()) {
+                                            embed["media"] = media_id;
+                                        } else {
+                                            std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
+                                            if (!desc.empty()) desc += "\n";
+                                            desc += "![](" + img_url + ")";
+                                            embed["description"] = desc;
+                                        }
+                                    }
+
+                                    if (!embed.empty()) {
+                                        payload.embeds.push_back(embed);
+                                    }
+
+                                    bot.send_message(config.leave_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
+                                        if (sent_ok) {
+                                            bot.send_message(msg.channel_id, "✅ Test leave message successfully sent to the configured channel.");
+                                        } else {
+                                            bot.send_message(msg.channel_id, "⚠️ Failed to send test leave message. Make sure the bot has permission to post in that channel.");
+                                        }
+                                    });
+                                }).detach();
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to send test leave message. Make sure the bot has permission to post in that channel.");
+                                stoatpp::models::MessagePayload payload;
+                                payload.content = format_placeholders(config.leave_content, msg.author, server, final_count);
+                                bot.send_message(config.leave_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
+                                    if (sent_ok) {
+                                        bot.send_message(msg.channel_id, "✅ Test leave message successfully sent to the configured channel.");
+                                    } else {
+                                        bot.send_message(msg.channel_id, "⚠️ Failed to send test leave message. Make sure the bot has permission to post in that channel.");
+                                    }
+                                });
                             }
-                        });
                     });
                     return;
                 }
@@ -1209,7 +1239,6 @@ public:
                     bot.fetch_user(e.user_id, [&bot, e, config, server, final_count](stoatpp::models::User user, bool user_ok) {
                         if (!user_ok) return;
 
-                        stoatpp::models::MessagePayload payload;
                         if (config.welcome_type == "embed") {
                             nlohmann::json emb_json = nlohmann::json::object();
                             if (!config.welcome_embed_json.empty()) {
@@ -1218,44 +1247,54 @@ public:
                                 } catch(...) {}
                             }
 
-                            std::string content = "";
-                            if (!config.welcome_content.empty()) {
-                                content = format_placeholders(config.welcome_content, user, server, final_count);
-                            }
-                            payload.content = content;
-
-                            nlohmann::json embed = nlohmann::json::object();
-                            if (emb_json.contains("title")) {
-                                embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), user, server, final_count);
-                            }
-                            if (emb_json.contains("description")) {
-                                embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), user, server, final_count);
-                            }
-                            if (emb_json.contains("color")) {
-                                std::string col = emb_json["color"].get<std::string>();
-                                if (col == "random") {
-                                    char hex[8];
-                                    snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
-                                    col = hex;
+                            std::thread([&bot, config, user, server, final_count, emb_json]() {
+                                stoatpp::models::MessagePayload payload;
+                                std::string content = "";
+                                if (!config.welcome_content.empty()) {
+                                    content = format_placeholders(config.welcome_content, user, server, final_count);
                                 }
-                                embed["colour"] = col;
-                            }
-                            if (emb_json.contains("image")) {
-                                std::string img_url = emb_json["image"].get<std::string>();
-                                std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
-                                if (!desc.empty()) desc += "\n";
-                                desc += "![](" + img_url + ")";
-                                embed["description"] = desc;
-                            }
+                                payload.content = content;
 
-                            if (!embed.empty()) {
-                                payload.embeds.push_back(embed);
-                            }
+                                nlohmann::json embed = nlohmann::json::object();
+                                if (emb_json.contains("title")) {
+                                    embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), user, server, final_count);
+                                }
+                                if (emb_json.contains("description")) {
+                                    embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), user, server, final_count);
+                                }
+                                if (emb_json.contains("color")) {
+                                    std::string col = emb_json["color"].get<std::string>();
+                                    if (col == "random") {
+                                        char hex[8];
+                                        snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
+                                        col = hex;
+                                    }
+                                    embed["colour"] = col;
+                                }
+                                if (emb_json.contains("image")) {
+                                    std::string img_url = format_placeholders(emb_json["image"].get<std::string>(), user, server, final_count);
+                                    std::string media_id = bot.rest().upload_from_url(img_url);
+                                    if (!media_id.empty()) {
+                                        embed["media"] = media_id;
+                                    } else {
+                                        std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
+                                        if (!desc.empty()) desc += "\n";
+                                        desc += "![](" + img_url + ")";
+                                        embed["description"] = desc;
+                                    }
+                                }
+
+                                if (!embed.empty()) {
+                                    payload.embeds.push_back(embed);
+                                }
+
+                                bot.send_message(config.welcome_channel_id, payload);
+                            }).detach();
                         } else {
+                            stoatpp::models::MessagePayload payload;
                             payload.content = format_placeholders(config.welcome_content, user, server, final_count);
+                            bot.send_message(config.welcome_channel_id, payload);
                         }
-
-                        bot.send_message(config.welcome_channel_id, payload);
                     });
                 });
             }
@@ -1280,7 +1319,6 @@ public:
                 bot.fetch_user(e.user_id, [&bot, e, config, server, final_count](stoatpp::models::User user, bool user_ok) {
                     if (!user_ok) return;
 
-                    stoatpp::models::MessagePayload payload;
                     if (config.leave_type == "embed") {
                         nlohmann::json emb_json = nlohmann::json::object();
                         if (!config.leave_embed_json.empty()) {
@@ -1289,44 +1327,54 @@ public:
                             } catch(...) {}
                         }
 
-                        std::string content = "";
-                        if (!config.leave_content.empty()) {
-                            content = format_placeholders(config.leave_content, user, server, final_count);
-                        }
-                        payload.content = content;
-
-                        nlohmann::json embed = nlohmann::json::object();
-                        if (emb_json.contains("title")) {
-                            embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), user, server, final_count);
-                        }
-                        if (emb_json.contains("description")) {
-                            embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), user, server, final_count);
-                        }
-                        if (emb_json.contains("color")) {
-                            std::string col = emb_json["color"].get<std::string>();
-                            if (col == "random") {
-                                char hex[8];
-                                snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
-                                col = hex;
+                        std::thread([&bot, config, user, server, final_count, emb_json]() {
+                            stoatpp::models::MessagePayload payload;
+                            std::string content = "";
+                            if (!config.leave_content.empty()) {
+                                content = format_placeholders(config.leave_content, user, server, final_count);
                             }
-                            embed["colour"] = col;
-                        }
-                        if (emb_json.contains("image")) {
-                            std::string img_url = emb_json["image"].get<std::string>();
-                            std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
-                            if (!desc.empty()) desc += "\n";
-                            desc += "![](" + img_url + ")";
-                            embed["description"] = desc;
-                        }
+                            payload.content = content;
 
-                        if (!embed.empty()) {
-                            payload.embeds.push_back(embed);
-                        }
+                            nlohmann::json embed = nlohmann::json::object();
+                            if (emb_json.contains("title")) {
+                                embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), user, server, final_count);
+                            }
+                            if (emb_json.contains("description")) {
+                                embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), user, server, final_count);
+                            }
+                            if (emb_json.contains("color")) {
+                                std::string col = emb_json["color"].get<std::string>();
+                                if (col == "random") {
+                                    char hex[8];
+                                    snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
+                                    col = hex;
+                                }
+                                embed["colour"] = col;
+                            }
+                            if (emb_json.contains("image")) {
+                                std::string img_url = format_placeholders(emb_json["image"].get<std::string>(), user, server, final_count);
+                                std::string media_id = bot.rest().upload_from_url(img_url);
+                                if (!media_id.empty()) {
+                                    embed["media"] = media_id;
+                                } else {
+                                    std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
+                                    if (!desc.empty()) desc += "\n";
+                                    desc += "![](" + img_url + ")";
+                                    embed["description"] = desc;
+                                }
+                            }
+
+                            if (!embed.empty()) {
+                                payload.embeds.push_back(embed);
+                            }
+
+                            bot.send_message(config.leave_channel_id, payload);
+                        }).detach();
                     } else {
+                        stoatpp::models::MessagePayload payload;
                         payload.content = format_placeholders(config.leave_content, user, server, final_count);
+                        bot.send_message(config.leave_channel_id, payload);
                     }
-
-                    bot.send_message(config.leave_channel_id, payload);
                 });
             });
         });
