@@ -32,7 +32,7 @@
 #include "cogs/media.h"
 #include "cogs/reminders.h"
 #include "cogs/antiraid.h"
-#include "cogs/recurring.h"
+#include "cogs/auto.h"
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string& filepath = ".env") {
@@ -195,7 +195,7 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::MediaModule>());
     bot.use(std::make_unique<bronx::cogs::RemindersModule>());
     bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
-    bot.use(std::make_unique<bronx::cogs::RecurringModule>());
+    bot.use(std::make_unique<bronx::cogs::AutoModule>());
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
         std::cout << "[bronx event] ready! logged in as: " << e.user.username 

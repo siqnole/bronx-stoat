@@ -83,12 +83,17 @@ private:
     static std::optional<Database::RecurringMessage> resolve_rm(
             const std::string& server_id, const std::string& query) {
         if (!g_db) return std::nullopt;
-        // Try numeric ID first
-        try {
-            int id = std::stoi(query);
-            return g_db->get_recurring_by_id(id, server_id);
-        } catch (...) {}
-        // Fall back to name
+        // Only treat query as a numeric ID if every character is a digit
+        bool all_digits = !query.empty() &&
+            std::all_of(query.begin(), query.end(), [](unsigned char c) { return std::isdigit(c); });
+        if (all_digits) {
+            try {
+                int id = std::stoi(query);
+                auto by_id = g_db->get_recurring_by_id(id, server_id);
+                if (by_id) return by_id;
+            } catch (...) {}
+        }
+        // Fall back to name search
         return g_db->get_recurring_by_name(server_id, query);
     }
 
@@ -174,6 +179,33 @@ private:
         char buf[16];
         snprintf(buf, sizeof(buf), "%.1f", pct);
         return std::string(buf);
+    }
+
+    // -----------------------------------------------------------------------
+    // Hardcoded owner ID fallback (until library owner_id is fixed)
+    // -----------------------------------------------------------------------
+    static constexpr const char* HARDCODED_OWNER_ID = "01FZB2QAPRVT8PVMF11480GRCD";
+
+    static bool is_bot_owner(stoatpp::cluster& bot, const std::string& user_id) {
+        return bot.is_owner(user_id) || user_id == HARDCODED_OWNER_ID;
+    }
+
+    // -----------------------------------------------------------------------
+    // Unescape literal \n sequences in stored text into real newlines.
+    // Users type `\n` in their message; this converts them to actual '\n'.
+    // -----------------------------------------------------------------------
+    static std::string unescape_newlines(std::string s) {
+        std::string out;
+        out.reserve(s.size());
+        for (size_t i = 0; i < s.size(); ++i) {
+            if (s[i] == '\\' && i + 1 < s.size() && s[i + 1] == 'n') {
+                out += '\n';
+                ++i;
+            } else {
+                out += s[i];
+            }
+        }
+        return out;
     }
 
     // -----------------------------------------------------------------------
@@ -275,10 +307,10 @@ private:
 
             nlohmann::json embed = nlohmann::json::object();
             if (emb_json.contains("title") && emb_json["title"].is_string()) {
-                embed["title"] = apply_tokens(emb_json["title"].get<std::string>(), bot, rm.server_id, rm.owner_tokens);
+                embed["title"] = unescape_newlines(apply_tokens(emb_json["title"].get<std::string>(), bot, rm.server_id, rm.owner_tokens));
             }
             if (emb_json.contains("description") && emb_json["description"].is_string()) {
-                embed["description"] = apply_tokens(emb_json["description"].get<std::string>(), bot, rm.server_id, rm.owner_tokens);
+                embed["description"] = unescape_newlines(apply_tokens(emb_json["description"].get<std::string>(), bot, rm.server_id, rm.owner_tokens));
             }
             if (emb_json.contains("color") && emb_json["color"].is_string()) {
                 std::string col = emb_json["color"].get<std::string>();
@@ -338,7 +370,7 @@ public:
 
                     // ---------- EXAMPLE (owner only) ----------
                     if (!args.empty() && args[0] == "example") {
-                        if (!bot.is_owner(msg.author.id)) {
+                        if (!is_bot_owner(bot, msg.author.id)) {
                             bot.send_message(msg.channel_id, "⚠️ The `example` subcommand is only available to the bot owner.");
                             return;
                         }
@@ -382,8 +414,9 @@ public:
                             "• `" + pfx + "recurse remove <name|id>` - Remove a recurring message.\n"
                             "• `" + pfx + "recurse list` - List all recurring messages for this server.\n"
                             "• `" + pfx + "recurse edit <name|id> [key:value ...]` - Edit a recurring message.\n"
-                            "• `" + pfx + "recurse test <name|id>` - Immediately fire the message as a test.\n"
-                            "• `" + pfx + "recurse example` - (Bot owner) Post a diagnostics embed showing all tokens.\n\n"
+                            "\u2022 `" + pfx + "recurse send <name|id>` - Send now and reset the interval timer.\n"
+                            "\u2022 `" + pfx + "recurse test <name|id>` - Preview the message without affecting the timer.\n"
+                            "\u2022 `" + pfx + "recurse example` - (Bot owner) Post a diagnostics embed showing all tokens.\n\n"
                             "**Available tokens (all users):** `{server}` `{membercount}` `{servercount}` `{cachecount}` `{uptime}` `{ping}`\n"
                             "**Owner-only tokens:** `{ram}` `{cpu}` `{threads}`");
                         return;
@@ -441,7 +474,7 @@ public:
                             return;
                         }
 
-                        bool is_owner = bot.is_owner(msg.author.id);
+                        bool is_owner = is_bot_owner(bot, msg.author.id);
 
                         // Wizard: ask for message type
                         bot.send_message(msg.channel_id,
@@ -555,22 +588,36 @@ public:
 
                     // ===================== LIST =====================
                     if (sub == "list" || sub == "ls") {
+                        auto now_ts = static_cast<uint64_t>(
+                            std::chrono::duration_cast<std::chrono::seconds>(
+                                std::chrono::system_clock::now().time_since_epoch()).count());
                         auto msgs = g_db->get_recurring_messages_for_server(msg.server_id);
                         if (msgs.empty()) {
-                            bot.send_message(msg.channel_id, "ℹ️ No recurring messages configured on this server. Use `" + pfx + "recurse add` to set one up.");
+                            bot.send_message(msg.channel_id, "\u2139\ufe0f No recurring messages configured on this server. Use `" + pfx + "recurse add` to set one up.");
                             return;
                         }
                         stoatpp::models::MessagePayload payload;
                         nlohmann::json embed = nlohmann::json::object();
-                        embed["title"] = "🔁 Recurring Messages (" + std::to_string(msgs.size()) + "/10)";
+                        embed["title"] = "\U0001f501 Recurring Messages (" + std::to_string(msgs.size()) + "/10)";
                         embed["colour"] = "#5865f2";
                         std::string desc;
                         for (const auto& rm : msgs) {
-                            desc += "**#" + std::to_string(rm.id) + " — " + rm.name + "**\n";
-                            desc += "• Channel: <#" + rm.channel_id + ">\n";
-                            desc += "• Interval: every **" + format_interval(rm.interval_seconds) + "**\n";
-                            desc += "• Type: `" + rm.message_type + "`";
-                            if (rm.owner_tokens) desc += " 🔑";
+                            uint64_t next_ts = rm.last_sent + rm.interval_seconds;
+                            std::string next_str;
+                            if (rm.last_sent == 0) {
+                                next_str = "*first send pending*";
+                            } else if (next_ts <= now_ts) {
+                                next_str = "*sending any moment*";
+                            } else {
+                                // Revolt relative timestamp: <t:unix:R>
+                                next_str = "<t:" + std::to_string(next_ts) + ":R>";
+                            }
+                            desc += "**#" + std::to_string(rm.id) + " \u2014 " + rm.name + "**\n";
+                            desc += "\u2022 Channel: <#" + rm.channel_id + ">\n";
+                            desc += "\u2022 Interval: every **" + format_interval(rm.interval_seconds) + "**\n";
+                            desc += "\u2022 Next send: " + next_str + "\n";
+                            desc += "\u2022 Type: `" + rm.message_type + "`";
+                            if (rm.owner_tokens) desc += " \U0001f511";
                             desc += "\n\n";
                         }
                         embed["description"] = desc;
@@ -592,14 +639,49 @@ public:
                         }
                         auto rm_opt = resolve_rm(msg.server_id, query);
                         if (!rm_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ No recurring message named `" + query + "` found on this server.");
+                            bot.send_message(msg.channel_id, "\u26a0\ufe0f No recurring message named `" + query + "` found on this server.");
                             return;
                         }
+                        // test = preview only, does NOT reset the timer
                         send_recurring(bot, *rm_opt, rm_opt->channel_id, [&bot, msg, rm_opt](bool ok) {
                             if (ok) {
-                                bot.send_message(msg.channel_id, "✅ Test message **\"" + rm_opt->name + "\"** sent to <#" + rm_opt->channel_id + ">.");
+                                bot.send_message(msg.channel_id, "\u2705 Test message **\"" + rm_opt->name + "\"** sent to <#" + rm_opt->channel_id + "> *(timer unchanged)*.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to send test message. Check that the bot has permission to post in <#" + rm_opt->channel_id + ">.");
+                                bot.send_message(msg.channel_id, "\u26a0\ufe0f Failed to send test message. Check that the bot has permission to post in <#" + rm_opt->channel_id + ">.");
+                            }
+                        });
+                        return;
+                    }
+
+                    // ===================== SEND =====================
+                    if (sub == "send") {
+                        if (args.size() < 2) {
+                            bot.send_message(msg.channel_id, "usage: `" + pfx + "recurse send <name|id>`");
+                            return;
+                        }
+                        std::string query;
+                        for (size_t i = 1; i < args.size(); ++i) {
+                            if (i > 1) query += " ";
+                            query += args[i];
+                        }
+                        auto rm_opt = resolve_rm(msg.server_id, query);
+                        if (!rm_opt) {
+                            bot.send_message(msg.channel_id, "\u26a0\ufe0f No recurring message named `" + query + "` found on this server.");
+                            return;
+                        }
+                        // send = fire NOW and reset the timer so next post is interval from now
+                        uint64_t now_ts = static_cast<uint64_t>(
+                            std::chrono::duration_cast<std::chrono::seconds>(
+                                std::chrono::system_clock::now().time_since_epoch()).count());
+                        g_db->update_recurring_last_sent(rm_opt->id, now_ts);
+                        send_recurring(bot, *rm_opt, rm_opt->channel_id, [&bot, msg, rm_opt, now_ts](bool ok) {
+                            if (ok) {
+                                uint64_t next_ts = now_ts + rm_opt->interval_seconds;
+                                bot.send_message(msg.channel_id,
+                                    "\u2705 Sent **\"" + rm_opt->name + "\"** to <#" + rm_opt->channel_id +
+                                    "> and reset timer. Next post: <t:" + std::to_string(next_ts) + ":R>.");
+                            } else {
+                                bot.send_message(msg.channel_id, "\u26a0\ufe0f Failed to send message. Timer was still reset.");
                             }
                         });
                         return;
@@ -718,13 +800,13 @@ public:
                     }
 
                     bot.send_message(msg.channel_id,
-                        "⚠️ Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `test`, or `example`.");
+                        "\u26a0\ufe0f Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `test`, `send`, or `example`.");
                 });
             },
             "Utility",
             0,
             0,
-            {"add <name> <#channel> <interval>", "remove <name|id>", "list", "edit <name|id> [key:val...]", "test <name|id>", "example"}
+            {"add <name> <#channel> <interval>", "remove <name|id>", "list", "edit <name|id> [key:val...]", "test <name|id>", "send <name|id>", "example"}
         });
 
         // -----------------------------------------------------------------------

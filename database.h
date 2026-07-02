@@ -90,6 +90,39 @@ public:
         std::string default_profile_action = "none";
     };
 
+
+    // Scope filter helper (shared by autoresponder and autoreact)
+    struct AutoScopeFilter {
+        std::vector<std::string> allow_roles;
+        std::vector<std::string> allow_users;
+        std::vector<std::string> allow_channels;
+        std::vector<std::string> ignore_roles;
+        std::vector<std::string> ignore_users;
+        std::vector<std::string> ignore_channels;
+    };
+
+    struct AutoresponderConfig {
+        int id = 0;
+        std::string server_id;
+        std::string name;
+        std::string keyword;
+        std::string match_type = "contains"; // "contains" | "exact" | "starts" | "ends"
+        std::string message_type = "text";   // "text" | "embed"
+        std::string content;
+        std::string embed_json;
+        AutoScopeFilter filter;
+    };
+
+    struct AutoreactConfig {
+        int id = 0;
+        std::string server_id;
+        std::string name;
+        std::string keyword;
+        std::string match_type = "contains";
+        std::string emojis;   // comma-separated cleaned emoji IDs / unicode
+        AutoScopeFilter filter;
+    };
+
     struct RecurringMessage {
         int id = 0;
         std::string server_id;
@@ -148,6 +181,17 @@ private:
     // channel_id -> id (for uniqueness)
     std::unordered_map<std::string, int> rm_channel_index_;
     std::shared_mutex rm_cache_mutex_;
+
+    // id -> AutoresponderConfig
+    std::unordered_map<int, AutoresponderConfig> arsp_cache_;
+    std::unordered_map<std::string, std::vector<int>> arsp_server_index_;
+    std::shared_mutex arsp_cache_mutex_;
+
+    // id -> AutoreactConfig
+    std::unordered_map<int, AutoreactConfig> arct_cache_;
+    std::unordered_map<std::string, std::vector<int>> arct_server_index_;
+    std::shared_mutex arct_cache_mutex_;
+
 
     // Server ID -> Set of "Type:ID"
     std::unordered_map<std::string, std::unordered_set<std::string>> trusted_cache_;
@@ -531,6 +575,46 @@ public:
             "  INDEX idx_rm_server (server_id),"
             "  UNIQUE KEY uq_rm_channel (channel_id)"
             ")";
+            // Autoresponder table
+            std::string sql_ar =
+                "CREATE TABLE IF NOT EXISTS autoresponders ("
+                "  id INT AUTO_INCREMENT PRIMARY KEY,"
+                "  server_id VARCHAR(30) NOT NULL,"
+                "  name VARCHAR(100) NOT NULL,"
+                "  keyword VARCHAR(200) NOT NULL,"
+                "  match_type VARCHAR(10) NOT NULL DEFAULT \'contains\',"
+                "  message_type VARCHAR(10) NOT NULL DEFAULT \'text\',"
+                "  content TEXT DEFAULT NULL,"
+                "  embed_json JSON DEFAULT NULL,"
+                "  allow_roles JSON DEFAULT NULL,"
+                "  allow_users JSON DEFAULT NULL,"
+                "  allow_channels JSON DEFAULT NULL,"
+                "  ignore_roles JSON DEFAULT NULL,"
+                "  ignore_users JSON DEFAULT NULL,"
+                "  ignore_channels JSON DEFAULT NULL,"
+                "  INDEX idx_arsp_server (server_id)"
+                ")";
+            mysql_query(mysql_, sql_ar.c_str());
+
+            // Autoreact table
+            std::string sql_are =
+                "CREATE TABLE IF NOT EXISTS autoreacts ("
+                "  id INT AUTO_INCREMENT PRIMARY KEY,"
+                "  server_id VARCHAR(30) NOT NULL,"
+                "  name VARCHAR(100) NOT NULL,"
+                "  keyword VARCHAR(200) NOT NULL,"
+                "  match_type VARCHAR(10) NOT NULL DEFAULT \'contains\',"
+                "  emojis TEXT NOT NULL,"
+                "  allow_roles JSON DEFAULT NULL,"
+                "  allow_users JSON DEFAULT NULL,"
+                "  allow_channels JSON DEFAULT NULL,"
+                "  ignore_roles JSON DEFAULT NULL,"
+                "  ignore_users JSON DEFAULT NULL,"
+                "  ignore_channels JSON DEFAULT NULL,"
+                "  INDEX idx_arct_server (server_id)"
+                ")";
+            mysql_query(mysql_, sql_are.c_str());
+
         if (mysql_query(mysql_, create_rm.c_str())) {
             std::cerr << "[bronx db] failed to create table 'recurring_messages': " << mysql_error(mysql_) << "\n";
             return false;
@@ -1281,6 +1365,81 @@ public:
                         entries.push_back({row[0], std::stoi(row[1])});
                     }
                 }
+
+            // Load autoresponders cache
+            {
+                auto load_json_arr = [](const char* raw) -> std::vector<std::string> {
+                    std::vector<std::string> out;
+                    if (!raw) return out;
+                    try {
+                        auto j = nlohmann::json::parse(raw);
+                        if (j.is_array()) {
+                            for (const auto& v : j) {
+                                if (v.is_string()) out.push_back(v.get<std::string>());
+                            }
+                        }
+                    } catch (...) {}
+                    return out;
+                };
+
+                if (mysql_query(mysql_,
+                    "SELECT id,server_id,name,keyword,match_type,message_type,content,embed_json,"
+                    "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels "
+                    "FROM autoresponders") == 0) {
+                    MYSQL_RES* res = mysql_store_result(mysql_);
+                    if (res) {
+                        MYSQL_ROW row;
+                        while ((row = mysql_fetch_row(res))) {
+                            AutoresponderConfig c;
+                            c.id          = row[0] ? std::stoi(row[0]) : 0;
+                            c.server_id   = row[1] ? row[1] : "";
+                            c.name        = row[2] ? row[2] : "";
+                            c.keyword     = row[3] ? row[3] : "";
+                            c.match_type  = row[4] ? row[4] : "contains";
+                            c.message_type= row[5] ? row[5] : "text";
+                            c.content     = row[6] ? row[6] : "";
+                            c.embed_json  = row[7] ? row[7] : "";
+                            c.filter.allow_roles    = load_json_arr(row[8]);
+                            c.filter.allow_users    = load_json_arr(row[9]);
+                            c.filter.allow_channels = load_json_arr(row[10]);
+                            c.filter.ignore_roles   = load_json_arr(row[11]);
+                            c.filter.ignore_users   = load_json_arr(row[12]);
+                            c.filter.ignore_channels= load_json_arr(row[13]);
+                            arsp_cache_[c.id] = c;
+                            arsp_server_index_[c.server_id].push_back(c.id);
+                        }
+                        mysql_free_result(res);
+                    }
+                }
+
+                if (mysql_query(mysql_,
+                    "SELECT id,server_id,name,keyword,match_type,emojis,"
+                    "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels "
+                    "FROM autoreacts") == 0) {
+                    MYSQL_RES* res = mysql_store_result(mysql_);
+                    if (res) {
+                        MYSQL_ROW row;
+                        while ((row = mysql_fetch_row(res))) {
+                            AutoreactConfig c;
+                            c.id          = row[0] ? std::stoi(row[0]) : 0;
+                            c.server_id   = row[1] ? row[1] : "";
+                            c.name        = row[2] ? row[2] : "";
+                            c.keyword     = row[3] ? row[3] : "";
+                            c.match_type  = row[4] ? row[4] : "contains";
+                            c.emojis      = row[5] ? row[5] : "";
+                            c.filter.allow_roles    = load_json_arr(row[6]);
+                            c.filter.allow_users    = load_json_arr(row[7]);
+                            c.filter.allow_channels = load_json_arr(row[8]);
+                            c.filter.ignore_roles   = load_json_arr(row[9]);
+                            c.filter.ignore_users   = load_json_arr(row[10]);
+                            c.filter.ignore_channels= load_json_arr(row[11]);
+                            arct_cache_[c.id] = c;
+                            arct_server_index_[c.server_id].push_back(c.id);
+                        }
+                        mysql_free_result(res);
+                    }
+                }
+            }
                 mysql_free_result(res);
             }
         }
@@ -2493,7 +2652,8 @@ public:
             "message_type = '" + esc_type + "', "
             "content = '" + esc_content + "', "
             "embed_json = " + esc_embed_val + ", "
-            "interval_seconds = " + std::to_string(rm.interval_seconds) + " "
+            "interval_seconds = " + std::to_string(rm.interval_seconds) + ", "
+            "owner_tokens = " + (rm.owner_tokens ? std::string("1") : std::string("0")) + " "
             "WHERE id = " + std::to_string(rm.id) +
             " AND server_id = '" + escape_string(rm.server_id) + "'";
 
@@ -2531,6 +2691,265 @@ public:
         auto it = rm_cache_.find(id);
         if (it != rm_cache_.end()) it->second.last_sent = ts;
         return true;
+    }
+
+    // =========================================================================
+    // Autoresponder CRUD
+    // =========================================================================
+
+    static std::string json_arr_str(const std::vector<std::string>& v) {
+        nlohmann::json j = v;
+        return j.dump();
+    }
+
+    std::vector<AutoresponderConfig> get_autoresponders_for_server(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(arsp_cache_mutex_);
+        std::vector<AutoresponderConfig> out;
+        auto it = arsp_server_index_.find(server_id);
+        if (it != arsp_server_index_.end()) {
+            for (int id : it->second) {
+                auto it2 = arsp_cache_.find(id);
+                if (it2 != arsp_cache_.end()) out.push_back(it2->second);
+            }
+        }
+        return out;
+    }
+
+    std::optional<AutoresponderConfig> get_autoresponder_by_id(int id, const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(arsp_cache_mutex_);
+        auto it = arsp_cache_.find(id);
+        if (it != arsp_cache_.end() && it->second.server_id == server_id) return it->second;
+        return std::nullopt;
+    }
+
+    std::optional<AutoresponderConfig> get_autoresponder_by_name(const std::string& server_id, const std::string& name) {
+        std::shared_lock<std::shared_mutex> lock(arsp_cache_mutex_);
+        std::string lower_name = name;
+        std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+        auto it = arsp_server_index_.find(server_id);
+        if (it != arsp_server_index_.end()) {
+            for (int id : it->second) {
+                auto it2 = arsp_cache_.find(id);
+                if (it2 != arsp_cache_.end()) {
+                    std::string cn = it2->second.name;
+                    std::transform(cn.begin(), cn.end(), cn.begin(), ::tolower);
+                    if (cn == lower_name) return it2->second;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool add_autoresponder(AutoresponderConfig& c) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+        auto null_or = [](const std::vector<std::string>& v) -> std::string {
+            if (v.empty()) return "NULL";
+            nlohmann::json j = v;
+            return "'" + j.dump() + "'";
+        };
+        std::string sql =
+            "INSERT INTO autoresponders (server_id,name,keyword,match_type,message_type,content,embed_json,"
+            "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels) VALUES ("
+            "'" + escape_string(c.server_id) + "',"
+            "'" + escape_string(c.name) + "',"
+            "'" + escape_string(c.keyword) + "',"
+            "'" + escape_string(c.match_type) + "',"
+            "'" + escape_string(c.message_type) + "',"
+            "'" + escape_string(c.content) + "',"
+            + (c.embed_json.empty() ? "NULL" : ("'" + escape_string(c.embed_json) + "'")) + ","
+            + null_or(c.filter.allow_roles) + ","
+            + null_or(c.filter.allow_users) + ","
+            + null_or(c.filter.allow_channels) + ","
+            + null_or(c.filter.ignore_roles) + ","
+            + null_or(c.filter.ignore_users) + ","
+            + null_or(c.filter.ignore_channels) + ")";
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] add_autoresponder failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        c.id = static_cast<int>(mysql_insert_id(mysql_));
+        std::lock_guard<std::shared_mutex> cache_lock(arsp_cache_mutex_);
+        arsp_cache_[c.id] = c;
+        arsp_server_index_[c.server_id].push_back(c.id);
+        return true;
+    }
+
+    bool remove_autoresponder(int id, const std::string& server_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "DELETE FROM autoresponders WHERE id=" + std::to_string(id) +
+            " AND server_id='" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) || mysql_affected_rows(mysql_) == 0) return false;
+        std::lock_guard<std::shared_mutex> cache_lock(arsp_cache_mutex_);
+        auto it = arsp_cache_.find(id);
+        if (it != arsp_cache_.end()) {
+            auto& sv = arsp_server_index_[it->second.server_id];
+            sv.erase(std::remove(sv.begin(), sv.end(), id), sv.end());
+            arsp_cache_.erase(it);
+        }
+        return true;
+    }
+
+    bool update_autoresponder(const AutoresponderConfig& c) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+        auto null_or = [](const std::vector<std::string>& v) -> std::string {
+            if (v.empty()) return "NULL";
+            nlohmann::json j = v;
+            return "'" + j.dump() + "'";
+        };
+        std::string sql =
+            "UPDATE autoresponders SET "
+            "name='" + escape_string(c.name) + "',"
+            "keyword='" + escape_string(c.keyword) + "',"
+            "match_type='" + escape_string(c.match_type) + "',"
+            "message_type='" + escape_string(c.message_type) + "',"
+            "content='" + escape_string(c.content) + "',"
+            "embed_json=" + (c.embed_json.empty() ? "NULL" : ("'" + escape_string(c.embed_json) + "'")) + ","
+            "allow_roles=" + null_or(c.filter.allow_roles) + ","
+            "allow_users=" + null_or(c.filter.allow_users) + ","
+            "allow_channels=" + null_or(c.filter.allow_channels) + ","
+            "ignore_roles=" + null_or(c.filter.ignore_roles) + ","
+            "ignore_users=" + null_or(c.filter.ignore_users) + ","
+            "ignore_channels=" + null_or(c.filter.ignore_channels) + " "
+            "WHERE id=" + std::to_string(c.id) + " AND server_id='" + escape_string(c.server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str())) return false;
+        std::lock_guard<std::shared_mutex> cache_lock(arsp_cache_mutex_);
+        arsp_cache_[c.id] = c;
+        return true;
+    }
+
+    // =========================================================================
+    // Autoreact CRUD
+    // =========================================================================
+
+    std::vector<AutoreactConfig> get_autoreacts_for_server(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(arct_cache_mutex_);
+        std::vector<AutoreactConfig> out;
+        auto it = arct_server_index_.find(server_id);
+        if (it != arct_server_index_.end()) {
+            for (int id : it->second) {
+                auto it2 = arct_cache_.find(id);
+                if (it2 != arct_cache_.end()) out.push_back(it2->second);
+            }
+        }
+        return out;
+    }
+
+    std::optional<AutoreactConfig> get_autoreact_by_id(int id, const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(arct_cache_mutex_);
+        auto it = arct_cache_.find(id);
+        if (it != arct_cache_.end() && it->second.server_id == server_id) return it->second;
+        return std::nullopt;
+    }
+
+    std::optional<AutoreactConfig> get_autoreact_by_name(const std::string& server_id, const std::string& name) {
+        std::shared_lock<std::shared_mutex> lock(arct_cache_mutex_);
+        std::string lower_name = name;
+        std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+        auto it = arct_server_index_.find(server_id);
+        if (it != arct_server_index_.end()) {
+            for (int id : it->second) {
+                auto it2 = arct_cache_.find(id);
+                if (it2 != arct_cache_.end()) {
+                    std::string cn = it2->second.name;
+                    std::transform(cn.begin(), cn.end(), cn.begin(), ::tolower);
+                    if (cn == lower_name) return it2->second;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool add_autoreact(AutoreactConfig& c) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+        auto null_or = [](const std::vector<std::string>& v) -> std::string {
+            if (v.empty()) return "NULL";
+            nlohmann::json j = v;
+            return "'" + j.dump() + "'";
+        };
+        std::string sql =
+            "INSERT INTO autoreacts (server_id,name,keyword,match_type,emojis,"
+            "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels) VALUES ("
+            "'" + escape_string(c.server_id) + "',"
+            "'" + escape_string(c.name) + "',"
+            "'" + escape_string(c.keyword) + "',"
+            "'" + escape_string(c.match_type) + "',"
+            "'" + escape_string(c.emojis) + "',"
+            + null_or(c.filter.allow_roles) + ","
+            + null_or(c.filter.allow_users) + ","
+            + null_or(c.filter.allow_channels) + ","
+            + null_or(c.filter.ignore_roles) + ","
+            + null_or(c.filter.ignore_users) + ","
+            + null_or(c.filter.ignore_channels) + ")";
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] add_autoreact failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        c.id = static_cast<int>(mysql_insert_id(mysql_));
+        std::lock_guard<std::shared_mutex> cache_lock(arct_cache_mutex_);
+        arct_cache_[c.id] = c;
+        arct_server_index_[c.server_id].push_back(c.id);
+        return true;
+    }
+
+    bool remove_autoreact(int id, const std::string& server_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "DELETE FROM autoreacts WHERE id=" + std::to_string(id) +
+            " AND server_id='" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) || mysql_affected_rows(mysql_) == 0) return false;
+        std::lock_guard<std::shared_mutex> cache_lock(arct_cache_mutex_);
+        auto it = arct_cache_.find(id);
+        if (it != arct_cache_.end()) {
+            auto& sv = arct_server_index_[it->second.server_id];
+            sv.erase(std::remove(sv.begin(), sv.end(), id), sv.end());
+            arct_cache_.erase(it);
+        }
+        return true;
+    }
+
+    bool update_autoreact(const AutoreactConfig& c) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+        auto null_or = [](const std::vector<std::string>& v) -> std::string {
+            if (v.empty()) return "NULL";
+            nlohmann::json j = v;
+            return "'" + j.dump() + "'";
+        };
+        std::string sql =
+            "UPDATE autoreacts SET "
+            "name='" + escape_string(c.name) + "',"
+            "keyword='" + escape_string(c.keyword) + "',"
+            "match_type='" + escape_string(c.match_type) + "',"
+            "emojis='" + escape_string(c.emojis) + "',"
+            "allow_roles=" + null_or(c.filter.allow_roles) + ","
+            "allow_users=" + null_or(c.filter.allow_users) + ","
+            "allow_channels=" + null_or(c.filter.allow_channels) + ","
+            "ignore_roles=" + null_or(c.filter.ignore_roles) + ","
+            "ignore_users=" + null_or(c.filter.ignore_users) + ","
+            "ignore_channels=" + null_or(c.filter.ignore_channels) + " "
+            "WHERE id=" + std::to_string(c.id) + " AND server_id='" + escape_string(c.server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str())) return false;
+        std::lock_guard<std::shared_mutex> cache_lock(arct_cache_mutex_);
+        arct_cache_[c.id] = c;
+        return true;
+    }
+
+    bool update_autoresponder_filter(int id, const std::string& server_id, const AutoScopeFilter& f) {
+        auto opt = get_autoresponder_by_id(id, server_id);
+        if (!opt) return false;
+        opt->filter = f;
+        return update_autoresponder(*opt);
+    }
+
+    bool update_autoreact_filter(int id, const std::string& server_id, const AutoScopeFilter& f) {
+        auto opt = get_autoreact_by_id(id, server_id);
+        if (!opt) return false;
+        opt->filter = f;
+        return update_autoreact(*opt);
     }
 
 };
