@@ -30,8 +30,40 @@ private:
     std::mutex spam_mutex_;
 
     // ── Helper: normalise action string ──────────────────────────────────────
+    static bool is_valid_single_action(const std::string& a) {
+        return a == "ban" || a == "kick" || a == "timeout" || a == "warn" || a == "delete" || a == "none";
+    }
+
+    // Validate a comma-separated action list (e.g. "delete,warn" or "ban")
     static bool is_valid_action(const std::string& a) {
-        return a == "ban" || a == "kick" || a == "timeout" || a == "warn" || a == "none";
+        if (a.empty() || a == "none") return true;
+        std::istringstream ss(a);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            // trim whitespace
+            token.erase(0, token.find_first_not_of(" \t"));
+            token.erase(token.find_last_not_of(" \t") + 1);
+            if (!is_valid_single_action(token)) return false;
+        }
+        return true;
+    }
+
+    // Normalise a comma-separated action list: trim spaces, lowercase, deduplicate
+    static std::string normalise_actions(const std::string& raw) {
+        if (raw.empty() || raw == "none") return "none";
+        std::istringstream ss(raw);
+        std::string token, result;
+        bool first = true;
+        while (std::getline(ss, token, ',')) {
+            token.erase(0, token.find_first_not_of(" \t"));
+            token.erase(token.find_last_not_of(" \t") + 1);
+            std::transform(token.begin(), token.end(), token.begin(), ::tolower);
+            if (token.empty()) continue;
+            if (!first) result += ",";
+            result += token;
+            first = false;
+        }
+        return result.empty() ? "none" : result;
     }
 
     // ── Helper: check if caller is allowed to manage antiraid ────────────────
@@ -54,63 +86,92 @@ private:
     }
 
     // ── Helper: perform an antiraid action on a user ─────────────────────────
-    //  action: "ban" | "kick" | "timeout" | "warn" | "none"
+    //  actions: comma-separated list, e.g. "delete,warn" | "ban" | "none"
+    //  channel_id / msg_id: required only when "delete" is among the actions
     //  rule:   short description of what triggered this (for logs)
     void execute_antiraid_action(stoatpp::cluster& bot,
                                  const std::string& server_id,
                                  const std::string& user_id,
                                  const std::string& username,
-                                 const std::string& action,
+                                 const std::string& actions,
                                  const std::string& rule,
-                                 const std::string& details) {
-        if (action == "none" || action.empty()) return;
+                                 const std::string& details,
+                                 const std::string& channel_id = "",
+                                 const std::string& msg_id = "") {
+        if (actions == "none" || actions.empty()) return;
 
-        // Log the event regardless of success
-        auto do_log = [&bot, server_id, action, rule, user_id, username, details]() {
-            log_antiraid_action(bot, server_id, action, rule, user_id, username, details);
+        // Log the combined action string once
+        auto do_log = [&bot, server_id, actions, rule, user_id, username, details]() {
+            log_antiraid_action(bot, server_id, actions, rule, user_id, username, details);
         };
 
-        if (action == "ban") {
-            bot.ban_user(server_id, user_id, "[antiraid] " + rule, [do_log](bool ok) {
-                if (ok) do_log();
-            });
-        } else if (action == "kick") {
-            bot.kick_member(server_id, user_id, [do_log](bool ok) {
-                if (ok) do_log();
-            });
-        } else if (action == "timeout") {
-            // Default timeout: 10 minutes
-            bot.timeout_member(server_id, user_id, "PT10M", [do_log](bool ok) {
-                if (ok) do_log();
-            });
-        } else if (action == "warn") {
-            // Send a DM warning — open_dm is synchronous; run on a thread to avoid blocking
-            std::thread([&bot, user_id, rule, details, do_log]() {
-                auto r = bot.rest().open_dm(user_id);
-                if (r.success() && r.body.contains("_id")) {
-                    std::string dm_id = r.body["_id"].get<std::string>();
-                    bot.send_message(dm_id, "⚠️ **Anti-Raid Warning**\nYou have been flagged by the automated anti-raid system.\n**Rule triggered:** " + rule + "\n**Details:** " + details);
+        // Split and execute each action
+        std::istringstream ss(actions);
+        std::string act;
+        bool logged = false;
+        while (std::getline(ss, act, ',')) {
+            act.erase(0, act.find_first_not_of(" \t"));
+            act.erase(act.find_last_not_of(" \t") + 1);
+            if (act.empty() || act == "none") continue;
+
+            if (act == "ban") {
+                if (!logged) { logged = true;
+                    bot.ban_user(server_id, user_id, "[antiraid] " + rule, [do_log](bool ok) {
+                        if (ok) do_log();
+                    });
+                } else {
+                    bot.ban_user(server_id, user_id, "[antiraid] " + rule, [](bool){});
                 }
-                do_log();
-            }).detach();
+            } else if (act == "kick") {
+                bot.kick_member(server_id, user_id, [do_log, &logged](bool ok) {
+                    if (ok && !logged) { logged = true; do_log(); }
+                });
+            } else if (act == "timeout") {
+                // Default timeout: 10 minutes
+                bot.timeout_member(server_id, user_id, "PT10M", [do_log, &logged](bool ok) {
+                    if (ok && !logged) { logged = true; do_log(); }
+                });
+            } else if (act == "warn") {
+                // Send a DM warning — open_dm is synchronous; run on a thread to avoid blocking
+                std::thread([&bot, user_id, rule, details, do_log, &logged]() {
+                    auto r = bot.rest().open_dm(user_id);
+                    if (r.success() && r.body.contains("_id")) {
+                        std::string dm_id = r.body["_id"].get<std::string>();
+                        bot.send_message(dm_id, "⚠️ **Anti-Raid Warning**\nYou have been flagged by the automated anti-raid system.\n**Rule triggered:** " + rule + "\n**Details:** " + details);
+                    }
+                    if (!logged) { logged = true; do_log(); }
+                }).detach();
+            } else if (act == "delete") {
+                // Delete the triggering message (only meaningful for spam; channel_id+msg_id must be provided)
+                if (!channel_id.empty() && !msg_id.empty()) {
+                    bot.delete_message(channel_id, msg_id, [do_log, &logged](bool ok) {
+                        if (ok && !logged) { logged = true; do_log(); }
+                    });
+                }
+            }
         }
+
+        // Ensure we log at least once even if all async callbacks haven't fired
+        // (e.g. for "delete" when the message was already gone)
+        if (!logged) do_log();
     }
 
     // ── Helper: pretty-print config ──────────────────────────────────────────
     static std::string format_config(const Database::AntiRaidConfig& cfg) {
         std::string enabled_mark = (cfg.joins_action != "none" || cfg.spam_action != "none" || cfg.default_profile_action != "none")
-                                   ? "✅ **Enabled**" : "⚠️ **Inactive** (all actions set to `none`)";
+                                   ? "✅ **Enabled**" : "⚠️ **Inactive** (all actions set to `none`)"; 
         return "🛡️ **Anti-Raid Configuration**\n" +
                enabled_mark + "\n\n" +
                "**Join Flood Detection**\n" +
                "• Threshold: `" + std::to_string(cfg.joins_threshold_count) + "` joins in `" + std::to_string(cfg.joins_threshold_seconds) + "s`\n" +
-               "• Action: `" + cfg.joins_action + "`\n\n" +
+               "• Actions: `" + cfg.joins_action + "`\n\n" +
                "**Message Spam Detection**\n" +
                "• Threshold: `" + std::to_string(cfg.spam_threshold_count) + "` messages in `" + std::to_string(cfg.spam_threshold_seconds) + "s`\n" +
-               "• Action: `" + cfg.spam_action + "`\n\n" +
+               "• Actions: `" + cfg.spam_action + "`\n\n" +
                "**Default Profile Detection**\n" +
-               "• Action on join (no avatar): `" + cfg.default_profile_action + "`\n\n" +
-               "*Use `.antiraid setup` to reconfigure, or `.antiraid <join|spam|profile> <options>` for individual settings.*";
+               "• Actions on join (no avatar): `" + cfg.default_profile_action + "`\n\n" +
+               "*Use `.antiraid setup` to reconfigure, or `.antiraid <join|spam|profile> <options>` for individual settings.*\n" +
+               "*Actions can be combined with commas, e.g. `delete,warn` or `ban`.*";
     }
 
 public:
@@ -203,7 +264,7 @@ public:
 
                                 bot.send_message(msg.channel_id,
                                     "**Step 2/4 — Join Flood Action: What should happen when join flooding is detected?**\n"
-                                    "Options: `ban`, `kick`, `timeout`, `warn`, `none`\n"
+                                    "Options: `ban`, `kick`, `timeout`, `warn`, `none` (combine with commas, e.g. `kick,warn`)\n"
                                     "Current: `" + cfg.joins_action + "`");
 
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30),
@@ -215,10 +276,10 @@ public:
 
                                         if (r2 != "skip") {
                                             if (!is_valid_action(r2)) {
-                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none`. Setup cancelled.");
+                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
                                                 return;
                                             }
-                                            cfg.joins_action = r2;
+                                            cfg.joins_action = normalise_actions(r2);
                                         }
 
                                         bot.send_message(msg.channel_id,
@@ -246,7 +307,7 @@ public:
 
                                                 bot.send_message(msg.channel_id,
                                                     "**Step 4/4 — Spam Action: What should happen when spam is detected?**\n"
-                                                    "Options: `ban`, `kick`, `timeout`, `warn`, `none`\n"
+                                                    "Options: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (combine with commas, e.g. `delete,warn`)\n"
                                                     "Current: `" + cfg.spam_action + "`");
 
                                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30),
@@ -258,15 +319,15 @@ public:
 
                                                         if (r4 != "skip") {
                                                             if (!is_valid_action(r4)) {
-                                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none`. Setup cancelled.");
+                                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas). Setup cancelled.");
                                                                 return;
                                                             }
-                                                            cfg.spam_action = r4;
+                                                            cfg.spam_action = normalise_actions(r4);
                                                         }
 
                                                         bot.send_message(msg.channel_id,
                                                             "**Step 5/5 — Default Profile Action: What should happen when a user joins with no avatar (default profile)?**\n"
-                                                            "Options: `ban`, `kick`, `timeout`, `warn`, `none`\n"
+                                                            "Options: `ban`, `kick`, `timeout`, `warn`, `none` (combine with commas, e.g. `kick,warn`)\n"
                                                             "Current: `" + cfg.default_profile_action + "`");
 
                                                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30),
@@ -278,10 +339,10 @@ public:
 
                                                                 if (r5 != "skip") {
                                                                     if (!is_valid_action(r5)) {
-                                                                        bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none`. Setup cancelled.");
+                                                                        bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
                                                                         return;
                                                                     }
-                                                                    cfg.default_profile_action = r5;
+                                                                    cfg.default_profile_action = normalise_actions(r5);
                                                                 }
 
                                                                 if (g_db->save_antiraid_config(cfg)) {
@@ -298,24 +359,34 @@ public:
                     }
 
                     // ── JOIN FLOOD ───────────────────────────────────────────
-                    // .antiraid join <count> <seconds> [action]
+                    // .antiraid join <count> <seconds> [action[,action...]]
                     if (sub == "join" || sub == "joins") {
                         if (args.size() < 3) {
                             bot.send_message(msg.channel_id,
                                 "Usage: `.antiraid join <count> <seconds> [action]`\n"
-                                "Actions: `ban`, `kick`, `timeout`, `warn`, `none`\n"
-                                "Example: `.antiraid join 5 60 kick`");
+                                "Actions: `ban`, `kick`, `timeout`, `warn`, `none` (combine with commas)\n"
+                                "Example: `.antiraid join 5 60 kick` or `.antiraid join 5 60 kick,warn`");
                             return;
                         }
                         try {
                             int count = std::stoi(args[1]);
                             int seconds = std::stoi(args[2]);
-                            std::string action = (args.size() >= 4) ? args[3] : cfg.joins_action;
-                            std::transform(action.begin(), action.end(), action.begin(), ::tolower);
+                            // Collect remaining args as the action (handles spaces between commas)
+                            std::string action_raw;
+                            if (args.size() >= 4) {
+                                for (size_t i = 3; i < args.size(); ++i) {
+                                    if (!action_raw.empty()) action_raw += ",";
+                                    action_raw += args[i];
+                                }
+                            } else {
+                                action_raw = cfg.joins_action;
+                            }
+                            std::transform(action_raw.begin(), action_raw.end(), action_raw.begin(), ::tolower);
+                            std::string action = normalise_actions(action_raw);
 
                             if (count < 1 || seconds < 1) throw std::invalid_argument("out of range");
                             if (!is_valid_action(action)) {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none`.");
+                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas).");
                                 return;
                             }
 
@@ -336,24 +407,34 @@ public:
                     }
 
                     // ── SPAM ─────────────────────────────────────────────────
-                    // .antiraid spam <count> <seconds> [action]
+                    // .antiraid spam <count> <seconds> [action[,action...]]
                     if (sub == "spam") {
                         if (args.size() < 3) {
                             bot.send_message(msg.channel_id,
                                 "Usage: `.antiraid spam <count> <seconds> [action]`\n"
-                                "Actions: `ban`, `kick`, `timeout`, `warn`, `none`\n"
-                                "Example: `.antiraid spam 5 2 timeout`");
+                                "Actions: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (combine with commas)\n"
+                                "Example: `.antiraid spam 5 2 delete,warn` or `.antiraid spam 5 2 timeout`");
                             return;
                         }
                         try {
                             int count = std::stoi(args[1]);
                             int seconds = std::stoi(args[2]);
-                            std::string action = (args.size() >= 4) ? args[3] : cfg.spam_action;
-                            std::transform(action.begin(), action.end(), action.begin(), ::tolower);
+                            // Collect remaining args as the action list
+                            std::string action_raw;
+                            if (args.size() >= 4) {
+                                for (size_t i = 3; i < args.size(); ++i) {
+                                    if (!action_raw.empty()) action_raw += ",";
+                                    action_raw += args[i];
+                                }
+                            } else {
+                                action_raw = cfg.spam_action;
+                            }
+                            std::transform(action_raw.begin(), action_raw.end(), action_raw.begin(), ::tolower);
+                            std::string action = normalise_actions(action_raw);
 
                             if (count < 1 || seconds < 1) throw std::invalid_argument("out of range");
                             if (!is_valid_action(action)) {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none`.");
+                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas).");
                                 return;
                             }
 
@@ -374,24 +455,30 @@ public:
                     }
 
                     // ── DEFAULT PROFILE ──────────────────────────────────────
-                    // .antiraid profile <action>
+                    // .antiraid profile <action[,action...]>
                     if (sub == "profile") {
                         if (args.size() < 2) {
                             bot.send_message(msg.channel_id,
                                 "Usage: `.antiraid profile <action>`\n"
-                                "Actions: `ban`, `kick`, `timeout`, `warn`, `none`\n"
-                                "Example: `.antiraid profile kick`");
+                                "Actions: `ban`, `kick`, `timeout`, `warn`, `none` (combine with commas)\n"
+                                "Example: `.antiraid profile kick` or `.antiraid profile kick,warn`");
                             return;
                         }
-                        std::string action = args[1];
-                        std::transform(action.begin(), action.end(), action.begin(), ::tolower);
+                        // Collect all remaining args as the action list
+                        std::string action_raw;
+                        for (size_t i = 1; i < args.size(); ++i) {
+                            if (!action_raw.empty()) action_raw += ",";
+                            action_raw += args[i];
+                        }
+                        std::transform(action_raw.begin(), action_raw.end(), action_raw.begin(), ::tolower);
+                        std::string action = normalise_actions(action_raw);
                         if (!is_valid_action(action)) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none`.");
+                            bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas).");
                             return;
                         }
                         cfg.default_profile_action = action;
                         if (g_db->save_antiraid_config(cfg)) {
-                            bot.send_message(msg.channel_id, "✅ Default profile action set to `" + action + "`.");
+                            bot.send_message(msg.channel_id, "✅ Default profile actions set to `" + action + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "❌ Failed to save configuration.");
                         }
@@ -425,7 +512,8 @@ public:
                         "`.antiraid spam <count> <seconds> [action]` — configure spam detection\n"
                         "`.antiraid profile <action>` — action on default-profile accounts\n"
                         "`.antiraid reset` — reset all settings to defaults\n\n"
-                        "**Actions:** `ban`, `kick`, `timeout`, `warn`, `none`\n"
+                        "**Actions:** `ban`, `kick`, `timeout`, `warn`, `delete` (spam only), `none`\n"
+                        "**Multiple actions:** separate with commas, e.g. `delete,warn` or `kick,warn`\n"
                         "**Alias:** `.ar`");
                 });
             },
@@ -547,10 +635,13 @@ public:
                 std::string username = msg.author.username;
                 std::string details = std::to_string(hit_count) + " messages in " +
                                       std::to_string(cfg.spam_threshold_seconds) + "s window.";
+                // Pass channel_id and msg_id so the "delete" action can remove the triggering message
                 execute_antiraid_action(bot, msg.server_id, msg.author.id, username,
                                         cfg.spam_action,
                                         "Message Spam",
-                                        details);
+                                        details,
+                                        msg.channel_id,
+                                        msg.id);
             }
         });
     }

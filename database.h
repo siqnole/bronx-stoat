@@ -478,16 +478,21 @@ public:
             "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
             "  joins_threshold_count INT NOT NULL DEFAULT 5,"
             "  joins_threshold_seconds INT NOT NULL DEFAULT 60,"
-            "  joins_action VARCHAR(20) NOT NULL DEFAULT 'none',"
+            "  joins_action VARCHAR(100) NOT NULL DEFAULT 'none',"
             "  spam_threshold_count INT NOT NULL DEFAULT 5,"
             "  spam_threshold_seconds INT NOT NULL DEFAULT 2,"
-            "  spam_action VARCHAR(20) NOT NULL DEFAULT 'none',"
-            "  default_profile_action VARCHAR(20) NOT NULL DEFAULT 'none'"
+            "  spam_action VARCHAR(100) NOT NULL DEFAULT 'none',"
+            "  default_profile_action VARCHAR(100) NOT NULL DEFAULT 'none'"
             ")";
         if (mysql_query(mysql_, create_ar.c_str())) {
             std::cerr << "[bronx db] failed to create table 'antiraid_configs': " << mysql_error(mysql_) << "\n";
             return false;
         }
+
+        // Migration: widen action columns to support comma-separated multi-action lists (e.g. "delete,warn")
+        mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN joins_action VARCHAR(100) NOT NULL DEFAULT 'none'");
+        mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN spam_action VARCHAR(100) NOT NULL DEFAULT 'none'");
+        mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN default_profile_action VARCHAR(100) NOT NULL DEFAULT 'none'");
 
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes, default_enabled FROM prefixes";

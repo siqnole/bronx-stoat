@@ -398,7 +398,8 @@ public:
                                                  "- `join` / `member_join` (Placeholders: `{user}`, `{username}`, `{membercount}`)\n"
                                                  "- `leave` / `member_leave` (Placeholders: `{user}`, `{username}`, `{membercount}`)\n"
                                                  "- `mod` / `moderation` (Placeholders: `{action}`, `{moderator}`, `{target}`, `{reason}`, `{details}`)\n"
-                                                 "- `user` / `user_update` (Placeholders: `{user}`, `{oldUser}`, `{newUser}`)");
+                                                 "- `user` / `user_update` (Placeholders: `{user}`, `{oldUser}`, `{newUser}`)\n"
+                                                 "- `antiraid` (Placeholders: `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`)");
                 return;
             }
 
@@ -501,7 +502,8 @@ public:
                         "• **Message Delete (`delete`):** `{author}`, `{username}`, `{channel}`, `{content}`\n"
                         "• **Message Edit (`edit`):** `{author}`, `{username}`, `{channel}`, `{before}`, `{after}`\n"
                         "• **Join/Leave (`join`, `leave`):** `{user}`, `{username}`, `{membercount}`\n"
-                        "• **User Update (`user`):** `{user}`, `{oldUser}`, `{newUser}`\n\n"
+                        "• **User Update (`user`):** `{user}`, `{oldUser}`, `{newUser}`\n"
+                        "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n\n"
                         "**Examples:**\n"
                         "• `" + pfx + "log edit delete title:🗑️ Message Deleted color:#ff3333 description:**Author:** {author}\\n**Content:** {content}`\n"
                         "• `" + pfx + "log edit mod title:🛡️ {action} color:#ffa500 content:<@{target}> was moderated`"
@@ -517,7 +519,8 @@ public:
                         "• **Message Delete (`delete`):** `{author}`, `{username}`, `{channel}`, `{content}`\n"
                         "• **Message Edit (`edit`):** `{author}`, `{username}`, `{channel}`, `{before}`, `{after}`\n"
                         "• **Join/Leave (`join`, `leave`):** `{user}`, `{username}`, `{membercount}`\n"
-                        "• **User Update (`user`):** `{user}`, `{oldUser}`, `{newUser}`\n\n"
+                        "• **User Update (`user`):** `{user}`, `{oldUser}`, `{newUser}`\n"
+                        "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n\n"
                         "**Example:**\n"
                         "```json\n"
                         "{\n"
@@ -551,9 +554,10 @@ public:
                 else if (ev == "leave") ev = "member_leave";
                 else if (ev == "mod") ev = "moderation";
                 else if (ev == "user_update" || ev == "user" || ev == "user_edit") ev = "user_update";
+                // "antiraid" is already the canonical name, no alias needed
 
-                if (ev != "message_delete" && ev != "message_edit" && ev != "member_join" && ev != "member_leave" && ev != "moderation" && ev != "user_update") {
-                    bot.send_message(msg.channel_id, "⚠️ Invalid event type. Choose from: `delete`, `edit`, `join`, `leave`, `mod`, `user`.");
+                if (ev != "message_delete" && ev != "message_edit" && ev != "member_join" && ev != "member_leave" && ev != "moderation" && ev != "user_update" && ev != "antiraid") {
+                    bot.send_message(msg.channel_id, "⚠️ Invalid event type. Choose from: `delete`, `edit`, `join`, `leave`, `mod`, `user`, `antiraid`.");
                     return;
                 }
 
