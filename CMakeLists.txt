@@ -3,6 +3,7 @@ project(bronx CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+add_compile_definitions(JSON_DIAGNOSTICS=1)
 
 # Add the parent directory containing the stoatpp library
 add_subdirectory(.. stoatpp_build)

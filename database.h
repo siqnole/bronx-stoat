@@ -61,6 +61,9 @@ public:
         std::string leave_content;
         std::string leave_embed_json;
         std::string autorole_role_id; // empty/NULL if disabled
+        std::string welcome_dm_type = "none"; // "none", "text", or "embed"
+        std::string welcome_dm_content;
+        std::string welcome_dm_embed_json;
     };
 
     struct LoggingEmbed {
@@ -136,8 +139,71 @@ public:
         bool owner_tokens = false;   // if true, owner-only tokens are resolved
     };
 
+    // ── Counting ─────────────────────────────────────────────────────────────
+    struct CountingConfig {
+        std::string server_id;
+        std::string channel_id;        // channel where counting happens
+        int64_t current_number = 0;    // next expected number
+        std::string last_user_id;      // user who sent the last valid count
+        std::string fail_role_id;      // role ID to assign on a failed count
+        uint64_t fail_role_duration = 0; // seconds, 0 = permanent
+        bool passive = false;          // if true, silently ignore wrong msgs instead of breaking count
+        bool warn_double_count = false; // if true, warn on double-count instead of immediately breaking
+        int64_t highest_count = 0;     // all-time record
+    };
+
+    struct CountingStats {
+        std::string server_id;
+        std::string user_id;
+        int64_t correct_counts = 0;
+        int64_t failed_counts  = 0;
+    };
+
+    struct TicketConfig {
+        std::string server_id;
+        std::string name = "default";
+        std::string modal_channel_id;
+        std::string modal_message_id;
+        std::string modal_content;
+        std::string modal_embed_json;
+        std::string reaction_emoji = "📩";
+        bool input_creation_enabled = false;
+        std::string naming_scheme = "ticket-{number}";
+        std::string category_id;
+        std::string view_roles;       // raw comma-separated list of role IDs
+        std::string view_users;       // raw comma-separated list of user IDs
+        std::string view_permissions; // raw comma-separated list of Revolt permission names
+        std::string ticket_welcome_content;
+        std::string ticket_welcome_embed_json;
+        std::string ticket_close_emoji = "🔒";
+        std::string ticket_close_content = "🔒 **Closing ticket...**\nThis channel will be deleted in 5 seconds.";
+        std::string member_role_id;    // role to DENY in the ticket channel (the server's @member role)
+        int ticket_counter = 0;
+    };
+
+    struct Ticket {
+        std::string channel_id;
+        std::string server_id;
+        std::string user_id;
+        int ticket_number = 0;
+        std::string welcome_message_id;
+        std::string status = "open"; // "open" or "closed"
+        std::string panel_name = "default";
+    };
+
+    struct UserAFK {
+        std::string user_id;
+        std::string custom_template;
+        bool is_afk = false;
+        std::string reason;
+        int64_t since = 0;
+    };
+
 private:
     MYSQL* mysql_ = nullptr;
+    std::unordered_map<std::string, UserAFK> user_afk_cache_;
+    std::shared_mutex user_afk_cache_mutex_;
+
     std::unordered_map<std::string, std::vector<std::string>> cache_;
     std::shared_mutex cache_mutex_;
     std::mutex db_mutex_;
@@ -157,6 +223,22 @@ private:
     // Server ID -> {Event Type -> Channel ID}
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> log_cache_;
     std::shared_mutex log_cache_mutex_;
+
+    // Server ID -> TicketConfig
+    std::unordered_map<std::string, TicketConfig> ticket_config_cache_;
+    std::shared_mutex ticket_config_cache_mutex_;
+
+    // Channel ID -> Ticket
+    std::unordered_map<std::string, Ticket> ticket_cache_;
+    std::shared_mutex ticket_cache_mutex_;
+
+    // Server ID -> CountingConfig
+    std::unordered_map<std::string, CountingConfig> counting_cache_;
+    std::shared_mutex counting_cache_mutex_;
+
+    // server_id:user_id -> CountingStats
+    std::unordered_map<std::string, CountingStats> counting_stats_cache_;
+    std::shared_mutex counting_stats_cache_mutex_;
 
     // Server ID -> {Event Type -> LoggingEmbed}
     std::unordered_map<std::string, std::unordered_map<std::string, LoggingEmbed>> log_embed_cache_;
@@ -406,6 +488,11 @@ public:
             mysql_query(mysql_, alter_wl_fallback.c_str()); 
         }
 
+        // Migration: Ensure DM columns exist
+        mysql_query(mysql_, "ALTER TABLE welcome_leave_configs ADD COLUMN IF NOT EXISTS welcome_dm_type VARCHAR(10) NOT NULL DEFAULT 'none'");
+        mysql_query(mysql_, "ALTER TABLE welcome_leave_configs ADD COLUMN IF NOT EXISTS welcome_dm_content TEXT DEFAULT NULL");
+        mysql_query(mysql_, "ALTER TABLE welcome_leave_configs ADD COLUMN IF NOT EXISTS welcome_dm_embed JSON DEFAULT NULL");
+
         // Create Table logging_configs
         std::string create_log_configs = 
             "CREATE TABLE IF NOT EXISTS logging_configs ("
@@ -615,6 +702,150 @@ public:
                 ")";
             mysql_query(mysql_, sql_are.c_str());
 
+            // Create Table ticket_configs
+            std::string create_ticket_configs = 
+                "CREATE TABLE IF NOT EXISTS ticket_configs ("
+                "  server_id VARCHAR(30) NOT NULL,"
+                "  name VARCHAR(50) NOT NULL DEFAULT 'default',"
+                "  modal_channel_id VARCHAR(30) DEFAULT NULL,"
+                "  modal_message_id VARCHAR(30) DEFAULT NULL,"
+                "  modal_content TEXT DEFAULT NULL,"
+                "  modal_embed_json TEXT DEFAULT NULL,"
+                "  reaction_emoji VARCHAR(100) DEFAULT '📩',"
+                "  input_creation_enabled TINYINT(1) DEFAULT 0,"
+                "  naming_scheme VARCHAR(100) DEFAULT 'ticket-{number}',"
+                "  category_id VARCHAR(30) DEFAULT NULL,"
+                "  view_roles TEXT DEFAULT NULL,"
+                "  view_users TEXT DEFAULT NULL,"
+                "  view_permissions TEXT DEFAULT NULL,"
+                "  ticket_welcome_content TEXT DEFAULT NULL,"
+                "  ticket_welcome_embed_json TEXT DEFAULT NULL,"
+                "  ticket_close_emoji VARCHAR(100) DEFAULT '🔒',"
+                "  ticket_close_content TEXT DEFAULT NULL,"
+                "  member_role_id VARCHAR(30) DEFAULT NULL,"
+                "  ticket_counter INT NOT NULL DEFAULT 0,"
+                "  PRIMARY KEY (server_id, name)"
+                ")";
+            if (mysql_query(mysql_, create_ticket_configs.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'ticket_configs': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+            // Migration: add member_role_id for existing installs
+            mysql_query(mysql_, "ALTER TABLE ticket_configs ADD COLUMN IF NOT EXISTS member_role_id VARCHAR(30) DEFAULT NULL");
+
+            // Create Table tickets
+            std::string create_tickets = 
+                "CREATE TABLE IF NOT EXISTS tickets ("
+                "  channel_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+                "  server_id VARCHAR(30) NOT NULL,"
+                "  user_id VARCHAR(30) NOT NULL,"
+                "  ticket_number INT NOT NULL,"
+                "  welcome_message_id VARCHAR(30) DEFAULT NULL,"
+                "  status VARCHAR(10) NOT NULL DEFAULT 'open',"
+                "  panel_name VARCHAR(50) NOT NULL DEFAULT 'default',"
+                "  INDEX idx_tickets_server (server_id)"
+                ")";
+            if (mysql_query(mysql_, create_tickets.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'tickets': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+
+            // ── counting_configs ─────────────────────────────────────────────
+            std::string create_counting =
+                "CREATE TABLE IF NOT EXISTS counting_configs ("
+                "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+                "  channel_id VARCHAR(30) NOT NULL DEFAULT '',"
+                "  current_number BIGINT NOT NULL DEFAULT 0,"
+                "  last_user_id VARCHAR(30) NOT NULL DEFAULT '',"
+                "  fail_role_id VARCHAR(30) NOT NULL DEFAULT '',"
+                "  fail_role_duration BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+                "  passive TINYINT(1) NOT NULL DEFAULT 0,"
+                "  highest_count BIGINT NOT NULL DEFAULT 0,"
+                "  warn_double_count TINYINT(1) NOT NULL DEFAULT 0"
+                ")";
+            if (mysql_query(mysql_, create_counting.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'counting_configs': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+            // Migration: add warn_double_count for existing installs
+            mysql_query(mysql_, "ALTER TABLE counting_configs ADD COLUMN IF NOT EXISTS warn_double_count TINYINT(1) NOT NULL DEFAULT 0");
+
+            // ── counting_stats ───────────────────────────────────────────────
+            std::string create_counting_stats =
+                "CREATE TABLE IF NOT EXISTS counting_stats ("
+                "  server_id VARCHAR(30) NOT NULL,"
+                "  user_id VARCHAR(30) NOT NULL,"
+                "  correct_counts BIGINT NOT NULL DEFAULT 0,"
+                "  failed_counts BIGINT NOT NULL DEFAULT 0,"
+                "  PRIMARY KEY (server_id, user_id)"
+                ")";
+            if (mysql_query(mysql_, create_counting_stats.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'counting_stats': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+
+            // Create Table user_afk
+            std::string create_user_afk = 
+                "CREATE TABLE IF NOT EXISTS user_afk ("
+                "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+                "  custom_template TEXT DEFAULT NULL,"
+                "  is_afk TINYINT(1) NOT NULL DEFAULT 0,"
+                "  reason TEXT DEFAULT NULL,"
+                "  since BIGINT NOT NULL DEFAULT 0"
+                ")";
+            if (mysql_query(mysql_, create_user_afk.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'user_afk': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+
+
+            // Load counting configs into cache
+            {
+                std::string sel_counting = "SELECT server_id, channel_id, current_number, last_user_id, fail_role_id, fail_role_duration, passive, highest_count, warn_double_count FROM counting_configs";
+                if (mysql_query(mysql_, sel_counting.c_str()) == 0) {
+                    MYSQL_RES* res = mysql_store_result(mysql_);
+                    if (res) {
+                        MYSQL_ROW row;
+                        std::lock_guard<std::shared_mutex> lk(counting_cache_mutex_);
+                        while ((row = mysql_fetch_row(res))) {
+                            CountingConfig cfg;
+                            cfg.server_id = row[0] ? row[0] : "";
+                            cfg.channel_id = row[1] ? row[1] : "";
+                            cfg.current_number = row[2] ? std::stoll(row[2]) : 0;
+                            cfg.last_user_id = row[3] ? row[3] : "";
+                            cfg.fail_role_id = row[4] ? row[4] : "";
+                            cfg.fail_role_duration = row[5] ? std::stoull(row[5]) : 0;
+                            cfg.passive = row[6] ? (std::string(row[6]) != "0") : false;
+                            cfg.highest_count = row[7] ? std::stoll(row[7]) : 0;
+                            cfg.warn_double_count = row[8] ? (std::string(row[8]) != "0") : false;
+                            counting_cache_[cfg.server_id] = cfg;
+                        }
+                        mysql_free_result(res);
+                    }
+                }
+            }
+            // Load counting stats into cache
+            {
+                std::string sel_stats = "SELECT server_id, user_id, correct_counts, failed_counts FROM counting_stats";
+                if (mysql_query(mysql_, sel_stats.c_str()) == 0) {
+                    MYSQL_RES* res = mysql_store_result(mysql_);
+                    if (res) {
+                        MYSQL_ROW row;
+                        std::lock_guard<std::shared_mutex> lk(counting_stats_cache_mutex_);
+                        while ((row = mysql_fetch_row(res))) {
+                            CountingStats st;
+                            st.server_id = row[0] ? row[0] : "";
+                            st.user_id   = row[1] ? row[1] : "";
+                            st.correct_counts = row[2] ? std::stoll(row[2]) : 0;
+                            st.failed_counts  = row[3] ? std::stoll(row[3]) : 0;
+                            std::string key = st.server_id + ":" + st.user_id;
+                            counting_stats_cache_[key] = st;
+                        }
+                        mysql_free_result(res);
+                    }
+                }
+            }
+
         if (mysql_query(mysql_, create_rm.c_str())) {
             std::cerr << "[bronx db] failed to create table 'recurring_messages': " << mysql_error(mysql_) << "\n";
             return false;
@@ -716,7 +947,8 @@ public:
 
         // Load welcome_leave_configs
         std::string select_wl = "SELECT server_id, welcome_channel_id, welcome_type, welcome_content, welcome_embed, "
-                                "leave_channel_id, leave_type, leave_content, leave_embed, autorole_role_id FROM welcome_leave_configs";
+                                "leave_channel_id, leave_type, leave_content, leave_embed, autorole_role_id, "
+                                "welcome_dm_type, welcome_dm_content, welcome_dm_embed FROM welcome_leave_configs";
         if (mysql_query(mysql_, select_wl.c_str())) {
             std::cerr << "[bronx db] failed to load welcome_leave_configs: " << mysql_error(mysql_) << "\n";
             return false;
@@ -739,6 +971,9 @@ public:
                 wl.leave_content = row[7] ? row[7] : "";
                 wl.leave_embed_json = row[8] ? row[8] : "";
                 wl.autorole_role_id = row[9] ? row[9] : "";
+                wl.welcome_dm_type = row[10] ? row[10] : "none";
+                wl.welcome_dm_content = row[11] ? row[11] : "";
+                wl.welcome_dm_embed_json = row[12] ? row[12] : "";
                 wl_cache_[s_id] = wl;
             }
             mysql_free_result(wl_res);
@@ -927,7 +1162,93 @@ public:
             }
         }
 
+        // Load ticket_configs
+        std::string select_tc = "SELECT server_id, name, modal_channel_id, modal_message_id, modal_content, modal_embed_json, "
+                                "reaction_emoji, input_creation_enabled, naming_scheme, category_id, "
+                                "view_roles, view_users, view_permissions, ticket_welcome_content, "
+                                "ticket_welcome_embed_json, ticket_close_emoji, ticket_close_content, ticket_counter, "
+                                "COALESCE(member_role_id,'') AS member_role_id FROM ticket_configs";
+        if (mysql_query(mysql_, select_tc.c_str()) == 0) {
+            MYSQL_RES* tc_res = mysql_store_result(mysql_);
+            if (tc_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> tc_lock(ticket_config_cache_mutex_);
+                while ((row = mysql_fetch_row(tc_res))) {
+                    std::string s_id = row[0] ? row[0] : "";
+                    std::string p_name = row[1] ? row[1] : "default";
+                    TicketConfig tc;
+                    tc.server_id = s_id;
+                    tc.name = p_name;
+                    tc.modal_channel_id = row[2] ? row[2] : "";
+                    tc.modal_message_id = row[3] ? row[3] : "";
+                    tc.modal_content = row[4] ? row[4] : "";
+                    tc.modal_embed_json = row[5] ? row[5] : "";
+                    tc.reaction_emoji = row[6] ? row[6] : "📩";
+                    tc.input_creation_enabled = row[7] ? (std::stoi(row[7]) != 0) : false;
+                    tc.naming_scheme = row[8] ? row[8] : "ticket-{number}";
+                    tc.category_id = row[9] ? row[9] : "";
+                    tc.view_roles = row[10] ? row[10] : "";
+                    tc.view_users = row[11] ? row[11] : "";
+                    tc.view_permissions = row[12] ? row[12] : "";
+                    tc.ticket_welcome_content = row[13] ? row[13] : "";
+                    tc.ticket_welcome_embed_json = row[14] ? row[14] : "";
+                    tc.ticket_close_emoji = row[15] ? row[15] : "🔒";
+                    tc.ticket_close_content = row[16] ? row[16] : "";
+                    tc.ticket_counter = row[17] ? std::stoi(row[17]) : 0;
+                    tc.member_role_id = row[18] ? row[18] : "";
+                    
+                    std::string cache_key = s_id + ":" + p_name;
+                    ticket_config_cache_[cache_key] = tc;
+                }
+                mysql_free_result(tc_res);
+            }
+        }
+
+        // Load tickets
+        std::string select_t = "SELECT channel_id, server_id, user_id, ticket_number, welcome_message_id, status, panel_name FROM tickets";
+        if (mysql_query(mysql_, select_t.c_str()) == 0) {
+            MYSQL_RES* t_res = mysql_store_result(mysql_);
+            if (t_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> t_lock(ticket_cache_mutex_);
+                while ((row = mysql_fetch_row(t_res))) {
+                    std::string ch_id = row[0] ? row[0] : "";
+                    Ticket t;
+                    t.channel_id = ch_id;
+                    t.server_id = row[1] ? row[1] : "";
+                    t.user_id = row[2] ? row[2] : "";
+                    t.ticket_number = row[3] ? std::stoi(row[3]) : 0;
+                    t.welcome_message_id = row[4] ? row[4] : "";
+                    t.status = row[5] ? row[5] : "open";
+                    t.panel_name = row[6] ? row[6] : "default";
+                    ticket_cache_[ch_id] = t;
+                }
+                mysql_free_result(t_res);
+            }
+        }
+
+        // Load user_afk
+        std::string select_afk = "SELECT user_id, COALESCE(custom_template, ''), is_afk, COALESCE(reason, ''), since FROM user_afk";
+        if (mysql_query(mysql_, select_afk.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> lock(user_afk_cache_mutex_);
+                while ((row = mysql_fetch_row(res))) {
+                    UserAFK afk;
+                    afk.user_id = row[0] ? row[0] : "";
+                    afk.custom_template = row[1] ? row[1] : "";
+                    afk.is_afk = row[2] ? (std::stoi(row[2]) != 0) : false;
+                    afk.reason = row[3] ? row[3] : "";
+                    afk.since = row[4] ? std::stoll(row[4]) : 0;
+                    user_afk_cache_[afk.user_id] = afk;
+                }
+                mysql_free_result(res);
+            }
+        }
+
         std::cout << "[bronx db] database successfully initialized.\n"
+
                   << "           loaded " << cache_.size() << " prefix configurations.\n"
                   << "           loaded " << rr_cache_.size() << " reaction role messages.\n"
                   << "           loaded " << wl_cache_.size() << " welcome/leave configurations.\n"
@@ -939,7 +1260,10 @@ public:
                   << "           loaded " << disabled_cache_.size() << " server disabled commands.\n"
                   << "           loaded " << action_msg_cache_.size() << " action message configurations.\n"
                   << "           loaded " << ar_cache_.size() << " antiraid configurations.\n"
-                  << "           loaded " << rm_cache_.size() << " recurring messages.\n";
+                  << "           loaded " << rm_cache_.size() << " recurring messages.\n"
+                  << "           loaded " << ticket_config_cache_.size() << " ticket configurations.\n"
+                  << "           loaded " << ticket_cache_.size() << " active tickets.\n"
+                  << "           loaded " << user_afk_cache_.size() << " user afk configurations.\n";
         return true;
     }
 
@@ -1322,14 +1646,14 @@ public:
         int active_users = 0;
     };
 
-    std::vector<TopUserEntry> get_top_users(const std::string& guild_id, int days, int limit = 10) {
+    std::vector<TopUserEntry> get_top_users(const std::string& guild_id, int days, bool include_bots = false, int limit = 10) {
         std::lock_guard<std::mutex> lock(db_mutex_);
         std::vector<TopUserEntry> entries;
         if (!mysql_) return entries;
 
         std::string sql = "SELECT user_id, SUM(messages) FROM guild_user_activity_daily "
                           "WHERE guild_id = '" + escape_string(guild_id) + "' "
-                          "AND is_bot = FALSE "
+                          + (include_bots ? "" : "AND is_bot = FALSE ") +
                           "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
                           "GROUP BY user_id ORDER BY SUM(messages) DESC LIMIT " + std::to_string(limit);
         if (mysql_query(mysql_, sql.c_str()) == 0) {
@@ -1446,12 +1770,13 @@ public:
         return entries;
     }
 
-    std::vector<TopServerEntry> get_top_servers(int days, int limit = 10) {
+    std::vector<TopServerEntry> get_top_servers(int days, bool include_bots = false, int limit = 10) {
         std::lock_guard<std::mutex> lock(db_mutex_);
         std::vector<TopServerEntry> entries;
         if (!mysql_) return entries;
         std::string sql = "SELECT guild_id, SUM(messages) FROM guild_user_activity_daily "
                           "WHERE stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
+                          + (include_bots ? "" : "AND is_bot = FALSE ") +
                           "GROUP BY guild_id ORDER BY SUM(messages) DESC LIMIT " + std::to_string(limit);
         if (mysql_query(mysql_, sql.c_str()) == 0) {
             MYSQL_RES* res = mysql_store_result(mysql_);
@@ -1514,13 +1839,14 @@ public:
         return entries;
     }
 
-    ServerTotals get_server_totals(const std::string& guild_id, int days) {
+    ServerTotals get_server_totals(const std::string& guild_id, int days, bool include_bots = false) {
         std::lock_guard<std::mutex> lock(db_mutex_);
         ServerTotals totals;
         if (!mysql_) return totals;
 
         std::string msg_sql = "SELECT SUM(messages) FROM guild_user_activity_daily "
                               "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                              + (include_bots ? "" : "AND is_bot = FALSE ") +
                               "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY)";
         if (mysql_query(mysql_, msg_sql.c_str()) == 0) {
             MYSQL_RES* res = mysql_store_result(mysql_);
@@ -1549,6 +1875,7 @@ public:
 
         std::string users_sql = "SELECT COUNT(DISTINCT user_id) FROM guild_user_activity_daily "
                                 "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                                + (include_bots ? "" : "AND is_bot = FALSE ") +
                                 "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY)";
         if (mysql_query(mysql_, users_sql.c_str()) == 0) {
             MYSQL_RES* res = mysql_store_result(mysql_);
@@ -1569,7 +1896,7 @@ public:
     // Daily message totals for a server over the last N days.
     // Returns pairs of (date_string "MM-DD", message_count) ordered oldest→newest.
     std::vector<std::pair<std::string, int64_t>> get_daily_message_series(
-            const std::string& guild_id, int days) {
+            const std::string& guild_id, int days, bool include_bots = false) {
         std::lock_guard<std::mutex> lock(db_mutex_);
         std::vector<std::pair<std::string, int64_t>> result;
         if (!mysql_) return result;
@@ -1577,6 +1904,7 @@ public:
             "SELECT DATE_FORMAT(stat_date,'%m-%d'), SUM(messages) "
             "FROM guild_user_activity_daily "
             "WHERE guild_id = '" + escape_string(guild_id) + "' "
+            + (include_bots ? "" : "AND is_bot = FALSE ") +
             "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
             "GROUP BY stat_date ORDER BY stat_date ASC";
         if (mysql_query(mysql_, sql.c_str()) == 0) {
@@ -1596,7 +1924,7 @@ public:
     // Hour-of-day × weekday message matrix for a server.
     // Returns a 7×24 matrix [weekday 0=Sun..6=Sat][hour 0..23].
     std::vector<std::vector<double>> get_hourly_heatmap(
-            const std::string& guild_id, int days) {
+            const std::string& guild_id, int days, bool include_bots = false) {
         std::lock_guard<std::mutex> lock(db_mutex_);
         std::vector<std::vector<double>> matrix(7, std::vector<double>(24, 0.0));
         if (!mysql_) return matrix;
@@ -1609,6 +1937,7 @@ public:
             "SELECT DAYOFWEEK(stat_date)-1, SUM(messages) "
             "FROM guild_user_activity_daily "
             "WHERE guild_id = '" + escape_string(guild_id) + "' "
+            + (include_bots ? "" : "AND is_bot = FALSE ") +
             "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
             "GROUP BY DAYOFWEEK(stat_date)";
         if (mysql_query(mysql_, sql.c_str()) == 0) {
@@ -1788,11 +2117,17 @@ public:
         std::string l_embed = wl.leave_embed_json.empty() ? "NULL" : "'" + escape_string(wl.leave_embed_json) + "'";
         std::string autorole = wl.autorole_role_id.empty() ? "NULL" : "'" + escape_string(wl.autorole_role_id) + "'";
 
+        std::string w_dm_type = "'" + escape_string(wl.welcome_dm_type) + "'";
+        std::string w_dm_content = wl.welcome_dm_content.empty() ? "NULL" : "'" + escape_string(wl.welcome_dm_content) + "'";
+        std::string w_dm_embed = wl.welcome_dm_embed_json.empty() ? "NULL" : "'" + escape_string(wl.welcome_dm_embed_json) + "'";
+
         std::string query = 
             "INSERT INTO welcome_leave_configs (server_id, welcome_channel_id, welcome_type, welcome_content, welcome_embed, "
-            "leave_channel_id, leave_type, leave_content, leave_embed, autorole_role_id) VALUES ("
+            "leave_channel_id, leave_type, leave_content, leave_embed, autorole_role_id, "
+            "welcome_dm_type, welcome_dm_content, welcome_dm_embed) VALUES ("
             "'" + escape_string(wl.server_id) + "', " + w_channel + ", " + w_type + ", " + w_content + ", " + w_embed + ", " +
-            l_channel + ", " + l_type + ", " + l_content + ", " + l_embed + ", " + autorole + ") "
+            l_channel + ", " + l_type + ", " + l_content + ", " + l_embed + ", " + autorole + ", " +
+            w_dm_type + ", " + w_dm_content + ", " + w_dm_embed + ") "
             "ON DUPLICATE KEY UPDATE "
             "welcome_channel_id=" + w_channel + ", "
             "welcome_type=" + w_type + ", "
@@ -1802,7 +2137,10 @@ public:
             "leave_type=" + l_type + ", "
             "leave_content=" + l_content + ", "
             "leave_embed=" + l_embed + ", "
-            "autorole_role_id=" + autorole;
+            "autorole_role_id=" + autorole + ", "
+            "welcome_dm_type=" + w_dm_type + ", "
+            "welcome_dm_content=" + w_dm_content + ", "
+            "welcome_dm_embed=" + w_dm_embed;
 
         if (mysql_query(mysql_, query.c_str())) {
             std::cerr << "[bronx db] failed to save welcome/leave config: " << mysql_error(mysql_) << "\n";
@@ -2952,6 +3290,370 @@ public:
         return update_autoreact(*opt);
     }
 
+    // --- Ticket System Helper Methods ---
+
+    std::optional<TicketConfig> get_ticket_config(const std::string& server_id, const std::string& name = "default") {
+        std::shared_lock<std::shared_mutex> lock(ticket_config_cache_mutex_);
+        std::string key = server_id + ":" + name;
+        auto it = ticket_config_cache_.find(key);
+        if (it != ticket_config_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool save_ticket_config(const TicketConfig& config) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string esc_srv = escape_string(config.server_id);
+        std::string esc_name = escape_string(config.name);
+        std::string esc_m_chan = escape_string(config.modal_channel_id);
+        std::string esc_m_msg = escape_string(config.modal_message_id);
+        std::string esc_content = escape_string(config.modal_content);
+        std::string esc_embed = escape_string(config.modal_embed_json);
+        std::string esc_emoji = escape_string(config.reaction_emoji);
+        int input_creation = config.input_creation_enabled ? 1 : 0;
+        std::string esc_scheme = escape_string(config.naming_scheme);
+        std::string esc_cat = escape_string(config.category_id);
+        std::string esc_roles = escape_string(config.view_roles);
+        std::string esc_users = escape_string(config.view_users);
+        std::string esc_perms = escape_string(config.view_permissions);
+        std::string esc_t_content = escape_string(config.ticket_welcome_content);
+        std::string esc_t_embed = escape_string(config.ticket_welcome_embed_json);
+        std::string esc_close_emoji = escape_string(config.ticket_close_emoji);
+        std::string esc_close_msg = escape_string(config.ticket_close_content);
+        std::string esc_member_role = escape_string(config.member_role_id);
+        int counter = config.ticket_counter;
+
+        std::string query = 
+            "INSERT INTO ticket_configs (server_id, name, modal_channel_id, modal_message_id, modal_content, modal_embed_json, "
+            "reaction_emoji, input_creation_enabled, naming_scheme, category_id, view_roles, view_users, view_permissions, "
+            "ticket_welcome_content, ticket_welcome_embed_json, ticket_close_emoji, ticket_close_content, ticket_counter, member_role_id) "
+            "VALUES ('" + esc_srv + "', '" + esc_name + "', '" + esc_m_chan + "', '" + esc_m_msg + "', '" + esc_content + "', '" + esc_embed + "', '" +
+            esc_emoji + "', " + std::to_string(input_creation) + ", '" + esc_scheme + "', '" + esc_cat + "', '" + esc_roles + "', '" +
+            esc_users + "', '" + esc_perms + "', '" + esc_t_content + "', '" + esc_t_embed + "', '" + esc_close_emoji + "', '" + esc_close_msg + "', " + std::to_string(counter) + ", '" + esc_member_role + "') "
+            "ON DUPLICATE KEY UPDATE "
+            "modal_channel_id = '" + esc_m_chan + "', "
+            "modal_message_id = '" + esc_m_msg + "', "
+            "modal_content = '" + esc_content + "', "
+            "modal_embed_json = '" + esc_embed + "', "
+            "reaction_emoji = '" + esc_emoji + "', "
+            "input_creation_enabled = " + std::to_string(input_creation) + ", "
+            "naming_scheme = '" + esc_scheme + "', "
+            "category_id = '" + esc_cat + "', "
+            "view_roles = '" + esc_roles + "', "
+            "view_users = '" + esc_users + "', "
+            "view_permissions = '" + esc_perms + "', "
+            "ticket_welcome_content = '" + esc_t_content + "', "
+            "ticket_welcome_embed_json = '" + esc_t_embed + "', "
+            "ticket_close_emoji = '" + esc_close_emoji + "', "
+            "ticket_close_content = '" + esc_close_msg + "', "
+            "ticket_counter = " + std::to_string(counter) + ", "
+            "member_role_id = '" + esc_member_role + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save ticket config: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(ticket_config_cache_mutex_);
+            std::string key = config.server_id + ":" + config.name;
+            ticket_config_cache_[key] = config;
+        }
+        return true;
+    }
+
+    std::optional<Ticket> get_ticket(const std::string& channel_id) {
+        std::shared_lock<std::shared_mutex> lock(ticket_cache_mutex_);
+        auto it = ticket_cache_.find(channel_id);
+        if (it != ticket_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool save_ticket(const Ticket& ticket) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string esc_chan = escape_string(ticket.channel_id);
+        std::string esc_srv = escape_string(ticket.server_id);
+        std::string esc_user = escape_string(ticket.user_id);
+        std::string esc_welcome = escape_string(ticket.welcome_message_id);
+        std::string esc_status = escape_string(ticket.status);
+        std::string esc_panel = escape_string(ticket.panel_name);
+
+        std::string query = 
+            "INSERT INTO tickets (channel_id, server_id, user_id, ticket_number, welcome_message_id, status, panel_name) "
+            "VALUES ('" + esc_chan + "', '" + esc_srv + "', '" + esc_user + "', " + std::to_string(ticket.ticket_number) + ", '" + esc_welcome + "', '" + esc_status + "', '" + esc_panel + "') "
+            "ON DUPLICATE KEY UPDATE "
+            "server_id = '" + esc_srv + "', "
+            "user_id = '" + esc_user + "', "
+            "ticket_number = " + std::to_string(ticket.ticket_number) + ", "
+            "welcome_message_id = '" + esc_welcome + "', "
+            "status = '" + esc_status + "', "
+            "panel_name = '" + esc_panel + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save ticket: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(ticket_cache_mutex_);
+            ticket_cache_[ticket.channel_id] = ticket;
+        }
+        return true;
+    }
+
+    bool delete_ticket(const std::string& channel_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string esc_chan = escape_string(channel_id);
+        std::string query = "DELETE FROM tickets WHERE channel_id = '" + esc_chan + "'";
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to delete ticket: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(ticket_cache_mutex_);
+            ticket_cache_.erase(channel_id);
+        }
+        return true;
+    }
+
+    std::vector<Ticket> get_server_tickets(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(ticket_cache_mutex_);
+        std::vector<Ticket> results;
+        for (const auto& [ch_id, t] : ticket_cache_) {
+            if (t.server_id == server_id) {
+                results.push_back(t);
+            }
+        }
+        return results;
+    }
+
+    std::optional<Ticket> get_user_open_ticket(const std::string& server_id, const std::string& user_id) {
+        std::shared_lock<std::shared_mutex> lock(ticket_cache_mutex_);
+        for (const auto& [ch_id, t] : ticket_cache_) {
+            if (t.server_id == server_id && t.user_id == user_id && t.status == "open") {
+                return t;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::vector<TicketConfig> get_ticket_configs_for_server(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(ticket_config_cache_mutex_);
+        std::vector<TicketConfig> results;
+        for (const auto& [key, cfg] : ticket_config_cache_) {
+            if (cfg.server_id == server_id) {
+                results.push_back(cfg);
+            }
+        }
+        return results;
+    }
+
+    std::vector<TicketConfig> get_all_ticket_configs() {
+        std::shared_lock<std::shared_mutex> lock(ticket_config_cache_mutex_);
+        std::vector<TicketConfig> results;
+        for (const auto& [key, cfg] : ticket_config_cache_) {
+            results.push_back(cfg);
+        }
+        return results;
+    }
+
+    std::vector<Ticket> get_all_tickets() {
+        std::shared_lock<std::shared_mutex> lock(ticket_cache_mutex_);
+        std::vector<Ticket> results;
+        for (const auto& [ch_id, t] : ticket_cache_) {
+            results.push_back(t);
+        }
+        return results;
+    }
+
+    // ── Counting DB functions ─────────────────────────────────────────────────
+
+    std::optional<CountingConfig> get_counting_config(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lk(counting_cache_mutex_);
+        auto it = counting_cache_.find(server_id);
+        if (it != counting_cache_.end()) return it->second;
+        return std::nullopt;
+    }
+
+    bool save_counting_config(const CountingConfig& cfg) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string esc_srv  = escape_string(cfg.server_id);
+        std::string esc_chan = escape_string(cfg.channel_id);
+        std::string esc_last = escape_string(cfg.last_user_id);
+        std::string esc_role = escape_string(cfg.fail_role_id);
+        int passive          = cfg.passive          ? 1 : 0;
+        int warn_dbl         = cfg.warn_double_count ? 1 : 0;
+
+        std::string q =
+            "INSERT INTO counting_configs (server_id, channel_id, current_number, last_user_id, fail_role_id, fail_role_duration, passive, highest_count, warn_double_count) "
+            "VALUES ('" + esc_srv + "','" + esc_chan + "'," + std::to_string(cfg.current_number) + ",'" + esc_last + "','" + esc_role + "'," +
+            std::to_string(cfg.fail_role_duration) + "," + std::to_string(passive) + "," + std::to_string(cfg.highest_count) + "," + std::to_string(warn_dbl) + ") "
+            "ON DUPLICATE KEY UPDATE "
+            "channel_id='" + esc_chan + "', "
+            "current_number=" + std::to_string(cfg.current_number) + ", "
+            "last_user_id='" + esc_last + "', "
+            "fail_role_id='" + esc_role + "', "
+            "fail_role_duration=" + std::to_string(cfg.fail_role_duration) + ", "
+            "passive=" + std::to_string(passive) + ", "
+            "highest_count=" + std::to_string(cfg.highest_count) + ", "
+            "warn_double_count=" + std::to_string(warn_dbl);
+
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] failed to save counting_config: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        {
+            std::lock_guard<std::shared_mutex> lk(counting_cache_mutex_);
+            counting_cache_[cfg.server_id] = cfg;
+        }
+        return true;
+    }
+
+    // Increment a user's correct count by 1
+    void counting_increment_correct(const std::string& server_id, const std::string& user_id) {
+        std::string key = server_id + ":" + user_id;
+        {
+            std::lock_guard<std::shared_mutex> lk(counting_stats_cache_mutex_);
+            counting_stats_cache_[key].server_id = server_id;
+            counting_stats_cache_[key].user_id   = user_id;
+            counting_stats_cache_[key].correct_counts++;
+        }
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return;
+        std::string esc_srv  = escape_string(server_id);
+        std::string esc_user = escape_string(user_id);
+        std::string q =
+            "INSERT INTO counting_stats (server_id, user_id, correct_counts, failed_counts) "
+            "VALUES ('" + esc_srv + "','" + esc_user + "',1,0) "
+            "ON DUPLICATE KEY UPDATE correct_counts=correct_counts+1";
+        mysql_query(mysql_, q.c_str());
+    }
+
+    // Increment a user's failed count by 1
+    void counting_increment_failed(const std::string& server_id, const std::string& user_id) {
+        std::string key = server_id + ":" + user_id;
+        {
+            std::lock_guard<std::shared_mutex> lk(counting_stats_cache_mutex_);
+            counting_stats_cache_[key].server_id = server_id;
+            counting_stats_cache_[key].user_id   = user_id;
+            counting_stats_cache_[key].failed_counts++;
+        }
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return;
+        std::string esc_srv  = escape_string(server_id);
+        std::string esc_user = escape_string(user_id);
+        std::string q =
+            "INSERT INTO counting_stats (server_id, user_id, correct_counts, failed_counts) "
+            "VALUES ('" + esc_srv + "','" + esc_user + "',0,1) "
+            "ON DUPLICATE KEY UPDATE failed_counts=failed_counts+1";
+        mysql_query(mysql_, q.c_str());
+    }
+
+    // Return all stats for a server sorted by correct_counts desc
+    std::vector<CountingStats> get_counting_leaderboard(const std::string& server_id, int limit = 10) {
+        std::shared_lock<std::shared_mutex> lk(counting_stats_cache_mutex_);
+        std::vector<CountingStats> results;
+        for (const auto& [key, st] : counting_stats_cache_) {
+            if (st.server_id == server_id) results.push_back(st);
+        }
+        std::sort(results.begin(), results.end(), [](const CountingStats& a, const CountingStats& b){
+            return a.correct_counts > b.correct_counts;
+        });
+        if ((int)results.size() > limit) results.resize(limit);
+        return results;
+    }
+
+    CountingStats get_counting_stats(const std::string& server_id, const std::string& user_id) {
+        std::string key = server_id + ":" + user_id;
+        std::shared_lock<std::shared_mutex> lk(counting_stats_cache_mutex_);
+        auto it = counting_stats_cache_.find(key);
+        if (it != counting_stats_cache_.end()) return it->second;
+        CountingStats st; st.server_id = server_id; st.user_id = user_id;
+        return st;
+    }
+
+    // Returns top correct counter, highest count ever, and top failer for server
+    struct CountingHighlights {
+        std::string top_counter_id;    int64_t top_counter_score = 0;
+        std::string top_failer_id;     int64_t top_failer_score  = 0;
+        int64_t highest_count = 0;
+    };
+
+    CountingHighlights get_counting_highlights(const std::string& server_id) {
+        CountingHighlights h;
+        {
+            std::shared_lock<std::shared_mutex> lk(counting_stats_cache_mutex_);
+            for (const auto& [key, st] : counting_stats_cache_) {
+                if (st.server_id != server_id) continue;
+                if (st.correct_counts > h.top_counter_score) {
+                    h.top_counter_score = st.correct_counts;
+                    h.top_counter_id    = st.user_id;
+                }
+                if (st.failed_counts > h.top_failer_score) {
+                    h.top_failer_score = st.failed_counts;
+                    h.top_failer_id    = st.user_id;
+                }
+            }
+        }
+        {
+            std::shared_lock<std::shared_mutex> lk(counting_cache_mutex_);
+            auto it = counting_cache_.find(server_id);
+            if (it != counting_cache_.end()) h.highest_count = it->second.highest_count;
+        }
+        return h;
+    }
+
+    std::optional<UserAFK> get_user_afk(const std::string& user_id) {
+        std::shared_lock<std::shared_mutex> lock(user_afk_cache_mutex_);
+        auto it = user_afk_cache_.find(user_id);
+        if (it != user_afk_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool save_user_afk(const UserAFK& afk) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_user_id = escape_string(afk.user_id);
+        std::string esc_tmpl = escape_string(afk.custom_template);
+        std::string esc_reason = escape_string(afk.reason);
+        int is_afk_val = afk.is_afk ? 1 : 0;
+
+        
+        std::string query = 
+            "INSERT INTO user_afk (user_id, custom_template, is_afk, reason, since) "
+            "VALUES ('" + esc_user_id + "', '" + esc_tmpl + "', " + std::to_string(is_afk_val) + ", '" + esc_reason + "', " + std::to_string(afk.since) + ") "
+            "ON DUPLICATE KEY UPDATE "
+            "custom_template = '" + esc_tmpl + "', "
+            "is_afk = " + std::to_string(is_afk_val) + ", "
+            "reason = '" + esc_reason + "', "
+            "since = " + std::to_string(afk.since);
+            
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save user afk: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        
+        {
+            std::lock_guard<std::shared_mutex> lock(user_afk_cache_mutex_);
+            user_afk_cache_[afk.user_id] = afk;
+        }
+        return true;
+    }
+
 };
 
 } // namespace bronx
+

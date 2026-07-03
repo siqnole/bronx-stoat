@@ -150,7 +150,12 @@ public:
                                                      "• `" + pfx + "welcome message <text...>` - Set greeting message body.\n"
                                                      "• `" + pfx + "welcome edit <title:val desc:val color:val image:val>` - Customize embed fields.\n"
                                                      "• `" + pfx + "welcome json <raw_json>` - Import full embed JSON.\n"
-                                                     "• `" + pfx + "welcome test` - Send a simulated greet test.");
+                                                     "• `" + pfx + "welcome test` - Send a simulated greet test.\n"
+                                                     "• `" + pfx + "welcome dm <text|embed|none>` - Configure welcome DM type.\n"
+                                                     "• `" + pfx + "welcome dmmessage <text...>` - Set welcome DM message body.\n"
+                                                     "• `" + pfx + "welcome dmedit <key:val...>` - Customize welcome DM embed fields.\n"
+                                                     "• `" + pfx + "welcome dmjson <raw_json>` - Import welcome DM embed JSON.\n"
+                                                     "• `" + pfx + "welcome dmtest` - Send a simulated welcome DM test to yourself.");
                     return;
                 }
 
@@ -539,6 +544,215 @@ public:
                     return;
                 }
 
+                if (subcommand == "dm") {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "welcome dm <text|embed|none>`");
+                        return;
+                    }
+
+                    std::string dm_type = args[1];
+                    std::transform(dm_type.begin(), dm_type.end(), dm_type.begin(), ::tolower);
+                    if (dm_type != "text" && dm_type != "embed" && dm_type != "none") {
+                        bot.send_message(msg.channel_id, "⚠️ DM welcome type must be `text`, `embed`, or `none`.");
+                        return;
+                    }
+
+                    auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
+                    config.welcome_dm_type = dm_type;
+
+                    if (g_db->save_welcome_leave_config(config)) {
+                        bot.send_message(msg.channel_id, "✅ Welcome DM type set to **" + dm_type + "**.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                    }
+                    return;
+                }
+
+                if (subcommand == "dmmessage") {
+                    std::string text = get_raw_trailing_args(msg.content, pfx, "welcome", "dmmessage");
+                    if (text.empty()) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "welcome dmmessage <text...>`");
+                        return;
+                    }
+
+                    auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
+                    config.welcome_dm_content = text;
+
+                    if (g_db->save_welcome_leave_config(config)) {
+                        bot.send_message(msg.channel_id, "✅ Welcome DM message content updated successfully.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                    }
+                    return;
+                }
+
+                if (subcommand == "dmedit") {
+                    std::string text = get_raw_trailing_args(msg.content, pfx, "welcome", "dmedit");
+                    if (text.empty()) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "welcome dmedit key:value ...`\nkeys: `title`, `description`, `color`, `image`, `content`\nUse `none` to clear a field.");
+                        return;
+                    }
+
+                    auto pairs = parse_pairs(text);
+                    if (pairs.empty()) {
+                        bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found.");
+                        return;
+                    }
+
+                    auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
+                    nlohmann::json emb = nlohmann::json::object();
+                    if (!config.welcome_dm_embed_json.empty()) {
+                        try {
+                            emb = nlohmann::json::parse(config.welcome_dm_embed_json);
+                        } catch(...) {}
+                    }
+
+                    for (const auto& [key, val] : pairs) {
+                        if (key == "content") {
+                            if (val == "none" || val == "null" || val == "clear") {
+                                config.welcome_dm_content = "";
+                            } else {
+                                config.welcome_dm_content = val;
+                            }
+                        } else if (val == "none" || val == "null" || val == "clear") {
+                            emb.erase(key);
+                        } else {
+                            emb[key] = val;
+                        }
+                    }
+
+                    config.welcome_dm_embed_json = emb.dump();
+                    if (g_db->save_welcome_leave_config(config)) {
+                        bot.send_message(msg.channel_id, "✅ Welcome DM embed configuration updated successfully.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                    }
+                    return;
+                }
+
+                if (subcommand == "dmjson") {
+                    std::string text = get_raw_trailing_args(msg.content, pfx, "welcome", "dmjson");
+                    if (text.empty()) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "welcome dmjson <raw_json_embed>`");
+                        return;
+                    }
+
+                    nlohmann::json emb;
+                    try {
+                        emb = nlohmann::json::parse(text);
+                    } catch (const std::exception& e) {
+                        bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(e.what()));
+                        return;
+                    }
+
+                    auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
+
+                    if (emb.contains("content") && emb["content"].is_string()) {
+                        config.welcome_dm_content = emb["content"].get<std::string>();
+                        emb.erase("content");
+                    }
+
+                    if (emb.contains("colour")) {
+                        emb["color"] = emb["colour"];
+                        emb.erase("colour");
+                    }
+
+                    config.welcome_dm_embed_json = emb.dump();
+                    if (g_db->save_welcome_leave_config(config)) {
+                        bot.send_message(msg.channel_id, "✅ Welcome DM embed configuration imported successfully.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                    }
+                    return;
+                }
+
+                if (subcommand == "dmtest") {
+                    auto config_opt = g_db->get_welcome_leave_config(msg.server_id);
+                    if (!config_opt || config_opt->welcome_dm_type == "none") {
+                        bot.send_message(msg.channel_id, "⚠️ DM welcome is not enabled or set up. Use `" + pfx + "welcome dm <text|embed>` first.");
+                        return;
+                    }
+
+                    auto config = *config_opt;
+                    bot.get_member_count(msg.server_id, [&bot, msg, config](int count, bool ok) {
+                        int final_count = ok ? count : 1;
+                        auto server_opt = bot.get_server(msg.server_id);
+                        stoatpp::models::Server server;
+                        if (server_opt) {
+                            server = *server_opt;
+                        } else {
+                            server.name = "Test Server";
+                        }
+
+                        std::thread([&bot, config, msg, server, final_count]() {
+                            auto dm_res = bot.rest().open_dm(msg.author.id);
+                            if (!dm_res.success() || !dm_res.body.is_object() || !dm_res.body.contains("_id")) {
+                                bot.send_message(msg.channel_id, "⚠️ Failed to open DM with you.");
+                                return;
+                            }
+                            std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
+
+                            stoatpp::models::MessagePayload payload;
+                            if (config.welcome_dm_type == "embed") {
+                                nlohmann::json emb_json = nlohmann::json::object();
+                                if (!config.welcome_dm_embed_json.empty()) {
+                                    try { emb_json = nlohmann::json::parse(config.welcome_dm_embed_json); } catch(...) {}
+                                }
+
+                                std::string content = "";
+                                if (!config.welcome_dm_content.empty()) {
+                                    content = format_placeholders(config.welcome_dm_content, msg.author, server, final_count);
+                                }
+                                payload.content = content;
+
+                                nlohmann::json embed = nlohmann::json::object();
+                                if (emb_json.contains("title")) {
+                                    embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), msg.author, server, final_count);
+                                }
+                                if (emb_json.contains("description")) {
+                                    embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), msg.author, server, final_count);
+                                }
+                                if (emb_json.contains("color")) {
+                                    std::string col = emb_json["color"].get<std::string>();
+                                    if (col == "random") {
+                                        char hex[8];
+                                        snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
+                                        col = hex;
+                                    }
+                                    embed["colour"] = col;
+                                }
+                                if (emb_json.contains("image")) {
+                                    std::string img_url = format_placeholders(emb_json["image"].get<std::string>(), msg.author, server, final_count);
+                                    std::string media_id = bot.rest().upload_from_url(img_url);
+                                    if (!media_id.empty()) {
+                                        embed["media"] = media_id;
+                                    } else {
+                                        std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
+                                        if (!desc.empty()) desc += "\n";
+                                        desc += "![](" + img_url + ")";
+                                        embed["description"] = desc;
+                                    }
+                                }
+
+                                if (!embed.empty()) {
+                                    payload.embeds.push_back(embed);
+                                }
+                            } else {
+                                payload.content = format_placeholders(config.welcome_dm_content, msg.author, server, final_count);
+                            }
+
+                            bot.send_message(dm_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
+                                if (sent_ok) {
+                                    bot.send_message(msg.channel_id, "✅ Test welcome DM successfully sent to you.");
+                                } else {
+                                    bot.send_message(msg.channel_id, "⚠️ Failed to send test welcome DM.");
+                                }
+                            });
+                        }).detach();
+                    });
+                    return;
+                }
+
                 if (subcommand == "setup") {
                     bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\nLet's configure welcome messages for this server.\n\n**Step 1/7**: Mention a channel (e.g. #general), type its name/ID, or reply `none` to disable.");
                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg](std::optional<stoatpp::events::Message> rep1) {
@@ -731,13 +945,13 @@ public:
                     return;
                 }
 
-                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, channel, role, type, message, edit, json, or test.");
+                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, channel, role, type, message, edit, json, test, dm, dmmessage, dmedit, dmjson, or dmtest.");
                 });
             },
             "Welcome",
             0,
             0,
-            {"setup", "channel <#channel|none>", "role <role>", "type <text|embed>", "message <text...>", "edit <key:val...>", "json <raw_json>", "test"}
+            {"setup", "channel <#channel|none>", "role <role>", "type <text|embed>", "message <text...>", "edit <key:val...>", "json <raw_json>", "test", "dm <text|embed|none>", "dmmessage <text...>", "dmedit <key:val...>", "dmjson <raw_json>", "dmtest"}
         });
 
         // --- LEAVE COMMAND ---
@@ -1295,6 +1509,85 @@ public:
                             payload.content = format_placeholders(config.welcome_content, user, server, final_count);
                             bot.send_message(config.welcome_channel_id, payload);
                         }
+                    });
+                });
+            }
+
+            // 3. Dispatch DM Welcome if configured
+            if (config.welcome_dm_type == "text" || config.welcome_dm_type == "embed") {
+                bot.get_member_count(e.server_id, [&bot, e, config](int count, bool ok) {
+                    int final_count = ok ? count : 1;
+                    auto server_opt = bot.get_server(e.server_id);
+                    stoatpp::models::Server server;
+                    if (server_opt) {
+                        server = *server_opt;
+                    } else {
+                        server.name = "our server";
+                    }
+
+                    bot.fetch_user(e.user_id, [&bot, e, config, server, final_count](stoatpp::models::User user, bool user_ok) {
+                        if (!user_ok) return;
+
+                        std::thread([&bot, config, user, server, final_count]() {
+                            auto dm_res = bot.rest().open_dm(user.id);
+                            if (!dm_res.success() || !dm_res.body.is_object() || !dm_res.body.contains("_id")) {
+                                return;
+                            }
+                            std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
+
+                            stoatpp::models::MessagePayload payload;
+                            if (config.welcome_dm_type == "embed") {
+                                nlohmann::json emb_json = nlohmann::json::object();
+                                if (!config.welcome_dm_embed_json.empty()) {
+                                    try {
+                                        emb_json = nlohmann::json::parse(config.welcome_dm_embed_json);
+                                    } catch(...) {}
+                                }
+
+                                std::string content = "";
+                                if (!config.welcome_dm_content.empty()) {
+                                    content = format_placeholders(config.welcome_dm_content, user, server, final_count);
+                                }
+                                payload.content = content;
+
+                                nlohmann::json embed = nlohmann::json::object();
+                                if (emb_json.contains("title")) {
+                                    embed["title"] = format_placeholders(emb_json["title"].get<std::string>(), user, server, final_count);
+                                }
+                                if (emb_json.contains("description")) {
+                                    embed["description"] = format_placeholders(emb_json["description"].get<std::string>(), user, server, final_count);
+                                }
+                                if (emb_json.contains("color")) {
+                                    std::string col = emb_json["color"].get<std::string>();
+                                    if (col == "random") {
+                                        char hex[8];
+                                        snprintf(hex, sizeof(hex), "#%06x", rand() % 0xFFFFFF);
+                                        col = hex;
+                                    }
+                                    embed["colour"] = col;
+                                }
+                                if (emb_json.contains("image")) {
+                                    std::string img_url = format_placeholders(emb_json["image"].get<std::string>(), user, server, final_count);
+                                    std::string media_id = bot.rest().upload_from_url(img_url);
+                                    if (!media_id.empty()) {
+                                        embed["media"] = media_id;
+                                    } else {
+                                        std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
+                                        if (!desc.empty()) desc += "\n";
+                                        desc += "![](" + img_url + ")";
+                                        embed["description"] = desc;
+                                    }
+                                }
+
+                                if (!embed.empty()) {
+                                    payload.embeds.push_back(embed);
+                                }
+                            } else {
+                                payload.content = format_placeholders(config.welcome_dm_content, user, server, final_count);
+                            }
+
+                            bot.send_message(dm_channel_id, payload);
+                        }).detach();
                     });
                 });
             }

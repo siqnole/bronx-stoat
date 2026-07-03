@@ -1542,7 +1542,8 @@ public:
 
         // Gateway event handling for role assignments
         bot.on_message_react([&bot](const stoatpp::events::MessageReact& e) {
-            if (e.user_id == bot.current_user().id) return;
+            try {
+                if (e.user_id == bot.current_user().id) return;
 
             // Check if pagination turn for rr_list
             {
@@ -1732,10 +1733,14 @@ public:
                     });
                 }
             }
+            } catch (const std::exception& err) {
+                std::cout << "[bronx rr error] Exception in on_message_react: " << err.what() << "\n";
+            }
         });
 
         bot.on_message_unreact([&bot](const stoatpp::events::MessageUnreact& e) {
-            if (e.user_id == bot.current_user().id) return;
+            try {
+                if (e.user_id == bot.current_user().id) return;
 
             auto rr_msg = g_db->get_rr_message(e.id);
             if (rr_msg) {
@@ -1792,6 +1797,9 @@ public:
                         }
                     });
                 }
+            }
+            } catch (const std::exception& err) {
+                std::cout << "[bronx rr error] Exception in on_message_unreact: " << err.what() << "\n";
             }
         });
     }

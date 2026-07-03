@@ -16,6 +16,7 @@ public:
         int current_category_idx = 0;
         int current_page_idx = 0;
         std::string user_id;
+        std::string prefix;
     };
 
     struct PromptSession {
@@ -40,7 +41,118 @@ public:
             {},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling custom help...\n";
-                
+
+                std::string prefix = bot.config().command_prefix;
+                if (bot.config().prefix_resolver) {
+                    auto resolved = bot.config().prefix_resolver(bot, msg);
+                    bool found_clean = false;
+                    for (const auto& r : resolved) {
+                        if (r.rfind("<@", 0) != 0) {
+                            prefix = r;
+                            found_clean = true;
+                            break;
+                        }
+                    }
+                    if (!found_clean && !resolved.empty()) {
+                        prefix = resolved[0];
+                    }
+                }
+
+                if (!args.empty()) {
+                    std::string target_cmd_name = args[0];
+                    std::transform(target_cmd_name.begin(), target_cmd_name.end(), target_cmd_name.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                    auto all_cmds = bot.get_commands();
+                    std::optional<stoatpp::Command> matched_cmd;
+                    for (const auto& cmd : all_cmds) {
+                        std::string cmd_name = cmd.name;
+                        std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), [](unsigned char c) { return std::tolower(c); });
+                        if (cmd_name == target_cmd_name) {
+                            matched_cmd = cmd;
+                            break;
+                        }
+                        for (const auto& alias : cmd.aliases) {
+                            std::string alias_lower = alias;
+                            std::transform(alias_lower.begin(), alias_lower.end(), alias_lower.begin(), [](unsigned char c) { return std::tolower(c); });
+                            if (alias_lower == target_cmd_name) {
+                                matched_cmd = cmd;
+                                break;
+                            }
+                        }
+                        if (matched_cmd) break;
+                    }
+
+                    if (!matched_cmd) {
+                        bot.send_message(msg.channel_id, "⚠️ command `" + args[0] + "` not found. type `" + prefix + "help` for the full list.");
+                        return;
+                    }
+
+                    if (!msg.server_id.empty() && g_db) {
+                        std::string cmd_name = matched_cmd->name;
+                        std::string mod_name = matched_cmd->category;
+                        std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), [](unsigned char c) { return std::tolower(c); });
+                        std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), [](unsigned char c) { return std::tolower(c); });
+                        if (g_db->is_disabled(msg.server_id, cmd_name, mod_name)) {
+                            bot.send_message(msg.channel_id, "⚠️ command `" + matched_cmd->name + "` is currently disabled in this server.");
+                            return;
+                        }
+                    }
+
+                    stoatpp::models::MessagePayload payload;
+                    payload.content = " ";
+                    
+                    stoatpp::models::Embed embed;
+                    embed.set_colour(0x5865F2)
+                         .set_title("help — " + to_lower(matched_cmd->name));
+
+                    std::string desc = "";
+                    if (!matched_cmd->description.empty()) {
+                        desc += "**Description:** " + to_lower(matched_cmd->description) + "\n\n";
+                    }
+
+                    std::string syntax = prefix + matched_cmd->name;
+                    if (!matched_cmd->args.empty()) {
+                        for (const auto& arg : matched_cmd->args) {
+                            syntax += " " + arg;
+                        }
+                    } else if (!matched_cmd->usage.empty()) {
+                        syntax = matched_cmd->usage;
+                    }
+                    desc += "**Syntax:** `" + to_lower(syntax) + "`\n";
+
+                    if (!matched_cmd->aliases.empty()) {
+                        desc += "**Aliases:** ";
+                        for (size_t a = 0; a < matched_cmd->aliases.size(); ++a) {
+                            desc += "`" + prefix + to_lower(matched_cmd->aliases[a]) + "`" + (a + 1 < matched_cmd->aliases.size() ? ", " : "");
+                        }
+                        desc += "\n";
+                    }
+
+                    if (!matched_cmd->category.empty()) {
+                        desc += "**Category:** " + to_lower(matched_cmd->category) + "\n";
+                    }
+
+                    if (matched_cmd->required_permissions != 0) {
+                        desc += "**Permissions Required:** " + format_permission_mask(matched_cmd->required_permissions) + "\n";
+                    }
+
+                    if (matched_cmd->cooldown_seconds > 0) {
+                        desc += "**Cooldown:** " + std::to_string(matched_cmd->cooldown_seconds) + " seconds\n";
+                    }
+
+                    if (!matched_cmd->subcommands.empty()) {
+                        desc += "\n**Subcommands / Options:**\n";
+                        for (const auto& sub : matched_cmd->subcommands) {
+                            desc += "• `" + to_lower(sub) + "`\n";
+                        }
+                    }
+
+                    embed.set_description(desc);
+                    payload.add_embed(embed);
+                    bot.send_message(msg.channel_id, payload);
+                    return;
+                }
+
                 auto all_cmds = bot.get_commands();
                 std::unordered_map<std::string, std::vector<stoatpp::Command>> commands_by_cat;
                 std::vector<std::string> categories;
@@ -76,14 +188,6 @@ public:
                     return;
                 }
 
-                std::string prefix = bot.config().command_prefix;
-                if (bot.config().prefix_resolver) {
-                    auto resolved = bot.config().prefix_resolver(bot, msg);
-                    if (!resolved.empty()) {
-                        prefix = resolved[0];
-                    }
-                }
-
                 // Sort commands within categories
                 for (auto& pair : commands_by_cat) {
                     std::sort(pair.second.begin(), pair.second.end(), [](const auto& a, const auto& b) {
@@ -95,14 +199,15 @@ public:
                 session.current_category_idx = 0;
                 session.current_page_idx = 0;
                 session.user_id = msg.author.id;
+                session.prefix = prefix;
 
                 auto payload = render_help_page(bot, categories, commands_by_cat, session, prefix);
 
-                bot.send_message(msg.channel_id, payload, [this, &bot, msg, categories](stoatpp::models::Message res, bool success) {
+                bot.send_message(msg.channel_id, payload, [this, &bot, msg, categories, prefix](stoatpp::models::Message res, bool success) {
                     if (success) {
                         {
                             std::lock_guard<std::mutex> lock(help_mutex_);
-                            help_sessions_[res.id] = {0, 0, msg.author.id};
+                            help_sessions_[res.id] = {0, 0, msg.author.id, prefix};
                         }
                         
                         bot.react_to_message(msg.channel_id, res.id, "⏪");
@@ -157,7 +262,7 @@ public:
 
             if (categories.empty()) return;
 
-            std::string prefix = bot.config().command_prefix;
+            std::string prefix = session.prefix.empty() ? bot.config().command_prefix : session.prefix;
 
             bool changed = false;
             
@@ -288,13 +393,7 @@ public:
                 }
                 if (categories.empty()) return;
 
-                std::string prefix = bot.config().command_prefix;
-                if (bot.config().prefix_resolver) {
-                    auto resolved = bot.config().prefix_resolver(bot, e);
-                    if (!resolved.empty()) {
-                        prefix = resolved[0];
-                    }
-                }
+                std::string prefix = session.prefix.empty() ? bot.config().command_prefix : session.prefix;
 
                 bool changed = false;
                 try {
@@ -348,6 +447,38 @@ private:
     static std::string to_lower(std::string s) {
         for (auto& c : s) c = std::tolower(static_cast<unsigned char>(c));
         return s;
+    }
+
+    static std::string format_permission_mask(int64_t mask) {
+        if (mask == 0) return "none";
+        std::vector<std::string> perms;
+        if (mask & stoatpp::permissions::ManageServer) perms.push_back("manage server");
+        if (mask & stoatpp::permissions::ManageChannels) perms.push_back("manage channels");
+        if (mask & stoatpp::permissions::ManagePermissions) perms.push_back("manage permissions");
+        if (mask & stoatpp::permissions::ManageRole) perms.push_back("manage roles");
+        if (mask & stoatpp::permissions::ManageCustomisation) perms.push_back("manage customisation");
+        if (mask & stoatpp::permissions::KickMembers) perms.push_back("kick members");
+        if (mask & stoatpp::permissions::BanMembers) perms.push_back("ban members");
+        if (mask & stoatpp::permissions::TimeoutMembers) perms.push_back("timeout members");
+        if (mask & stoatpp::permissions::AssignRoles) perms.push_back("assign roles");
+        if (mask & stoatpp::permissions::ChangeNickname) perms.push_back("change nickname");
+        if (mask & stoatpp::permissions::ManageNicknames) perms.push_back("manage nicknames");
+        if (mask & stoatpp::permissions::ManageAvatar) perms.push_back("manage avatar");
+        if (mask & stoatpp::permissions::RemoveAvatars) perms.push_back("remove avatars");
+        if (mask & stoatpp::permissions::ViewChannel) perms.push_back("view channel");
+        if (mask & stoatpp::permissions::SendMessages) perms.push_back("send messages");
+        if (mask & stoatpp::permissions::ManageMessages) perms.push_back("manage messages");
+        if (mask & stoatpp::permissions::ManageWebhooks) perms.push_back("manage webhooks");
+        if (mask & stoatpp::permissions::CreateInvites) perms.push_back("create invites");
+        if (mask & stoatpp::permissions::EmbedLinks) perms.push_back("embed links");
+        if (mask & stoatpp::permissions::UploadFiles) perms.push_back("upload files");
+        if (mask & stoatpp::permissions::AddReactions) perms.push_back("add reactions");
+
+        std::string result = "";
+        for (size_t i = 0; i < perms.size(); ++i) {
+            result += perms[i] + (i + 1 < perms.size() ? ", " : "");
+        }
+        return result;
     }
 
     stoatpp::models::MessagePayload render_help_page(

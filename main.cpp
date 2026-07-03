@@ -13,6 +13,8 @@
 #include "stoatpp/bot_module.h"
 #include "stoatpp/utils/ulid.h"
 #include <nlohmann/json.hpp>
+#include <unordered_set>
+#include <unordered_map>
 
 // Include our Cogs
 #include "cogs/general.h"
@@ -33,6 +35,10 @@
 #include "cogs/reminders.h"
 #include "cogs/antiraid.h"
 #include "cogs/auto.h"
+#include "cogs/tickets.h"
+#include "cogs/counting.h"
+#include "cogs/afk.h"
+
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string& filepath = ".env") {
@@ -68,6 +74,14 @@ void load_env(const std::string& filepath = ".env") {
     }
     std::cout << "[bronx env] successfully loaded variables from " << path_used << "\n";
 }
+
+static std::mutex g_invoker_mutex;
+static std::unordered_map<std::string, std::string> g_channel_last_invoker;
+static std::unordered_map<std::string, std::string> g_server_last_channel;
+static std::string g_last_active_channel;
+
+static std::mutex g_handling_mutex;
+static std::unordered_set<std::string> g_handling_channels;
 
 int main(int argc, char* argv[]) {
     load_env();
@@ -201,6 +215,10 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::RemindersModule>());
     bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
     bot.use(std::make_unique<bronx::cogs::AutoModule>());
+    bot.use(std::make_unique<bronx::cogs::TicketsModule>());
+    bot.use(std::make_unique<bronx::cogs::CountingModule>());
+    bot.use(std::make_unique<bronx::cogs::AFKModule>());
+
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
         std::cout << "[bronx event] ready! logged in as: " << e.user.username 
@@ -247,6 +265,15 @@ int main(int argc, char* argv[]) {
     bot.on_message([&bot](const stoatpp::events::Message& msg) {
         std::cout << "[bronx event] message in channel " << msg.channel_id
                   << " by " << msg.author.username << ": " << msg.content << "\n";
+
+        if (!msg.author.bot && !msg.channel_id.empty() && !msg.author.id.empty()) {
+            std::lock_guard<std::mutex> lock(g_invoker_mutex);
+            g_channel_last_invoker[msg.channel_id] = msg.author.id;
+            if (!msg.server_id.empty()) {
+                g_server_last_channel[msg.server_id] = msg.channel_id;
+            }
+            g_last_active_channel = msg.channel_id;
+        }
 
         if (bronx::g_db) {
             // Resolve bot flag — Revolt sometimes omits "bot" in message payloads,
@@ -349,8 +376,44 @@ int main(int argc, char* argv[]) {
         std::cout << "[bronx event] channel deleted: " << e.id << "\n";
     });
 
-    bot.on_server_create([](const stoatpp::events::ServerCreate& e) {
+    bot.on_server_create([&bot](const stoatpp::events::ServerCreate& e) {
         std::cout << "[bronx event] server added: " << e.server.name << " (id: " << e.server.id << ")\n";
+        
+        stoatpp::models::MessagePayload payload;
+        nlohmann::json embed = nlohmann::json::object();
+        embed["title"] = "📥 Joined Server";
+        embed["colour"] = "#44ff44";
+        std::string desc = "• **Name:** " + e.server.name + "\n"
+                           "• **ID:** `" + e.server.id + "`\n"
+                           "• **Owner:** <@" + e.server.owner + ">\n"
+                           "• **Channels:** " + std::to_string(e.server.channels.size()) + "\n"
+                           "• **Roles:** " + std::to_string(e.server.roles.size()) + "\n";
+        embed["description"] = desc;
+        payload.embeds.push_back(embed);
+
+        bot.send_message("01KWJBMZFEW97D3VM09TDADRPN", payload);
+    });
+
+    bot.on_server_delete([&bot](const stoatpp::events::ServerDelete& e) {
+        std::cout << "[bronx event] server removed: " << e.id << "\n";
+        
+        auto cached = bot.get_server(e.id);
+        std::string server_name = cached ? cached->name : "Unknown Server";
+        std::string owner_id = cached ? cached->owner : "";
+
+        stoatpp::models::MessagePayload payload;
+        nlohmann::json embed = nlohmann::json::object();
+        embed["title"] = "📤 Left Server";
+        embed["colour"] = "#ff4444";
+        std::string desc = "• **Name:** " + server_name + "\n"
+                           "• **ID:** `" + e.id + "`\n";
+        if (!owner_id.empty()) {
+            desc += "• **Owner:** <@" + owner_id + ">\n";
+        }
+        embed["description"] = desc;
+        payload.embeds.push_back(embed);
+
+        bot.send_message("01KWJBMZFEW97D3VM09TDADRPN", payload);
     });
 
 
@@ -359,8 +422,100 @@ int main(int argc, char* argv[]) {
         std::cerr << "[bronx event] gateway error: " << e.error_id << "\n";
     });
 
-    bot.on_rest_error([](const std::string& method, const std::string& path, int status_code, const std::string& error_msg) {
+    bot.on_rest_error([&bot](const std::string& method, const std::string& path, int status_code, const std::string& error_msg) {
         std::cerr << "[bronx rest error] " << method << " " << path << " -> " << status_code << ": " << error_msg << "\n";
+
+        // Try to parse channel ID from path or server ID fallback
+        std::string channel_id = "";
+        if (path.rfind("/channels/", 0) == 0) {
+            std::string sub = path.substr(10);
+            size_t slash = sub.find('/');
+            if (slash != std::string::npos) {
+                channel_id = sub.substr(0, slash);
+            } else {
+                channel_id = sub;
+            }
+        } else if (path.rfind("/servers/", 0) == 0) {
+            std::string server_id = "";
+            std::string sub = path.substr(9);
+            size_t slash = sub.find('/');
+            if (slash != std::string::npos) {
+                server_id = sub.substr(0, slash);
+            } else {
+                server_id = sub;
+            }
+            if (!server_id.empty()) {
+                std::lock_guard<std::mutex> lock(g_invoker_mutex);
+                auto it = g_server_last_channel.find(server_id);
+                if (it != g_server_last_channel.end()) {
+                    channel_id = it->second;
+                }
+            }
+        }
+
+        // Final fallback if we still don't have a channel ID
+        if (channel_id.empty()) {
+            std::lock_guard<std::mutex> lock(g_invoker_mutex);
+            channel_id = g_last_active_channel;
+        }
+
+        if (!channel_id.empty()) {
+            // Prevent recursive REST error handling loops
+            {
+                std::lock_guard<std::mutex> lock(g_handling_mutex);
+                if (g_handling_channels.count(channel_id)) {
+                    return;
+                }
+                g_handling_channels.insert(channel_id);
+            }
+
+            // Extract the missing permission from error_msg (if format matches)
+            std::string missing_perm = "";
+            size_t pos = error_msg.find("missing permission: ");
+            if (pos != std::string::npos) {
+                missing_perm = error_msg.substr(pos + 20);
+                size_t close_paren = missing_perm.find(')');
+                if (close_paren != std::string::npos) {
+                    missing_perm = missing_perm.substr(0, close_paren);
+                }
+            }
+
+            if (!missing_perm.empty()) {
+                std::string lower_perm = missing_perm;
+                std::transform(lower_perm.begin(), lower_perm.end(), lower_perm.begin(), [](unsigned char c) { return std::tolower(c); });
+
+                if (lower_perm == "sendmessages" || lower_perm == "send_messages" || lower_perm == "send messages") {
+                    std::string invoker_id = "";
+                    {
+                        std::lock_guard<std::mutex> lock(g_invoker_mutex);
+                        auto it = g_channel_last_invoker.find(channel_id);
+                        if (it != g_channel_last_invoker.end()) {
+                            invoker_id = it->second;
+                        }
+                    }
+                    if (!invoker_id.empty()) {
+                        std::thread([&bot, invoker_id, channel_id]() {
+                            auto dm_res = bot.rest().open_dm(invoker_id);
+                            if (dm_res.success() && dm_res.body.is_object() && dm_res.body.contains("_id")) {
+                                std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
+                                bot.send_message(dm_channel_id, "Missing permission: SendMessages in channel " + channel_id);
+                            }
+                        }).detach();
+                    }
+                } else if (lower_perm == "embedlinks" || lower_perm == "embed_links" || lower_perm == "embeds" || lower_perm == "embed") {
+                    bot.send_message(channel_id, "Missing permission: EmbedLinks");
+                } else {
+                    bot.send_message(channel_id, "Missing permission: " + missing_perm);
+                }
+            }
+
+            // Release handling block after 2 seconds
+            std::thread([channel_id]() {
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                std::lock_guard<std::mutex> lock(g_handling_mutex);
+                g_handling_channels.erase(channel_id);
+            }).detach();
+        }
     });
 
     bot.on_logout([](const stoatpp::events::Logout&) {

@@ -925,6 +925,62 @@ public:
             "Moderation",
             stoatpp::permissions::KickMembers
         });
+
+        bot.register_command({
+            "slowmode",
+            {},
+            "set channel slowmode (0 to disable).",
+            "",
+            {"<seconds>", "[channel]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "usage: `.slowmode <seconds> [channel]`");
+                    return;
+                }
+
+
+                int seconds = 0;
+                try {
+                    seconds = std::stoi(args[0]);
+                    if (seconds < 0) {
+                        bot.send_message(msg.channel_id, "duration cannot be negative.");
+                        return;
+                    }
+                } catch (...) {
+                    bot.send_message(msg.channel_id, "invalid duration. please specify duration in seconds.");
+                    return;
+                }
+
+                std::string target_channel = msg.channel_id;
+                if (args.size() > 1) {
+                    target_channel = args[1];
+                    if (target_channel.rfind("<#", 0) == 0 && target_channel.back() == '>') {
+                        target_channel = target_channel.substr(2, target_channel.size() - 3);
+                    }
+                }
+
+                nlohmann::json patch = nlohmann::json::object();
+                if (seconds == 0) {
+                    patch["remove"] = nlohmann::json::array({"Slowmode"});
+                } else {
+                    patch["slowmode"] = seconds;
+                }
+
+                auto res = bot.rest().edit_channel(target_channel, patch);
+                if (res.success()) {
+                    if (seconds == 0) {
+                        bot.send_message(msg.channel_id, "✅ slowmode disabled in <#" + target_channel + ">.");
+                    } else {
+                        bot.send_message(msg.channel_id, "✅ slowmode in <#" + target_channel + "> set to **" + std::to_string(seconds) + "s**.");
+                    }
+                } else {
+                    bot.send_message(msg.channel_id, "⚠️ failed to set slowmode. make sure I have manage channels permission.");
+                }
+            },
+            "Moderation",
+            stoatpp::permissions::ManageChannels
+        });
+
     }
 };
 

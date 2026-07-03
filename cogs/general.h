@@ -228,6 +228,147 @@ public:
             "General"
         });
 
+        bot.register_command({
+            "permcheck",
+            {"checkperms", "permissions"},
+            "check what permissions the bot has and what is required for each module.",
+            "",
+            {},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling permcheck...\n";
+                if (msg.server_id.empty()) {
+                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+                    return;
+                }
+
+                auto server_opt = bot.get_server(msg.server_id);
+                if (!server_opt) {
+                    bot.send_message(msg.channel_id, "⚠️ Failed to fetch server details.");
+                    return;
+                }
+
+                bot.fetch_member(msg.server_id, bot.current_user().id, [&bot, msg, server_opt](stoatpp::models::Member bot_member, bool success) {
+                    if (!success) {
+                        bot.send_message(msg.channel_id, "⚠️ Failed to fetch bot member details.");
+                        return;
+                    }
+
+                    // Definitions of features and their required permissions
+                    struct PermRequirement {
+                        std::string name;
+                        int64_t mask;
+                    };
+
+                    struct ModuleConfig {
+                        std::string module_name;
+                        std::vector<PermRequirement> requirements;
+                    };
+
+                    std::vector<ModuleConfig> modules = {
+                        {
+                            "Reaction Roles",
+                            {
+                                {"Add Reactions", stoatpp::permissions::AddReactions},
+                                {"Assign Roles (Manage Roles)", stoatpp::permissions::AssignRoles}
+                            }
+                        },
+                        {
+                            "Tickets",
+                            {
+                                {"View Channel", stoatpp::permissions::ViewChannel},
+                                {"Send Messages", stoatpp::permissions::SendMessages},
+                                {"Embed Links", stoatpp::permissions::EmbedLinks},
+                                {"Upload Files", stoatpp::permissions::UploadFiles},
+                                {"Add Reactions", stoatpp::permissions::AddReactions},
+                                {"Manage Channels", stoatpp::permissions::ManageChannels},
+                                {"Manage Permissions", stoatpp::permissions::ManagePermissions},
+                                {"Manage Messages", stoatpp::permissions::ManageMessages}
+                            }
+                        },
+                        {
+                            "Anti-Raid",
+                            {
+                                {"Kick Members", stoatpp::permissions::KickMembers},
+                                {"Ban Members", stoatpp::permissions::BanMembers},
+                                {"Timeout Members", stoatpp::permissions::TimeoutMembers},
+                                {"Manage Server", stoatpp::permissions::ManageServer}
+                            }
+                        },
+                        {
+                            "Logging",
+                            {
+                                {"View Channel", stoatpp::permissions::ViewChannel},
+                                {"Send Messages", stoatpp::permissions::SendMessages},
+                                {"Embed Links", stoatpp::permissions::EmbedLinks}
+                            }
+                        },
+                        {
+                            "Welcome/Leave",
+                            {
+                                {"Send Messages", stoatpp::permissions::SendMessages},
+                                {"Assign Roles (Autorole)", stoatpp::permissions::AssignRoles}
+                            }
+                        },
+                        {
+                            "Moderation",
+                            {
+                                {"Kick Members", stoatpp::permissions::KickMembers},
+                                {"Ban Members", stoatpp::permissions::BanMembers},
+                                {"Timeout Members", stoatpp::permissions::TimeoutMembers},
+                                {"Manage Messages", stoatpp::permissions::ManageMessages}
+                            }
+                        },
+                        {
+                            "General / Stats / Charting",
+                            {
+                                {"Send Messages", stoatpp::permissions::SendMessages},
+                                {"Embed Links", stoatpp::permissions::EmbedLinks},
+                                {"Upload Files", stoatpp::permissions::UploadFiles}
+                            }
+                        }
+                    };
+
+                    stoatpp::models::MessagePayload payload;
+                    payload.content = " ";
+
+                    stoatpp::models::Embed embed;
+                    embed.set_colour(0x5865F2)
+                         .set_title("🛡️ Bot Permission Check");
+
+                    std::string desc = "Here is a breakdown of the permissions I have in this server and which modules they affect:\n\n";
+
+                    bool overall_perfect = true;
+
+                    for (const auto& mod : modules) {
+                        desc += "### " + mod.module_name + "\n";
+                        bool module_ok = true;
+                        for (const auto& req : mod.requirements) {
+                            bool has_perm = bot.has_permission(*server_opt, bot_member, req.mask);
+                            if (has_perm) {
+                                desc += "✅ **" + req.name + "**\n";
+                            } else {
+                                desc += "❌ **" + req.name + "** *(missing)*\n";
+                                module_ok = false;
+                                overall_perfect = false;
+                            }
+                        }
+                        desc += "\n";
+                    }
+
+                    if (overall_perfect) {
+                        desc += "🎉 **All permissions are correctly configured!** Bronx has all the required access in this server.";
+                    } else {
+                        desc += "⚠️ **Warning:** Some permissions are missing. Bronx might not function correctly for modules marked with ❌.";
+                    }
+
+                    embed.set_description(desc);
+                    payload.add_embed(embed);
+                    bot.send_message(msg.channel_id, payload);
+                });
+            },
+            "General"
+        });
+
         bot.on_message_react([&bot](const stoatpp::events::MessageReact& e) {
             std::unique_lock<std::mutex> lock(helpers::g_pages_mutex);
             auto it = helpers::g_pages.find(e.id);

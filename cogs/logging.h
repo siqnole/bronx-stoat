@@ -478,6 +478,7 @@ public:
             if (args.empty()) {
                 bot.send_message(msg.channel_id, "📋 **Logging Module Commands:**\n"
                                                  "• `" + pfx + "log aio` - Auto-setup a Logging category and channels.\n"
+                                                 "• `" + pfx + "log create <category>` - Create preset log category & channel.\n"
                                                  "• `" + pfx + "log channel <event> <#channel|none>` - Route event to channel.\n"
                                                  "• `" + pfx + "log list` - Show current logging config.\n"
                                                  "• `" + pfx + "log type <event> <text|embed>` - Set log type.\n"
@@ -491,7 +492,14 @@ public:
                                                  "- `leave` / `member_leave` (Placeholders: `{user}`, `{username}`, `{membercount}`)\n"
                                                  "- `mod` / `moderation` (Placeholders: `{action}`, `{moderator}`, `{target}`, `{reason}`, `{details}`)\n"
                                                  "- `user` / `user_update` (Placeholders: `{user}`, `{oldUser}`, `{newUser}`)\n"
-                                                 "- `antiraid` (Placeholders: `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`)");
+                                                 "- `antiraid` (Placeholders: `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`)\n"
+                                                 "- `role_create` (Placeholders: `{role}`, `{roleName}`, `{roleId}`)\n"
+                                                 "- `role_delete` (Placeholders: `{roleName}`, `{roleId}`)\n"
+                                                 "- `role_update` (Placeholders: `{role}`, `{roleName}`, `{roleId}`, `{details}`)\n"
+                                                 "- `channel_create` (Placeholders: `{channel}`, `{channelName}`, `{channelId}`)\n"
+                                                 "- `channel_delete` (Placeholders: `{channelName}`, `{channelId}`)\n"
+                                                 "- `channel_update` (Placeholders: `{channel}`, `{channelName}`, `{channelId}`, `{details}`)\n"
+                                                 "- `webhook_update` (Placeholders: `{webhookId}`, `{channel}`, `{action}`)");
                 return;
             }
 
@@ -499,6 +507,72 @@ public:
             std::transform(subcommand.begin(), subcommand.end(), subcommand.begin(), ::tolower);
 
             auto execute_cmd = [this, &bot, msg, pfx, args, subcommand, server_opt]() {
+                if (subcommand == "create") {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "log create <moderation|utility|messages|members>`");
+                        return;
+                    }
+                    std::string cat = args[1];
+                    std::transform(cat.begin(), cat.end(), cat.begin(), ::tolower);
+
+                    std::string ch_name = "";
+                    std::vector<std::string> events;
+
+                    if (cat == "moderation" || cat == "mod") {
+                        ch_name = "moderation-logs";
+                        events = {"moderation"};
+                    } else if (cat == "utility" || cat == "server") {
+                        ch_name = "server-logs";
+                        events = {"role_create", "role_delete", "role_update", "channel_create", "channel_delete", "channel_update", "webhook_update"};
+                    } else if (cat == "messages" || cat == "message" || cat == "msg") {
+                        ch_name = "message-logs";
+                        events = {"message_edit", "message_delete"};
+                    } else if (cat == "members" || cat == "member") {
+                        ch_name = "member-logs";
+                        events = {"member_join", "member_leave", "user_update"};
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ Invalid category. Choose from: `moderation`, `utility`, `messages`, `members`.");
+                        return;
+                    }
+
+                    std::string server_id = msg.server_id;
+                    std::thread([&bot, server_id, msg, ch_name, events, cat]() {
+                        bot.send_message(msg.channel_id, "⚙️ Creating log channel **" + ch_name + "**...");
+                        
+                        auto res = bot.rest().create_channel(server_id, "Text", ch_name);
+                        if (!res.success()) {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to create channel. Please check my server permissions (Manage Channels).");
+                            return;
+                        }
+
+                        std::string channel_id = res.body["_id"].get<std::string>();
+
+                        // Route events
+                        for (const auto& ev : events) {
+                            g_db->save_logging_channel(server_id, ev, channel_id);
+                        }
+
+                        // Pre-create the webhook
+                        auto create_res = bot.rest().create_webhook(channel_id, "Bronx Logger");
+                        if (create_res.success()) {
+                            auto wh = stoatpp::models::Webhook::from_json(create_res.body);
+                            if (wh.token) {
+                                g_db->save_logging_webhook(channel_id, wh.id, *wh.token);
+                            }
+                        }
+
+                        std::string success_msg = "✅ **Log Category Created!**\n"
+                                                  "• Channel: <#" + channel_id + ">\n"
+                                                  "• Category: **" + cat + "**\n"
+                                                  "• Logged Events: ";
+                        for (size_t i = 0; i < events.size(); ++i) {
+                            success_msg += "`" + events[i] + "`" + (i == events.size() - 1 ? "" : ", ");
+                        }
+                        bot.send_message(msg.channel_id, success_msg);
+                    }).detach();
+                    return;
+                }
+
                 if (subcommand == "aio") {
                     std::string server_id = msg.server_id;
                     std::thread([&bot, server_id, msg]() {
@@ -595,7 +669,10 @@ public:
                         "• **Message Edit (`edit`):** `{author}`, `{username}`, `{channel}`, `{before}`, `{after}`\n"
                         "• **Join/Leave (`join`, `leave`):** `{user}`, `{username}`, `{membercount}`\n"
                         "• **User Update (`user`):** `{user}`, `{oldUser}`, `{newUser}`\n"
-                        "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n\n"
+                        "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n"
+                        "• **Roles (`role_create`, `role_delete`, `role_update`):** `{role}`, `{roleName}`, `{roleId}`, `{details}`\n"
+                        "• **Channels (`channel_create`, `channel_delete`, `channel_update`):** `{channel}`, `{channelName}`, `{channelId}`, `{details}`\n"
+                        "• **Webhooks (`webhook_update`):** `{webhookId}`, `{channel}`, `{action}`\n\n"
                         "**Examples:**\n"
                         "• `" + pfx + "log edit delete title:🗑️ Message Deleted color:#ff3333 description:**Author:** {author}\\n**Content:** {content}`\n"
                         "• `" + pfx + "log edit mod title:🛡️ {action} color:#ffa500 content:<@{target}> was moderated`"
@@ -612,7 +689,10 @@ public:
                         "• **Message Edit (`edit`):** `{author}`, `{username}`, `{channel}`, `{before}`, `{after}`\n"
                         "• **Join/Leave (`join`, `leave`):** `{user}`, `{username}`, `{membercount}`\n"
                         "• **User Update (`user`):** `{user}`, `{oldUser}`, `{newUser}`\n"
-                        "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n\n"
+                        "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n"
+                        "• **Roles (`role_create`, `role_delete`, `role_update`):** `{role}`, `{roleName}`, `{roleId}`, `{details}`\n"
+                        "• **Channels (`channel_create`, `channel_delete`, `channel_update`):** `{channel}`, `{channelName}`, `{channelId}`, `{details}`\n"
+                        "• **Webhooks (`webhook_update`):** `{webhookId}`, `{channel}`, `{action}`\n\n"
                         "**Example:**\n"
                         "```json\n"
                         "{\n"
@@ -646,10 +726,19 @@ public:
                 else if (ev == "leave") ev = "member_leave";
                 else if (ev == "mod") ev = "moderation";
                 else if (ev == "user_update" || ev == "user" || ev == "user_edit") ev = "user_update";
-                // "antiraid" is already the canonical name, no alias needed
+                else if (ev == "role_create" || ev == "rolecreate") ev = "role_create";
+                else if (ev == "role_delete" || ev == "roledelete") ev = "role_delete";
+                else if (ev == "role_update" || ev == "roleedit" || ev == "roleupdate") ev = "role_update";
+                else if (ev == "channel_create" || ev == "channelcreate") ev = "channel_create";
+                else if (ev == "channel_delete" || ev == "channeldelete") ev = "channel_delete";
+                else if (ev == "channel_update" || ev == "channeledit" || ev == "channelupdate") ev = "channel_update";
+                else if (ev == "webhook_update" || ev == "webhook" || ev == "webhookupdate") ev = "webhook_update";
 
-                if (ev != "message_delete" && ev != "message_edit" && ev != "member_join" && ev != "member_leave" && ev != "moderation" && ev != "user_update" && ev != "antiraid") {
-                    bot.send_message(msg.channel_id, "⚠️ Invalid event type. Choose from: `delete`, `edit`, `join`, `leave`, `mod`, `user`, `antiraid`.");
+                if (ev != "message_delete" && ev != "message_edit" && ev != "member_join" && ev != "member_leave" && ev != "moderation" && ev != "user_update" && ev != "antiraid" &&
+                    ev != "role_create" && ev != "role_delete" && ev != "role_update" &&
+                    ev != "channel_create" && ev != "channel_delete" && ev != "channel_update" &&
+                    ev != "webhook_update") {
+                    bot.send_message(msg.channel_id, "⚠️ Invalid event type. Choose from: `delete`, `edit`, `join`, `leave`, `mod`, `user`, `antiraid`, `role_create`, `role_delete`, `role_update`, `channel_create`, `channel_delete`, `channel_update`, `webhook_update`.");
                     return;
                 }
 
@@ -842,7 +931,7 @@ public:
 
         bot.register_command({
             "log",
-            {"logging"},
+            {"logging", "logs"},
             "configure server event log channels and templates.",
             "",
             {"<subcommand>", "[args...]"},
@@ -850,7 +939,7 @@ public:
             "Logging",
             0,
             0,
-            {"aio", "channel <event> <#channel|none>", "list", "type <event> <text|embed>", "message <event> <text...>", "edit <event> <key:val...>", "json <event> <raw_json>"}
+            {"aio", "create <category>", "channel <event> <#channel|none>", "list", "type <event> <text|embed>", "message <event> <text...>", "edit <event> <key:val...>", "json <event> <raw_json>"}
         });
 
         // --- GATEWAY MESSAGE CACHE ---
@@ -1098,6 +1187,251 @@ public:
                     }
                 }
             }).detach();
+        });
+
+        // --- GATEWAY EVENT: ROLE CREATE ---
+        bot.on_server_role_create([this, &bot](const stoatpp::events::ServerRoleCreate& e) {
+            if (!g_db) return;
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"role", "<@&" + e.role_id + ">"},
+                {"roleName", e.role.name},
+                {"roleId", e.role_id}
+            };
+
+            auto default_fallback = [e]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "🆕 Role Created";
+                embed["colour"] = "#44ff44"; // Green
+                embed["description"] = "• **Role:** <@&" + e.role_id + ">\n"
+                                       "• **Name:** " + e.role.name + "\n"
+                                       "• **ID:** `" + e.role_id + "`";
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, e.server_id, "role_create", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: ROLE DELETE ---
+        bot.on_server_role_delete([this, &bot](const stoatpp::events::ServerRoleDelete& e) {
+            if (!g_db) return;
+
+            auto srv = bot.get_server(e.server_id);
+            std::string role_name = "Unknown Role";
+            if (srv) {
+                for (const auto& r : srv->roles) {
+                    if (r.id == e.role_id) {
+                        role_name = r.name;
+                        break;
+                    }
+                }
+            }
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"roleName", role_name},
+                {"roleId", e.role_id}
+            };
+
+            auto default_fallback = [e, role_name]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "🗑️ Role Deleted";
+                embed["colour"] = "#ff4444"; // Red
+                embed["description"] = "• **Name:** " + role_name + "\n"
+                                       "• **ID:** `" + e.role_id + "`";
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, e.server_id, "role_delete", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: ROLE UPDATE ---
+        bot.on_server_role_update([this, &bot](const stoatpp::events::ServerRoleUpdate& e) {
+            if (!g_db) return;
+
+            auto srv = bot.get_server(e.server_id);
+            std::string old_name = "";
+            std::string new_name = "";
+            std::string old_colour = "";
+            std::string new_colour = "";
+
+            if (srv) {
+                for (const auto& r : srv->roles) {
+                    if (r.id == e.role_id) {
+                        old_name = r.name;
+                        if (r.colour) old_colour = *r.colour;
+                        break;
+                    }
+                }
+            }
+
+            std::string details = "";
+            if (e.data.contains("name")) {
+                new_name = e.data["name"].get<std::string>();
+                details += "• **Name Change:** " + (old_name.empty() ? "" : old_name + " ➔ ") + new_name + "\n";
+            } else {
+                new_name = old_name;
+            }
+
+            if (e.data.contains("colour")) {
+                if (e.data["colour"].is_null()) {
+                    new_colour = "none";
+                } else if (e.data["colour"].is_string()) {
+                    new_colour = e.data["colour"].get<std::string>();
+                }
+                details += "• **Color Change:** " + (old_colour.empty() ? "none" : old_colour) + " ➔ " + new_colour + "\n";
+            }
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"role", "<@&" + e.role_id + ">"},
+                {"roleName", new_name},
+                {"roleId", e.role_id},
+                {"details", details}
+            };
+
+            auto default_fallback = [e, new_name, details]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "✏️ Role Updated";
+                embed["colour"] = "#ffa500"; // Orange
+                embed["description"] = "• **Role:** <@&" + e.role_id + ">\n"
+                                       "• **Name:** " + new_name + "\n"
+                                       "• **ID:** `" + e.role_id + "`\n" +
+                                       details;
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, e.server_id, "role_update", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: CHANNEL CREATE ---
+        bot.on_channel_create([this, &bot](const stoatpp::events::ChannelCreate& e) {
+            if (!g_db || !e.channel.server || e.channel.server->empty()) return;
+            std::string server_id = *e.channel.server;
+            std::string channel_name = e.channel.name.value_or("unnamed");
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"channel", "<#" + e.channel.id + ">"},
+                {"channelName", channel_name},
+                {"channelId", e.channel.id}
+            };
+
+            auto default_fallback = [e, channel_name]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "🆕 Channel Created";
+                embed["colour"] = "#44ff44"; // Green
+                embed["description"] = "• **Channel:** <#" + e.channel.id + ">\n"
+                                       "• **Name:** " + channel_name + "\n"
+                                       "• **ID:** `" + e.channel.id + "`";
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, server_id, "channel_create", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: CHANNEL DELETE ---
+        bot.on_channel_delete([this, &bot](const stoatpp::events::ChannelDelete& e) {
+            if (!g_db) return;
+
+            auto cached = bot.get_channel(e.id);
+            std::string server_id = "";
+            std::string channel_name = "Unknown Channel";
+            if (cached) {
+                channel_name = cached->name.value_or("unnamed");
+                server_id = cached->server.value_or("");
+            }
+            if (server_id.empty()) return;
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"channelName", channel_name},
+                {"channelId", e.id}
+            };
+
+            auto default_fallback = [e, channel_name]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "🗑️ Channel Deleted";
+                embed["colour"] = "#ff4444"; // Red
+                embed["description"] = "• **Name:** " + channel_name + "\n"
+                                       "• **ID:** `" + e.id + "`";
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, server_id, "channel_delete", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: CHANNEL UPDATE ---
+        bot.on_channel_update([this, &bot](const stoatpp::events::ChannelUpdate& e) {
+            if (!g_db) return;
+
+            auto cached = bot.get_channel(e.id);
+            if (!cached || !cached->server || cached->server->empty()) return;
+            std::string server_id = *cached->server;
+
+            std::string old_name = cached->name.value_or("");
+            std::string new_name = old_name;
+
+            std::string details = "";
+            if (e.data.contains("name")) {
+                new_name = e.data["name"].get<std::string>();
+                details += "• **Name Change:** " + old_name + " ➔ " + new_name + "\n";
+            }
+            if (e.data.contains("description")) {
+                details += "• **Description Updated**\n";
+            }
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"channel", "<#" + e.id + ">"},
+                {"channelName", new_name},
+                {"channelId", e.id},
+                {"details", details}
+            };
+
+            auto default_fallback = [e, new_name, details]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "✏️ Channel Updated";
+                embed["colour"] = "#ffa500"; // Orange
+                embed["description"] = "• **Channel:** <#" + e.id + ">\n"
+                                       "• **Name:** " + new_name + "\n"
+                                       "• **ID:** `" + e.id + "`\n" +
+                                       details;
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, server_id, "channel_update", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: WEBHOOK UPDATE ---
+        bot.on_webhook_update([this, &bot](const stoatpp::events::WebhookUpdate& e) {
+            if (!g_db) return;
+
+            auto cached_chan = bot.get_channel(e.channel_id);
+            if (!cached_chan || !cached_chan->server || cached_chan->server->empty()) return;
+            std::string server_id = *cached_chan->server;
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"webhookId", e.webhook_id},
+                {"channel", "<#" + e.channel_id + ">"},
+                {"action", e.type}
+            };
+
+            auto default_fallback = [e]() {
+                nlohmann::json embed = nlohmann::json::object();
+                std::string title_str = "⚓ Webhook Updated";
+                std::string color_str = "#ffa500";
+                if (e.type == "create") {
+                    title_str = "⚓ Webhook Created";
+                    color_str = "#44ff44";
+                } else if (e.type == "delete") {
+                    title_str = "⚓ Webhook Deleted";
+                    color_str = "#ff4444";
+                }
+                embed["title"] = title_str;
+                embed["colour"] = color_str;
+                embed["description"] = "• **Webhook ID:** `" + e.webhook_id + "`\n"
+                                       "• **Channel:** <#" + e.channel_id + ">\n"
+                                       "• **Action:** " + e.type;
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, server_id, "webhook_update", placeholders, default_fallback);
         });
     }
 };

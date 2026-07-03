@@ -202,7 +202,8 @@ static std::unordered_map<std::string, std::string> parse_kv_pairs(const std::st
     std::unordered_map<std::string, std::string> pairs;
     std::vector<std::string> keys = {
         "title:", "description:", "desc:", "colour:", "color:",
-        "image:", "content:", "keyword:", "match:", "type:", "name:", "emojis:", "owneronly:"
+        "image:", "content:", "keyword:", "match:", "type:", "name:", "emojis:", "owneronly:",
+        "interval:", "channel:"
     };
     struct KP { std::string key; size_t pos; };
     std::vector<KP> occ;

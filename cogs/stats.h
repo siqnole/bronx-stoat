@@ -39,7 +39,19 @@ public:
             "stats [overview/top/users/channels/chart] [timeframe]",
             {"[subcommand]", "[timeframe]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                if (msg.server_id.empty() && !args.empty() && args[0] != "top" && args[0] != "t") {
+                bool include_bots = false;
+                std::vector<std::string> clean_args;
+                for (const auto& arg : args) {
+                    std::string lower_arg = arg;
+                    std::transform(lower_arg.begin(), lower_arg.end(), lower_arg.begin(), [](unsigned char c) { return std::tolower(c); });
+                    if (lower_arg == "bots" || lower_arg == "bot" || lower_arg == "b") {
+                        include_bots = true;
+                    } else {
+                        clean_args.push_back(arg);
+                    }
+                }
+
+                if (msg.server_id.empty() && !clean_args.empty() && clean_args[0] != "top" && clean_args[0] != "t") {
                     bot.send_message(msg.channel_id, "⚠️ Non-global stats commands can only be used inside a server.");
                     return;
                 }
@@ -53,37 +65,37 @@ public:
                 std::string tf_str = "";
                 bool global_top = false;
 
-                if (!args.empty()) {
-                    std::string first = args[0];
+                if (!clean_args.empty()) {
+                    std::string first = clean_args[0];
                     std::transform(first.begin(), first.end(), first.begin(), [](unsigned char c) { return std::tolower(c); });
 
                     if (first == "top" || first == "t") {
                         sub = "top";
-                        if (args.size() > 1) {
-                            std::string second = args[1];
+                        if (clean_args.size() > 1) {
+                            std::string second = clean_args[1];
                             std::transform(second.begin(), second.end(), second.begin(), [](unsigned char c) { return std::tolower(c); });
                             if (second == "g" || second == "global" || second == "all") {
                                 global_top = true;
-                                if (args.size() > 2) tf_str = args[2];
+                                if (clean_args.size() > 2) tf_str = clean_args[2];
                             } else {
-                                tf_str = args[1];
+                                tf_str = clean_args[1];
                             }
                         }
                     } else if (first == "user" || first == "users" || first == "member" || first == "members" || first == "u" || first == "m") {
                         sub = "users";
-                        if (args.size() > 1) tf_str = args[1];
+                        if (clean_args.size() > 1) tf_str = clean_args[1];
                     } else if (first == "channel" || first == "channels" || first == "c") {
                         sub = "channels";
-                        if (args.size() > 1) tf_str = args[1];
+                        if (clean_args.size() > 1) tf_str = clean_args[1];
                     } else if (first == "overview" || first == "o") {
                         sub = "overview";
-                        if (args.size() > 1) tf_str = args[1];
+                        if (clean_args.size() > 1) tf_str = clean_args[1];
                     } else if (first == "chart" || first == "graph" || first == "viz") {
                         sub = "chart";
-                        if (args.size() > 1) tf_str = args[1];
-                        if (args.size() > 2) tf_str = args[2];  // allow: .stats chart line 7d
+                        if (clean_args.size() > 1) tf_str = clean_args[1];
+                        if (clean_args.size() > 2) tf_str = clean_args[2];  // allow: .stats chart line 7d
                     } else {
-                        tf_str = args[0];
+                        tf_str = clean_args[0];
                     }
                 }
 
@@ -97,10 +109,10 @@ public:
                         return;
                     }
 
-                    // Determine chart type from args
+                    // Determine chart type from clean_args
                     std::string chart_type = "line";  // default
-                    if (args.size() > 1) {
-                        std::string ct = args[1];
+                    if (clean_args.size() > 1) {
+                        std::string ct = clean_args[1];
                         std::transform(ct.begin(), ct.end(), ct.begin(), [](unsigned char c) { return std::tolower(c); });
                         if (ct == "heatmap" || ct == "heat" || ct == "h") chart_type = "heatmap";
                         else if (ct == "commands" || ct == "cmds")        chart_type = "commands";
@@ -114,15 +126,15 @@ public:
                     std::string server_id_copy = msg.server_id;
                     std::string channel_id_copy = msg.channel_id;
 
-                    bot.send_message(msg.channel_id, "⏳ rendering chart...", [&bot, server_id_copy, channel_id_copy, days, chart_type, srv_name](stoatpp::models::Message sent_msg, bool success) {
+                    bot.send_message(msg.channel_id, "⏳ rendering chart...", [&bot, server_id_copy, channel_id_copy, days, chart_type, srv_name, include_bots](stoatpp::models::Message sent_msg, bool success) {
                         if (!success) return;
                         std::string status_msg_id = sent_msg.id;
-                        std::thread([&bot, server_id_copy, channel_id_copy, status_msg_id, days, chart_type, srv_name]() {
+                        std::thread([&bot, server_id_copy, channel_id_copy, status_msg_id, days, chart_type, srv_name, include_bots]() {
                             try {
                                 std::string png;
 
                                 if (chart_type == "heatmap") {
-                                    auto matrix = g_db->get_hourly_heatmap(server_id_copy, days);
+                                    auto matrix = g_db->get_hourly_heatmap(server_id_copy, days, include_bots);
                                     std::vector<std::string> days_lbl = {"Sun","Mon","Tue","Wed","Thu","Fri","Sat"};
                                     std::vector<std::string> hrs_lbl;
                                     for (int h = 0; h < 24; ++h) {
@@ -143,7 +155,7 @@ public:
                                         items);
 
                                 } else if (chart_type == "bars") {
-                                    auto top_users = g_db->get_top_users(server_id_copy, days, 10);
+                                    auto top_users = g_db->get_top_users(server_id_copy, days, include_bots, 10);
                                     std::vector<chart::BarItem> items;
                                     for (auto& u : top_users) {
                                         std::string display = "User " + u.user_id.substr(0, 6);
@@ -164,7 +176,7 @@ public:
 
                                 } else {
                                     // Default: line chart — daily message trend
-                                    auto series_data = g_db->get_daily_message_series(server_id_copy, days);
+                                    auto series_data = g_db->get_daily_message_series(server_id_copy, days, include_bots);
                                     std::vector<std::string> labels;
                                     std::vector<double> values;
                                     for (auto& [date, count] : series_data) {
@@ -222,7 +234,7 @@ public:
                 embed.set_colour(0x5865F2);
 
                 if (sub == "overview") {
-                    auto totals = g_db->get_server_totals(msg.server_id, days);
+                    auto totals = g_db->get_server_totals(msg.server_id, days, include_bots);
                     embed.set_title("📈 bronx stats — overview (" + std::to_string(days) + "d)");
                     
                     std::string desc = 
@@ -233,7 +245,7 @@ public:
                     embed.set_description(desc);
                 } 
                 else if (sub == "top" && global_top) {
-                    auto top_srv = g_db->get_top_servers(days, 10);
+                    auto top_srv = g_db->get_top_servers(days, include_bots, 10);
                     auto top_usr = g_db->get_top_users_global(days, false, 10);
                     auto top_bot = g_db->get_top_users_global(days, true, 10);
 
@@ -264,13 +276,15 @@ public:
                     }
                     desc += "\n";
 
-                    desc += "### 🤖 Top Active Bots\n";
-                    if (top_bot.empty()) {
-                        desc += "*No bot activity recorded.*\n";
-                    } else {
-                        int rank = 1;
-                        for (const auto& b : top_bot)
-                            desc += std::to_string(rank++) + ". <@" + b.user_id + "> — " + std::to_string(b.message_count) + " msgs\n";
+                    if (include_bots) {
+                        desc += "### 🤖 Top Active Bots\n";
+                        if (top_bot.empty()) {
+                            desc += "*No bot activity recorded.*\n";
+                        } else {
+                            int rank = 1;
+                            for (const auto& b : top_bot)
+                                desc += std::to_string(rank++) + ". <@" + b.user_id + "> — " + std::to_string(b.message_count) + " msgs\n";
+                        }
                     }
                     embed.set_description(desc);
                 }
@@ -280,7 +294,7 @@ public:
                         return;
                     }
 
-                    auto top_usr  = g_db->get_top_users(msg.server_id, days, 10);
+                    auto top_usr  = g_db->get_top_users(msg.server_id, days, include_bots, 10);
                     auto top_chan = g_db->get_top_channels(msg.server_id, days, 10);
 
                     auto srv_opt = bot.get_server(msg.server_id);
@@ -316,12 +330,12 @@ public:
                     std::string server_id_copy = msg.server_id;
                     std::string channel_id_copy = msg.channel_id;
 
-                    bot.send_message(msg.channel_id, "⏳ rendering members chart...", [&bot, server_id_copy, channel_id_copy, days, srv_name](stoatpp::models::Message sent_msg, bool success) {
+                    bot.send_message(msg.channel_id, "⏳ rendering members chart...", [&bot, server_id_copy, channel_id_copy, days, srv_name, include_bots](stoatpp::models::Message sent_msg, bool success) {
                         if (!success) return;
                         std::string status_msg_id = sent_msg.id;
-                        std::thread([&bot, server_id_copy, channel_id_copy, status_msg_id, days, srv_name]() {
+                        std::thread([&bot, server_id_copy, channel_id_copy, status_msg_id, days, srv_name, include_bots]() {
                             try {
-                                auto top_users = g_db->get_top_users(server_id_copy, days, 10);
+                                auto top_users = g_db->get_top_users(server_id_copy, days, include_bots, 10);
                                 if (top_users.empty()) {
                                     bot.edit_message(channel_id_copy, status_msg_id, "no member activity recorded in this period.");
                                     return;
@@ -369,7 +383,7 @@ public:
                     });
                     return;
 #else
-                    auto top_users = g_db->get_top_users(msg.server_id, days, 10);
+                    auto top_users = g_db->get_top_users(msg.server_id, days, include_bots, 10);
                     embed.set_title("👤 active members leaderboard (" + std::to_string(days) + "d)");
                     std::string desc;
                     if (top_users.empty()) {

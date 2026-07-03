@@ -59,18 +59,193 @@ inline cairo_status_t png_write_cb(void* closure, const unsigned char* data, uns
     return CAIRO_STATUS_SUCCESS;
 }
 
-// ── text helpers (cairo toy font) ──────────────────────────────
+inline std::vector<uint32_t> utf8_to_codepoints(const std::string& str) {
+    std::vector<uint32_t> codepoints;
+    for (size_t i = 0; i < str.length();) {
+        unsigned char c = str[i];
+        uint32_t cp = 0;
+        int len = 0;
+        if (c <= 0x7F) {
+            cp = c;
+            len = 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            cp = c & 0x1F;
+            len = 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            cp = c & 0x0F;
+            len = 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            cp = c & 0x07;
+            len = 4;
+        } else {
+            i++;
+            continue;
+        }
+        if (i + len > str.length()) {
+            break;
+        }
+        for (int j = 1; j < len; j++) {
+            cp = (cp << 6) | (str[i + j] & 0x3F);
+        }
+
+        // 1. Skip zero-width space, variation selectors, and direction marks
+        if (cp == 0x200B || cp == 0x200C || 
+            cp == 0xFE0F || cp == 0xFE0E || cp == 0xFEFF ||
+            cp == 0x200E || cp == 0x200F) {
+            i += len;
+            continue;
+        }
+        
+        // 2. Convert special spaces to standard ASCII space (0x20)
+        if (cp == 0x00A0 || (cp >= 0x2000 && cp <= 0x200A) ||
+            cp == 0x202F || cp == 0x205F || cp == 0x3000) {
+            cp = 0x20;
+        }
+
+        codepoints.push_back(cp);
+        i += len;
+    }
+    return codepoints;
+}
+
+inline std::string codepoints_to_utf8(const std::vector<uint32_t>& cps) {
+    std::string out;
+    for (uint32_t cp : cps) {
+        if (cp <= 0x7F) {
+            out += static_cast<char>(cp);
+        } else if (cp <= 0x7FF) {
+            out += static_cast<char>(0xC0 | (cp >> 6));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else if (cp <= 0xFFFF) {
+            out += static_cast<char>(0xE0 | (cp >> 12));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        } else if (cp <= 0x10FFFF) {
+            out += static_cast<char>(0xF0 | (cp >> 18));
+            out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+            out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (cp & 0x3F));
+        }
+    }
+    return out;
+}
+
+inline bool is_emoji_or_symbol(uint32_t cp) {
+    if (cp >= 0x1F000 && cp <= 0x1FAFF) return true;
+    if (cp >= 0x2600 && cp <= 0x27BF) return true;
+    if (cp >= 0x2300 && cp <= 0x23FF) return true;
+    if (cp >= 0x2B00 && cp <= 0x2BFF) return true;
+    if (cp >= 0xFE00 && cp <= 0xFE0F) return true;
+    if (cp == 0x200D) return true;
+    if (cp == 0x20E3) return true;
+    return false;
+}
+
+struct TextRun {
+    std::string text;
+    bool is_emoji;
+};
+
+inline std::vector<TextRun> split_mixed_text(const std::string& str) {
+    auto cps = utf8_to_codepoints(str);
+    std::vector<TextRun> runs;
+    if (cps.empty()) return runs;
+
+    bool current_is_emoji = is_emoji_or_symbol(cps[0]);
+    std::vector<uint32_t> current_run;
+    
+    for (uint32_t cp : cps) {
+        bool cp_is_emoji = is_emoji_or_symbol(cp);
+        if (cp_is_emoji != current_is_emoji) {
+            runs.push_back({codepoints_to_utf8(current_run), current_is_emoji});
+            current_run.clear();
+            current_is_emoji = cp_is_emoji;
+        }
+        current_run.push_back(cp);
+    }
+    if (!current_run.empty()) {
+        runs.push_back({codepoints_to_utf8(current_run), current_is_emoji});
+    }
+    return runs;
+}
+
+inline std::string shorten_utf8_label(const std::string& str, size_t max_chars) {
+    auto cps = utf8_to_codepoints(str);
+    if (cps.size() <= max_chars) return str;
+    std::vector<uint32_t> short_cps(cps.begin(), cps.begin() + max_chars - 2);
+    return codepoints_to_utf8(short_cps) + "..";
+}
+
+inline void get_current_font_settings(cairo_t* cr, double& size, bool& bold) {
+    cairo_matrix_t font_matrix;
+    cairo_get_font_matrix(cr, &font_matrix);
+    size = font_matrix.xx;
+    
+    auto* face = cairo_get_font_face(cr);
+    if (face && cairo_font_face_get_type(face) == CAIRO_FONT_TYPE_TOY) {
+        auto weight = cairo_toy_font_face_get_weight(face);
+        bold = (weight == CAIRO_FONT_WEIGHT_BOLD);
+    } else {
+        bold = false;
+    }
+}
+
+// ── text helpers ───────────────────────────────────────────────
 inline void set_font(cairo_t* cr, double size, bool bold = false) {
     cairo_select_font_face(cr, "sans-serif",
         CAIRO_FONT_SLANT_NORMAL,
         bold ? CAIRO_FONT_WEIGHT_BOLD : CAIRO_FONT_WEIGHT_NORMAL);
     cairo_set_font_size(cr, size);
 }
+
 inline double text_width(cairo_t* cr, const std::string& s) {
-    cairo_text_extents_t ext;
-    cairo_text_extents(cr, s.c_str(), &ext);
-    return ext.x_advance;
+    double size = 10.0;
+    bool bold = false;
+    get_current_font_settings(cr, size, bold);
+
+    auto runs = split_mixed_text(s);
+    double total_width = 0.0;
+    
+    cairo_save(cr);
+    for (const auto& run : runs) {
+        if (run.is_emoji) {
+            cairo_select_font_face(cr, "Twemoji", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        } else {
+            cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, 
+                                   bold ? CAIRO_FONT_WEIGHT_BOLD : CAIRO_FONT_WEIGHT_NORMAL);
+        }
+        cairo_set_font_size(cr, size);
+        
+        cairo_text_extents_t ext;
+        cairo_text_extents(cr, run.text.c_str(), &ext);
+        total_width += ext.x_advance;
+    }
+    cairo_restore(cr);
+    return total_width;
 }
+
+inline void draw_text(cairo_t* cr, const std::string& s) {
+    double size = 10.0;
+    bool bold = false;
+    get_current_font_settings(cr, size, bold);
+
+    auto runs = split_mixed_text(s);
+    
+    cairo_save(cr);
+    for (const auto& run : runs) {
+        if (run.is_emoji) {
+            cairo_select_font_face(cr, "Twemoji", CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_NORMAL);
+        } else {
+            cairo_select_font_face(cr, "sans-serif", CAIRO_FONT_SLANT_NORMAL, 
+                                   bold ? CAIRO_FONT_WEIGHT_BOLD : CAIRO_FONT_WEIGHT_NORMAL);
+        }
+        cairo_set_font_size(cr, size);
+        cairo_show_text(cr, run.text.c_str());
+    }
+    cairo_restore(cr);
+}
+
+#define cairo_show_text(cr, text) draw_text(cr, text)
 
 // ── rounded rectangle ──────────────────────────────────────────
 inline void round_rect(cairo_t* cr, double x, double y, double w, double h, double r) {
@@ -163,7 +338,7 @@ inline std::string render_horizontal_bar_chart(
         set_font(cr, 11, false);
         set_colour(cr, COL_DIM);
         std::string lbl  = items[i].label;
-        if (lbl.size() > 16) lbl = lbl.substr(0, 14) + "..";
+        lbl = shorten_utf8_label(lbl, 16);
         cairo_move_to(cr, pad, by + bar_h * 0.65);
         cairo_show_text(cr, lbl.c_str());
 
@@ -543,7 +718,7 @@ inline std::string render_stacked_bar_chart(
         set_font(cr, 9, false);
         set_colour(cr, COL_DIM);
         std::string lbl = labels[c];
-        if (lbl.size() > 8) lbl = lbl.substr(0, 6) + "..";
+        lbl = shorten_utf8_label(lbl, 8);
         cairo_move_to(cr, bx + bar_w / 2 - text_width(cr, lbl) / 2, height - pad_b + 16);
         cairo_show_text(cr, lbl.c_str());
     }
@@ -771,3 +946,5 @@ inline std::string render_scatter_chart(
 
 } // namespace chart
 } // namespace bronx
+
+#undef cairo_show_text
