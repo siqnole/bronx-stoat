@@ -193,6 +193,23 @@ private:
             // Check if user already has an open ticket for this specific panel (or server)
             auto active_opt = g_db->get_user_open_ticket(server_id, user_id);
             if (active_opt && active_opt->panel_name == panel_name) {
+                // Verify if channel actually exists in server
+                auto cached_channel = bot.get_channel(active_opt->channel_id);
+                bool channel_exists = true;
+                if (!cached_channel) {
+                    auto rest_channel = bot.rest().get_channel(active_opt->channel_id);
+                    if (!rest_channel.success() && rest_channel.status_code == 404) {
+                        channel_exists = false;
+                    }
+                }
+
+                if (!channel_exists) {
+                    g_db->delete_ticket(active_opt->channel_id);
+                    active_opt = std::nullopt;
+                }
+            }
+
+            if (active_opt && active_opt->panel_name == panel_name) {
                 stoatpp::models::MessagePayload payload;
                 payload.content = "⚠️ You already have an open ticket for this panel: <#" + active_opt->channel_id + ">";
                 payload.delete_after = 5;
@@ -250,9 +267,10 @@ private:
             std::string ticket_channel_id = chan_res.body["_id"].get<std::string>();
 
             // Categorize the channel if category is configured
-            if (!config.category_id.empty()) {
-                bot.move_channel_to_category(server_id, ticket_channel_id, config.category_id);
-            }
+            // FIXME: once https://github.com/stoatchat/stoatchat/pull/821/ is merged this works
+            // if (!config.category_id.empty()) {
+            //     bot.move_channel_to_category(server_id, ticket_channel_id, config.category_id);
+            // }
 
             // Create a custom role named after the user for this ticket
             std::string user_role_name = "ticket-" + user_opt->username + "-" + std::to_string(config.ticket_counter);
@@ -269,31 +287,63 @@ private:
             if (!user_role_id.empty()) {
                 // Move the ticket role above the member role so its ALLOW overrides
                 // the member role's DENY in Revolt's role-priority permission calculation.
-                if (!config.member_role_id.empty() && server_opt) {
-                    std::vector<stoatpp::models::Role> sorted_roles = server_opt->roles;
-                    std::sort(sorted_roles.begin(), sorted_roles.end(), [](const auto& a, const auto& b) {
-                        return a.rank < b.rank;
-                    });
-
-                    std::vector<std::string> rank_order;
-                    bool inserted = false;
-                    for (const auto& r : sorted_roles) {
-                        if (r.id == user_role_id) {
-                            continue;
+                if (!config.member_role_id.empty()) {
+                    auto srv_res = bot.rest().get_server(server_id);
+                    if (srv_res.success()) {
+                        stoatpp::models::Server fresh_server = stoatpp::models::Server::from_json(srv_res.body);
+                        std::vector<stoatpp::models::Role> sorted_roles = fresh_server.roles;
+                        std::cout << "[bronx debug] reordering roles using fresh server info. Total roles: " << sorted_roles.size() << "\n";
+                        for (const auto& r : sorted_roles) {
+                            std::cout << "  - Server Role ID: " << r.id << ", Name: " << r.name << ", Rank: " << r.rank << "\n";
                         }
-                        if (r.id == config.member_role_id) {
-                            rank_order.push_back(user_role_id);
-                            inserted = true;
-                        }
-                        rank_order.push_back(r.id);
-                    }
-                    if (!inserted) {
-                        rank_order.insert(rank_order.begin(), user_role_id);
-                    }
 
-                    nlohmann::json rank_body = {{"ranks", rank_order}};
-                    bot.rest().patch("/servers/" + server_id + "/roles", rank_body);
-                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                        std::sort(sorted_roles.begin(), sorted_roles.end(), [](const auto& a, const auto& b) {
+                            return a.rank < b.rank;
+                        });
+
+                        std::vector<std::string> rank_order;
+                        bool inserted = false;
+                        int64_t member_rank = 0;
+                        bool found_member = false;
+                        for (const auto& r : sorted_roles) {
+                            if (r.id == config.member_role_id) {
+                                member_rank = r.rank;
+                                found_member = true;
+                            }
+                            if (r.id == user_role_id) {
+                                continue;
+                            }
+                            if (r.id == config.member_role_id) {
+                                rank_order.push_back(user_role_id);
+                                inserted = true;
+                            }
+                            rank_order.push_back(r.id);
+                        }
+                        if (!inserted) {
+                            rank_order.insert(rank_order.begin(), user_role_id);
+                        }
+
+                        std::cout << "[bronx debug] target member role ID: " << config.member_role_id << ", found: " << (found_member ? "yes" : "no") << " (rank: " << member_rank << ")\n";
+                        std::cout << "[bronx debug] rank_order list:\n";
+                        for (size_t idx = 0; idx < rank_order.size(); ++idx) {
+                            std::cout << "  [" << idx << "] " << rank_order[idx] << "\n";
+                        }
+
+                        // 1. Bulk edit server role positions route
+                        nlohmann::json rank_body = {{"ranks", rank_order}};
+                        auto res1 = bot.rest().patch("/servers/" + server_id + "/roles/ranks", rank_body);
+                        std::cout << "[bronx debug] patch /roles/ranks status: " << res1.status_code << ", success: " << (res1.success() ? "yes" : "no") << ", body: " << res1.body.dump() << "\n";
+                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+                        // 2. Fallback: Edit individual role rank
+                        if (found_member) {
+                            nlohmann::json ind_body;
+                            ind_body["rank"] = member_rank - 1;
+                            auto res2 = bot.rest().patch("/servers/" + server_id + "/roles/" + user_role_id, ind_body);
+                            std::cout << "[bronx debug] patch /roles/" << user_role_id << " status: " << res2.status_code << ", success: " << (res2.success() ? "yes" : "no") << ", body: " << res2.body.dump() << "\n";
+                            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                        }
+                    }
                 }
 
                 bot.add_role_to_member(server_id, user_id, user_role_id);
@@ -318,6 +368,32 @@ private:
 
             auto roles = split_str(config.view_roles);
             for (const auto& rid : roles) {
+                // Skip setting permissions for roles that are equal to or higher rank than the bot's highest role
+                bool skip_role = false;
+                auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
+                std::optional<stoatpp::models::Member> bot_rest_member;
+                if (!bot_member_opt) {
+                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                    if (res.success() && res.body.is_object()) {
+                        bot_rest_member = stoatpp::models::Member::from_json(res.body);
+                        bot_member_opt = bot_rest_member;
+                    }
+                }
+                if (bot_member_opt && server_opt) {
+                    int bot_highest = server_opt->get_highest_rank(*bot_member_opt);
+                    if (bot_highest != 999999) {
+                        for (const auto& r : server_opt->roles) {
+                            if (r.id == rid) {
+                                if (r.rank <= bot_highest) {
+                                    skip_role = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (skip_role) continue;
+
                 allowed_role_ids.insert(rid);
                 bot.rest().set_channel_permission(ticket_channel_id, rid, 
                     creator_allow | stoatpp::permissions::ManageMessages, 0);
@@ -326,6 +402,40 @@ private:
 
             auto users = split_str(config.view_users);
             for (const auto& uid : users) {
+                if (uid == bot.current_user().id) continue;
+
+                bool skip_user = false;
+                auto target_member_opt = bot.get_member(server_id, uid);
+                std::optional<stoatpp::models::Member> target_rest_member;
+                if (!target_member_opt) {
+                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + uid);
+                    if (res.success() && res.body.is_object()) {
+                        target_rest_member = stoatpp::models::Member::from_json(res.body);
+                        target_member_opt = target_rest_member;
+                    }
+                }
+                
+                auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
+                std::optional<stoatpp::models::Member> bot_rest_member;
+                if (!bot_member_opt) {
+                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                    if (res.success() && res.body.is_object()) {
+                        bot_rest_member = stoatpp::models::Member::from_json(res.body);
+                        bot_member_opt = bot_rest_member;
+                    }
+                }
+
+                if (bot_member_opt && target_member_opt && server_opt) {
+                    int bot_highest = server_opt->get_highest_rank(*bot_member_opt);
+                    int target_highest = server_opt->get_highest_rank(*target_member_opt);
+                    if (bot_highest != 999999 && target_highest != 999999) {
+                        if (target_highest <= bot_highest) {
+                            skip_user = true;
+                        }
+                    }
+                }
+                if (skip_user) continue;
+
                 bot.rest().set_channel_permission(ticket_channel_id, uid, 
                     creator_allow | stoatpp::permissions::ManageMessages, 0);
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -338,14 +448,30 @@ private:
 
                 if (server_opt) {
                     for (const auto& r : server_opt->roles) {
-                        int64_t allowed = 0;
-                        if (r.permissions.is_number()) {
-                            allowed = r.permissions.get<int64_t>();
-                        } else if (r.permissions.is_object() && r.permissions.contains("server") && r.permissions["server"].is_number()) {
-                            allowed = r.permissions["server"].get<int64_t>();
-                        }
+                        int64_t allowed = r.allowed_permissions();
 
                         if ((allowed & target_perm) != 0) {
+                            // Skip setting permissions for roles that are equal to or higher rank than the bot's highest role
+                            bool skip_role = false;
+                            auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
+                            std::optional<stoatpp::models::Member> bot_rest_member;
+                            if (!bot_member_opt) {
+                                auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                                if (res.success() && res.body.is_object()) {
+                                    bot_rest_member = stoatpp::models::Member::from_json(res.body);
+                                    bot_member_opt = bot_rest_member;
+                                }
+                            }
+                            if (bot_member_opt && server_opt) {
+                                int bot_highest = server_opt->get_highest_rank(*bot_member_opt);
+                                if (bot_highest != 999999) {
+                                    if (r.rank <= bot_highest) {
+                                        skip_role = true;
+                                    }
+                                }
+                            }
+                            if (skip_role) continue;
+
                             allowed_role_ids.insert(r.id);
                             bot.rest().set_channel_permission(ticket_channel_id, r.id, 
                                 creator_allow | stoatpp::permissions::ManageMessages, 0);
@@ -381,13 +507,39 @@ private:
             // the @default channel override nukes all other role overrides on Revolt.
             // Standard role priority then lets the ticket role's ALLOW take precedence.
             if (!config.member_role_id.empty()) {
-                int64_t lock_deny = stoatpp::permissions::ViewChannel |
-                                    stoatpp::permissions::SendMessages |
-                                    stoatpp::permissions::EmbedLinks |
-                                    stoatpp::permissions::UploadFiles |
-                                    stoatpp::permissions::AddReactions;
-                bot.rest().set_channel_permission(ticket_channel_id, config.member_role_id, 0, lock_deny);
-                std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                bool skip_role = false;
+                auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
+                std::optional<stoatpp::models::Member> bot_rest_member;
+                if (!bot_member_opt) {
+                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                    if (res.success() && res.body.is_object()) {
+                        bot_rest_member = stoatpp::models::Member::from_json(res.body);
+                        bot_member_opt = bot_rest_member;
+                    }
+                }
+                if (bot_member_opt && server_opt) {
+                    int bot_highest = server_opt->get_highest_rank(*bot_member_opt);
+                    if (bot_highest != 999999) {
+                        for (const auto& r : server_opt->roles) {
+                            if (r.id == config.member_role_id) {
+                                if (r.rank <= bot_highest) {
+                                    skip_role = true;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!skip_role) {
+                    int64_t lock_deny = stoatpp::permissions::ViewChannel |
+                                        stoatpp::permissions::SendMessages |
+                                        stoatpp::permissions::EmbedLinks |
+                                        stoatpp::permissions::UploadFiles |
+                                        stoatpp::permissions::AddReactions;
+                    bot.rest().set_channel_permission(ticket_channel_id, config.member_role_id, 0, lock_deny);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                }
             }
 
             stoatpp::models::MessagePayload payload;
@@ -436,21 +588,25 @@ private:
         g_db->save_ticket(ticket);
 
         auto tc_opt = g_db->get_ticket_config(ticket.server_id, ticket.panel_name);
+        std::string msg_text = "🔒 **Closing ticket...**\nThis channel will be deleted in 5 seconds.";
+        if (tc_opt && !tc_opt->ticket_close_content.empty()) {
+            msg_text = tc_opt->ticket_close_content;
+        }
 
-        bot.fetch_user(ticket.user_id, [&bot, ticket, channel_id, tc_opt](stoatpp::models::User user, bool ok_user) {
-            std::string msg_text = "🔒 **Closing ticket...**\nThis channel will be deleted in 5 seconds.";
-            if (tc_opt && !tc_opt->ticket_close_content.empty()) {
-                msg_text = tc_opt->ticket_close_content;
-            }
-            
-            if (ok_user) {
-                auto server_opt = bot.get_server(ticket.server_id);
-                if (server_opt) {
-                    msg_text = format_placeholders(msg_text, user, *server_opt, ticket.ticket_number);
-                }
+        auto user_opt = bot.get_user(ticket.user_id);
+        auto server_opt = bot.get_server(ticket.server_id);
+        if (user_opt && server_opt) {
+            msg_text = format_placeholders(msg_text, *user_opt, *server_opt, ticket.ticket_number);
+        }
 
-                // Delete custom user-role
-                std::string target_role_name = "ticket-" + user.username + "-" + std::to_string(ticket.ticket_number);
+        bot.send_message(channel_id, msg_text);
+
+        std::thread([&bot, ticket, channel_id]() {
+            // Delete custom user-role
+            auto ures = bot.rest().get("/users/" + ticket.user_id);
+            if (ures.success() && ures.body.is_object()) {
+                std::string username = ures.body.value("username", "user");
+                std::string target_role_name = "ticket-" + username + "-" + std::to_string(ticket.ticket_number);
                 std::string matched_role_id = "";
                 auto srv_res = bot.rest().get_server(ticket.server_id);
                 if (srv_res.success()) {
@@ -472,14 +628,11 @@ private:
                     bot.rest().delete_role(ticket.server_id, matched_role_id);
                 }
             }
-            bot.send_message(channel_id, msg_text);
 
-            std::thread([&bot, channel_id]() {
-                std::this_thread::sleep_for(std::chrono::seconds(5));
-                bot.rest().delete_channel(channel_id);
-                g_db->delete_ticket(channel_id);
-            }).detach();
-        });
+            std::this_thread::sleep_for(std::chrono::seconds(5));
+            bot.rest().delete_channel(channel_id);
+            g_db->delete_ticket(channel_id);
+        }).detach();
     }
 
     static void send_ticket_panel(stoatpp::cluster& bot, const Database::TicketConfig& tc, const std::string& notify_channel_id) {
@@ -1329,7 +1482,10 @@ public:
                 if (!tc_opt) continue;
 
                 auto res = bot.rest().get_message(ticket.channel_id, ticket.welcome_message_id);
-                if (res.success()) {
+                if (!res.success() && res.status_code == 404) {
+                    std::cout << "[bronx tickets] startup scan found ticket channel " << ticket.channel_id << " was deleted, removing from db.\n";
+                    g_db->delete_ticket(ticket.channel_id);
+                } else if (res.success()) {
                     if (res.body.contains("reactions") && res.body["reactions"].is_object()) {
                         auto reactions = res.body["reactions"];
                         std::string target_close_emoji = clean_emoji(tc_opt->ticket_close_emoji);

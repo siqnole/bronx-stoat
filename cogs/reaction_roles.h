@@ -48,21 +48,30 @@ inline std::string format_rr_description(const std::vector<bronx::Database::RRRu
     
     // Group rules by emoji while preserving the order of first appearance
     std::vector<std::string> ordered_emojis;
-    std::unordered_map<std::string, std::vector<std::string>> emoji_roles;
+    struct RuleDetail {
+        std::string role_id;
+        std::string rule_type;
+    };
+    std::unordered_map<std::string, std::vector<RuleDetail>> emoji_roles;
     
     for (const auto& rule : rules) {
         if (emoji_roles.find(rule.emoji_id) == emoji_roles.end()) {
             ordered_emojis.push_back(rule.emoji_id);
         }
-        emoji_roles[rule.emoji_id].push_back(rule.role_id);
+        emoji_roles[rule.emoji_id].push_back({rule.role_id, rule.rule_type});
     }
 
     std::string desc;
     for (const auto& emoji : ordered_emojis) {
         desc += "• " + display_emoji(emoji) + " ➔ ";
-        const auto& roles = emoji_roles[emoji];
-        for (size_t i = 0; i < roles.size(); ++i) {
-            desc += "<%" + roles[i] + ">" + (i + 1 < roles.size() ? " " : "");
+        const auto& details = emoji_roles[emoji];
+        for (size_t i = 0; i < details.size(); ++i) {
+            if (i > 0) desc += " ";
+            if (details[i].rule_type == "remove") {
+                desc += "[Remove] <%" + details[i].role_id + ">";
+            } else {
+                desc += "<%" + details[i].role_id + ">";
+            }
         }
         desc += "\n";
     }
@@ -266,14 +275,7 @@ inline bool is_role_dangerous(const stoatpp::models::Role& r) {
         stoatpp::permissions::BanMembers |
         stoatpp::permissions::TimeoutMembers;
 
-    int64_t allowed = 0;
-    if (r.permissions.is_number()) {
-        allowed = r.permissions.get<int64_t>();
-    } else if (r.permissions.is_object() && r.permissions.contains("server")) {
-        if (r.permissions["server"].is_number()) {
-            allowed = r.permissions["server"].get<int64_t>();
-        }
-    }
+    int64_t allowed = r.allowed_permissions();
     return (allowed & DANGEROUS_PERMISSIONS) != 0;
 }
 
@@ -291,11 +293,13 @@ public:
                 std::cout << "[bronx command] handling rr...\n";
                 if (args.empty()) {
                     std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
-                    bot.send_message(msg.channel_id, "usage: `" + pfx + "rr <create|send|add|edit|parse|list|delete> [args...]`\n"
+                    bot.send_message(msg.channel_id, "usage: `" + pfx + "rr <create|send|add|addremove|type|edit|parse|list|delete> [args...]`\n"
                                                      "examples:\n"
                                                      "• `" + pfx + "rr create verified`\n"
                                                      "• `" + pfx + "rr send verified #general`\n"
                                                      "• `" + pfx + "rr add verified :thumbsup: Member`\n"
+                                                     "• `" + pfx + "rr addremove verified :check: Unverified` (or `" + pfx + "rr add verified :check: Unverified remove`)\n"
+                                                     "• `" + pfx + "rr type verified verify` (types: standard, panel, verify)\n"
                                                      "• `" + pfx + "rr edit verified :thumbsup: emoji :heart:`\n"
                                                      "• `" + pfx + "rr parse <modal> <message_id>` — import rules into a new modal\n"
                                                      "• `" + pfx + "rr parse <message_id>` — activate rules on the scanned message\n"
@@ -412,7 +416,7 @@ public:
                     return;
                 }
 
-                if (subcommand == "add") {
+                if (subcommand == "add" || subcommand == "addremove") {
                     std::string target = "";
                     std::string raw_emoji = "";
                     std::string role_query = "";
@@ -460,9 +464,10 @@ public:
                         if (args.size() < 4) {
                             std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
                             bot.send_message(msg.channel_id, "usage:\n"
-                                                             "• `" + pfx + "rr add <modalname> <emoji> <role>`\n"
-                                                             "• `" + pfx + "rr add <messageID> <emoji> <role>`\n"
-                                                             "• `" + pfx + "rr add ^ <emoji> <role>` (use message above, or reply target)");
+                                                             "• `" + pfx + "rr add <modalname> <emoji> <role> [add|remove]`\n"
+                                                             "• `" + pfx + "rr addremove <modalname> <emoji> <role>`\n"
+                                                             "• `" + pfx + "rr add <messageID> <emoji> <role> [add|remove]`\n"
+                                                             "• `" + pfx + "rr add ^ <emoji> <role> [add|remove]` (use message above, or reply target)");
                             return;
                         }
                         if (args[1] == "^") {
@@ -507,6 +512,25 @@ public:
                     }
                     std::string emoji = clean_emoji(raw_emoji);
 
+                    // Parse optional trailing "add" or "remove" specifier
+                    std::string rule_type = "add";
+                    if (subcommand == "addremove") {
+                        rule_type = "remove";
+                    } else {
+                        size_t last_space = role_query.find_last_of(" ");
+                        if (last_space != std::string::npos) {
+                            std::string last_word = role_query.substr(last_space + 1);
+                            std::transform(last_word.begin(), last_word.end(), last_word.begin(), ::tolower);
+                            if (last_word == "remove") {
+                                rule_type = "remove";
+                                role_query = role_query.substr(0, last_space);
+                            } else if (last_word == "add") {
+                                rule_type = "add";
+                                role_query = role_query.substr(0, last_space);
+                            }
+                        }
+                    }
+
                     std::vector<stoatpp::models::Role> matching_roles;
                     std::string lower_query = role_query;
                     std::transform(lower_query.begin(), lower_query.end(), lower_query.begin(), [](unsigned char c) { return std::tolower(c); });
@@ -544,7 +568,7 @@ public:
                     bool is_message_id = (target.size() == 26 && 
                                           target.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
 
-                    auto execute_add = [&bot, msg, target, emoji, is_message_id, member, server_opt](stoatpp::models::Role selected_role) {
+                    auto execute_add = [&bot, msg, target, emoji, is_message_id, member, server_opt, rule_type](stoatpp::models::Role selected_role) {
                         // Hierarchy check: role rank <= member rank (remember: lower is higher power)
                         bool is_owner_or_bypass = (server_opt->owner == msg.author.id) || bot.is_owner(msg.author.id);
                         if (!is_owner_or_bypass) {
@@ -555,9 +579,9 @@ public:
                             }
                         }
 
-                        auto run_db_add = [&bot, msg, target, emoji, is_message_id, selected_role]() {
+                        auto run_db_add = [&bot, msg, target, emoji, is_message_id, selected_role, rule_type]() {
                             if (is_message_id) {
-                                std::thread([&bot, msg, target, emoji, selected_role]() {
+                                std::thread([&bot, msg, target, emoji, selected_role, rule_type]() {
                                     auto existing_rr = g_db->get_rr_message(target);
                                     std::string channel_id = msg.channel_id;
 
@@ -575,9 +599,9 @@ public:
                                         channel_id = existing_rr->channel_id;
                                     }
 
-                                    if (g_db->add_rr_rule(target, emoji, selected_role.id)) {
+                                    if (g_db->add_rr_rule(target, emoji, selected_role.id, rule_type)) {
                                         bot.react_to_message(channel_id, target, emoji);
-                                        bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on message `" + target + "`.");
+                                        bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ " + (rule_type == "remove" ? "[Remove] " : "") + "**" + selected_role.name + "** on message `" + target + "`.");
                                     } else {
                                         bot.send_message(msg.channel_id, "failed to add reaction role mapping.");
                                     }
@@ -589,14 +613,14 @@ public:
                                     return;
                                 }
 
-                                std::thread([&bot, msg, target, emoji, selected_role, msg_ids]() {
+                                std::thread([&bot, msg, target, emoji, selected_role, msg_ids, rule_type]() {
                                     for (const auto& target_msg_id : msg_ids) {
                                         auto rr_msg_opt = g_db->get_rr_message(target_msg_id);
                                         if (!rr_msg_opt) continue;
 
                                         bool is_duplicate = false;
                                         for (const auto& rule : rr_msg_opt->rules) {
-                                            if (rule.emoji_id == emoji && rule.role_id == selected_role.id) {
+                                            if (rule.emoji_id == emoji && rule.role_id == selected_role.id && rule.rule_type == rule_type) {
                                                 is_duplicate = true;
                                                 break;
                                             }
@@ -606,7 +630,7 @@ public:
                                             return;
                                         }
 
-                                        if (g_db->add_rr_rule(target_msg_id, emoji, selected_role.id)) {
+                                        if (g_db->add_rr_rule(target_msg_id, emoji, selected_role.id, rule_type)) {
                                             bot.react_to_message(rr_msg_opt->channel_id, target_msg_id, emoji);
                                             std::this_thread::sleep_for(std::chrono::milliseconds(100));
                                         }
@@ -619,7 +643,7 @@ public:
                                         }
                                     }
 
-                                    bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ **" + selected_role.name + "** on modal `" + target + "`.");
+                                    bot.send_message(msg.channel_id, "successfully added reaction role mapping: " + display_emoji(emoji) + " ➔ " + (rule_type == "remove" ? "[Remove] " : "") + "**" + selected_role.name + "** on modal `" + target + "`.");
                                 }).detach();
                             }
                         };
@@ -702,6 +726,58 @@ public:
                                 execute_add(matching_roles[choice - 1]);
                             });
                         });
+                    }
+                    return;
+                }
+                if (subcommand == "type") {
+                    if (args.size() < 3) {
+                        std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "rr type <modalname|messageID> <standard|panel|verify>`");
+                        return;
+                    }
+                    std::string target = args[1];
+                    std::string type = args[2];
+                    std::transform(type.begin(), type.end(), type.begin(), ::tolower);
+
+                    if (type != "standard" && type != "panel" && type != "verify") {
+                        bot.send_message(msg.channel_id, "invalid type. available types: `standard`, `panel`, `verify`.");
+                        return;
+                    }
+
+                    bool is_message_id = (target.size() == 26 && 
+                                          target.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
+
+                    bool updated = false;
+                    if (is_message_id) {
+                        auto existing_rr = g_db->get_rr_message(target);
+                        if (existing_rr) {
+                            if (g_db->update_rr_message_type(target, type)) {
+                                updated = true;
+                                auto updated_rr = g_db->get_rr_message(target);
+                                if (updated_rr) {
+                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                    bot.edit_message(updated_rr->channel_id, target, payload);
+                                }
+                            }
+                        }
+                    } else {
+                        std::vector<std::string> msg_ids = g_db->get_message_ids_by_modal(msg.server_id, target);
+                        for (const auto& msg_id : msg_ids) {
+                            if (g_db->update_rr_message_type(msg_id, type)) {
+                                updated = true;
+                                auto updated_rr = g_db->get_rr_message(msg_id);
+                                if (updated_rr) {
+                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                    bot.edit_message(updated_rr->channel_id, msg_id, payload);
+                                }
+                            }
+                        }
+                    }
+
+                    if (updated) {
+                        bot.send_message(msg.channel_id, "✅ successfully updated reaction role type for target `" + target + "` to `" + type + "`.");
+                    } else {
+                        bot.send_message(msg.channel_id, "⚠️ could not find any active modals or reaction role messages matching `" + target + "`.");
                     }
                     return;
                 }
@@ -1680,58 +1756,48 @@ public:
             // 2. Check if active reaction roles message
             auto rr_msg = g_db->get_rr_message(e.id);
             if (rr_msg) {
-                std::vector<std::string> match_roles;
+                std::vector<Database::RRRule> match_rules;
                 for (const auto& r : rr_msg->rules) {
                     if (r.emoji_id == e.emoji_id) {
-                        match_roles.push_back(r.role_id);
+                        match_rules.push_back(r);
                     }
                 }
 
-                for (const auto& match_role : match_roles) {
-                    std::string role_name = match_role;
+                for (const auto& rule : match_rules) {
+                    std::string role_name = rule.role_id;
                     auto server_opt = bot.get_server(rr_msg->server_id);
                     if (server_opt) {
                         for (const auto& r : server_opt->roles) {
-                            if (r.id == match_role) {
+                            if (r.id == rule.role_id) {
                                 role_name = r.name;
                                 break;
                             }
                         }
                     }
 
-                    std::cout << "[bronx rr] adding role " << match_role << " to user " << e.user_id << "\n";
-                    bot.add_role_to_member(rr_msg->server_id, e.user_id, match_role, [&bot, e, match_role, role_name, server_opt, rr_msg](bool success, std::string err) {
-                        std::cout << "[bronx rr] role add " << (success ? "succeeded" : "failed") 
-                                  << " for user " << e.user_id << " (role: " << match_role << ") error: " << err << "\n";
-                        if (!success) {
-                            if (err == "NotElevated" || err == "HierarchyError") {
-                                bot.fetch_member(rr_msg->server_id, e.user_id, [&bot, e, role_name, server_opt](stoatpp::models::Member target_member, bool member_ok) {
-                                    std::string top_role_name = "your highest role";
-                                    if (member_ok && server_opt) {
-                                        int highest_rank = 999999;
-                                        std::string highest_name = "";
-                                        for (const auto& r_id : target_member.roles) {
-                                            for (const auto& r : server_opt->roles) {
-                                                if (r.id == r_id) {
-                                                    if (r.rank < highest_rank) {
-                                                        highest_rank = r.rank;
-                                                        highest_name = r.name;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        if (!highest_name.empty()) {
-                                            top_role_name = "**" + highest_name + "**";
-                                        }
-                                    }
-                                    
-                                    bot.send_message(e.channel_id, "⚠️ hierarchy error: i couldn't give you the **" + role_name + "** role in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
-                                });
-                            } else {
-                                bot.send_message(e.channel_id, "⚠️ failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                    if (rule.rule_type == "remove") {
+                        std::cout << "[bronx rr] removing role " << rule.role_id << " from user " << e.user_id << "\n";
+                        bot.remove_role_from_member(rr_msg->server_id, e.user_id, rule.role_id, [&bot, e, rule, role_name, server_opt, rr_msg](bool success, std::string err) {
+                            std::cout << "[bronx rr] role remove " << (success ? "succeeded" : "failed") 
+                                      << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
+                            if (!success) {
+                                bot.send_message(e.channel_id, "⚠️ failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it.");
                             }
-                        }
-                    });
+                        });
+                    } else {
+                        std::cout << "[bronx rr] adding role " << rule.role_id << " to user " << e.user_id << "\n";
+                        bot.add_role_to_member(rr_msg->server_id, e.user_id, rule.role_id, [&bot, e, rule, role_name, server_opt, rr_msg](bool success, std::string err) {
+                            std::cout << "[bronx rr] role add " << (success ? "succeeded" : "failed") 
+                                      << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
+                            if (!success) {
+                                if (err == "NotElevated" || err == "HierarchyError") {
+                                    bot.send_message(e.channel_id, "⚠️ hierarchy error: i couldn't give you the **" + role_name + "** role in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
+                                } else {
+                                    bot.send_message(e.channel_id, "⚠️ failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                                }
+                            }
+                        });
+                    }
                 }
             }
             } catch (const std::exception& err) {
@@ -1745,58 +1811,55 @@ public:
 
             auto rr_msg = g_db->get_rr_message(e.id);
             if (rr_msg) {
-                std::vector<std::string> match_roles;
+                // If it is panel or verify type, we do not remove/add back anything when they unreact
+                if (rr_msg->type == "panel" || rr_msg->type == "verify") {
+                    return;
+                }
+
+                std::vector<Database::RRRule> match_rules;
                 for (const auto& r : rr_msg->rules) {
                     if (r.emoji_id == e.emoji_id) {
-                        match_roles.push_back(r.role_id);
+                        match_rules.push_back(r);
                     }
                 }
 
-                for (const auto& match_role : match_roles) {
-                    std::string role_name = match_role;
+                for (const auto& rule : match_rules) {
+                    std::string role_name = rule.role_id;
                     auto server_opt = bot.get_server(rr_msg->server_id);
                     if (server_opt) {
                         for (const auto& r : server_opt->roles) {
-                            if (r.id == match_role) {
+                            if (r.id == rule.role_id) {
                                 role_name = r.name;
                                 break;
                             }
                         }
                     }
 
-                    std::cout << "[bronx rr] removing role " << match_role << " from user " << e.user_id << "\n";
-                    bot.remove_role_from_member(rr_msg->server_id, e.user_id, match_role, [&bot, e, match_role, role_name, server_opt, rr_msg](bool success, std::string err) {
-                        std::cout << "[bronx rr] role remove " << (success ? "succeeded" : "failed") 
-                                  << " for user " << e.user_id << " (role: " << match_role << ") error: " << err << "\n";
-                        if (!success) {
-                            if (err == "NotElevated" || err == "HierarchyError") {
-                                bot.fetch_member(rr_msg->server_id, e.user_id, [&bot, e, role_name, server_opt](stoatpp::models::Member target_member, bool member_ok) {
-                                    std::string top_role_name = "your highest role";
-                                    if (member_ok && server_opt) {
-                                        int highest_rank = 999999;
-                                        std::string highest_name = "";
-                                        for (const auto& r_id : target_member.roles) {
-                                            for (const auto& r : server_opt->roles) {
-                                                if (r.id == r_id) {
-                                                    if (r.rank < highest_rank) {
-                                                        highest_rank = r.rank;
-                                                        highest_name = r.name;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        if (!highest_name.empty()) {
-                                            top_role_name = "**" + highest_name + "**";
-                                        }
-                                    }
-                                    
-                                    bot.send_message(e.channel_id, "⚠️ hierarchy error: i couldn't remove the **" + role_name + "** role from you in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
-                                });
-                            } else {
-                                bot.send_message(e.channel_id, "⚠️ failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                    if (rule.rule_type == "remove") {
+                        // The opposite of remove is ADD
+                        std::cout << "[bronx rr] adding role back " << rule.role_id << " to user " << e.user_id << "\n";
+                        bot.add_role_to_member(rr_msg->server_id, e.user_id, rule.role_id, [&bot, e, rule, role_name, server_opt, rr_msg](bool success, std::string err) {
+                            std::cout << "[bronx rr] role add " << (success ? "succeeded" : "failed") 
+                                      << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
+                            if (!success) {
+                                bot.send_message(e.channel_id, "⚠️ failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it.");
                             }
-                        }
-                    });
+                        });
+                    } else {
+                        // The opposite of add is REMOVE
+                        std::cout << "[bronx rr] removing role " << rule.role_id << " from user " << e.user_id << "\n";
+                        bot.remove_role_from_member(rr_msg->server_id, e.user_id, rule.role_id, [&bot, e, rule, role_name, server_opt, rr_msg](bool success, std::string err) {
+                            std::cout << "[bronx rr] role remove " << (success ? "succeeded" : "failed") 
+                                      << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
+                            if (!success) {
+                                if (err == "NotElevated" || err == "HierarchyError") {
+                                    bot.send_message(e.channel_id, "⚠️ hierarchy error: i couldn't remove the **" + role_name + "** role from you in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
+                                } else {
+                                    bot.send_message(e.channel_id, "⚠️ failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                                }
+                            }
+                        });
+                    }
                 }
             }
             } catch (const std::exception& err) {

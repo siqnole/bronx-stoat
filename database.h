@@ -24,6 +24,7 @@ public:
     struct RRRule {
         std::string emoji_id;
         std::string role_id;
+        std::string rule_type = "add"; // "add" or "remove"
     };
 
     struct RRMessage {
@@ -32,6 +33,7 @@ public:
         std::string server_id;
         std::string modal_name; // empty if scanned from existing msg
         std::string embed_json;
+        std::string type = "standard"; // "standard", "panel", "verify"
         std::vector<RRRule> rules;
     };
 
@@ -375,6 +377,13 @@ public:
             mysql_query(mysql_, alter_rr_msg_fallback.c_str());
         }
 
+        // Migration: Ensure type column exists on rr_messages
+        std::string alter_rr_msg_type = "ALTER TABLE rr_messages ADD COLUMN IF NOT EXISTS type VARCHAR(20) NOT NULL DEFAULT 'standard'";
+        if (mysql_query(mysql_, alter_rr_msg_type.c_str())) {
+            std::string alter_rr_msg_type_fallback = "ALTER TABLE rr_messages ADD COLUMN type VARCHAR(20) NOT NULL DEFAULT 'standard'";
+            mysql_query(mysql_, alter_rr_msg_type_fallback.c_str());
+        }
+
         // Create Table rr_rules
         std::string create_rr_rules = 
             "CREATE TABLE IF NOT EXISTS rr_rules ("
@@ -392,6 +401,13 @@ public:
         // Migration: Update primary key to allow multiple roles per emoji
         std::string alter_rr_rules = "ALTER TABLE rr_rules DROP PRIMARY KEY, ADD PRIMARY KEY(message_id, emoji_id, role_id)";
         mysql_query(mysql_, alter_rr_rules.c_str()); // Ignore error if it fails (e.g. if it already has the correct PK)
+
+        // Migration: Ensure rule_type column exists on rr_rules
+        std::string alter_rr_rules_type = "ALTER TABLE rr_rules ADD COLUMN IF NOT EXISTS rule_type VARCHAR(10) NOT NULL DEFAULT 'add'";
+        if (mysql_query(mysql_, alter_rr_rules_type.c_str())) {
+            std::string alter_rr_rules_type_fallback = "ALTER TABLE rr_rules ADD COLUMN rule_type VARCHAR(10) NOT NULL DEFAULT 'add'";
+            mysql_query(mysql_, alter_rr_rules_type_fallback.c_str());
+        }
 
         // Create Table guild_command_usage
         std::string create_cmd_usage = 
@@ -898,7 +914,7 @@ public:
         }
 
         // Load existing reaction messages
-        std::string select_rr_msgs = "SELECT message_id, channel_id, server_id, modal_name, embed_json FROM rr_messages";
+        std::string select_rr_msgs = "SELECT message_id, channel_id, server_id, modal_name, embed_json, type FROM rr_messages";
         if (mysql_query(mysql_, select_rr_msgs.c_str())) {
             std::cerr << "[bronx db] failed to load rr_messages: " << mysql_error(mysql_) << "\n";
             return false;
@@ -916,13 +932,14 @@ public:
                 msg.server_id = row[2];
                 msg.modal_name = row[3] ? row[3] : "";
                 msg.embed_json = row[4] ? row[4] : "";
+                msg.type = row[5] ? row[5] : "standard";
                 rr_cache_[msg_id] = msg;
             }
             mysql_free_result(rr_msg_res);
         }
 
         // Load existing reaction rules
-        std::string select_rr_rules = "SELECT message_id, emoji_id, role_id FROM rr_rules";
+        std::string select_rr_rules = "SELECT message_id, emoji_id, role_id, rule_type FROM rr_rules";
         if (mysql_query(mysql_, select_rr_rules.c_str())) {
             std::cerr << "[bronx db] failed to load rr_rules: " << mysql_error(mysql_) << "\n";
             return false;
@@ -936,10 +953,11 @@ public:
                 std::string msg_id = row[0];
                 std::string emoji = row[1];
                 std::string role = row[2];
+                std::string rule_type = row[3] ? row[3] : "add";
                 
                 auto it = rr_cache_.find(msg_id);
                 if (it != rr_cache_.end()) {
-                    it->second.rules.push_back({emoji, role});
+                    it->second.rules.push_back({emoji, role, rule_type});
                 }
             }
             mysql_free_result(rr_rule_res);
@@ -1374,20 +1392,21 @@ public:
 
     // --- Reaction Roles Methods ---
 
-    bool add_rr_message(const std::string& message_id, const std::string& channel_id, const std::string& server_id, const std::string& modal_name) {
+    bool add_rr_message(const std::string& message_id, const std::string& channel_id, const std::string& server_id, const std::string& modal_name, const std::string& type = "standard") {
         std::lock_guard<std::mutex> db_lock(db_mutex_);
 
         std::string esc_msg = escape_string(message_id);
         std::string esc_ch = escape_string(channel_id);
         std::string esc_srv = escape_string(server_id);
         std::string esc_modal = escape_string(modal_name);
+        std::string esc_type = escape_string(type);
 
         std::string query = 
-            "INSERT INTO rr_messages (message_id, channel_id, server_id, modal_name) "
+            "INSERT INTO rr_messages (message_id, channel_id, server_id, modal_name, type) "
             "VALUES ('" + esc_msg + "', '" + esc_ch + "', '" + esc_srv + "', " + 
-            (modal_name.empty() ? "NULL" : "'" + esc_modal + "'") + ") "
+            (modal_name.empty() ? "NULL" : "'" + esc_modal + "'") + ", '" + esc_type + "') "
             "ON DUPLICATE KEY UPDATE channel_id = '" + esc_ch + "', server_id = '" + esc_srv + "', modal_name = " + 
-            (modal_name.empty() ? "NULL" : "'" + esc_modal + "'");
+            (modal_name.empty() ? "NULL" : "'" + esc_modal + "'") + ", type = '" + esc_type + "'";
 
         if (mysql_query(mysql_, query.c_str())) {
             std::cerr << "[bronx db] failed to save rr_message: " << mysql_error(mysql_) << "\n";
@@ -1401,8 +1420,25 @@ public:
             msg.channel_id = channel_id;
             msg.server_id = server_id;
             msg.modal_name = modal_name;
+            msg.type = type;
         }
         return true;
+    }
+
+    bool update_rr_message_type(const std::string& message_id, const std::string& type) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_msg = escape_string(message_id);
+        std::string esc_type = escape_string(type);
+
+        std::string query = "UPDATE rr_messages SET type = '" + esc_type + "' WHERE message_id = '" + esc_msg + "'";
+        if (mysql_query(mysql_, query.c_str()) == 0) {
+            std::unique_lock<std::shared_mutex> lock(rr_cache_mutex_);
+            if (rr_cache_.find(message_id) != rr_cache_.end()) {
+                rr_cache_[message_id].type = type;
+            }
+            return true;
+        }
+        return false;
     }
 
     bool update_rr_embed_json(const std::string& message_id, const std::string& embed_json) {
@@ -1421,17 +1457,18 @@ public:
         return false;
     }
 
-    bool add_rr_rule(const std::string& message_id, const std::string& emoji_id, const std::string& role_id) {
+    bool add_rr_rule(const std::string& message_id, const std::string& emoji_id, const std::string& role_id, const std::string& rule_type = "add") {
         std::lock_guard<std::mutex> db_lock(db_mutex_);
 
         std::string esc_msg = escape_string(message_id);
         std::string esc_emoji = escape_string(emoji_id);
         std::string esc_role = escape_string(role_id);
+        std::string esc_rule_type = escape_string(rule_type);
 
         std::string query = 
-            "INSERT INTO rr_rules (message_id, emoji_id, role_id) "
-            "VALUES ('" + esc_msg + "', '" + esc_emoji + "', '" + esc_role + "') "
-            "ON DUPLICATE KEY UPDATE role_id = role_id";
+            "INSERT INTO rr_rules (message_id, emoji_id, role_id, rule_type) "
+            "VALUES ('" + esc_msg + "', '" + esc_emoji + "', '" + esc_role + "', '" + esc_rule_type + "') "
+            "ON DUPLICATE KEY UPDATE role_id = role_id, rule_type = '" + esc_rule_type + "'";
 
         if (mysql_query(mysql_, query.c_str())) {
             std::cerr << "[bronx db] failed to save rr_rule: " << mysql_error(mysql_) << "\n";
@@ -1445,12 +1482,13 @@ public:
                 bool found = false;
                 for (auto& rule : it->second.rules) {
                     if (rule.emoji_id == emoji_id && rule.role_id == role_id) {
+                        rule.rule_type = rule_type;
                         found = true;
                         break;
                     }
                 }
                 if (!found) {
-                    it->second.rules.push_back({emoji_id, role_id});
+                    it->second.rules.push_back({emoji_id, role_id, rule_type});
                 }
             }
         }
