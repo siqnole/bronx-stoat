@@ -26,14 +26,6 @@ public:
                 return;
             }
 
-            // Concatenate args to scan for custom emojis
-            std::string input_str = "";
-            for (const auto& arg : args) {
-                input_str += arg + " ";
-            }
-
-            std::regex emoji_regex(R"((?:<a?:([a-zA-Z0-9_]{1,32}):([0-9a-zA-Z]{26})>|:([0-9a-zA-Z]{26}):))");
-            std::smatch match;
             struct TargetEmoji {
                 std::string name;
                 std::string id;
@@ -41,21 +33,39 @@ public:
                 std::string status = "pending...";
             };
             std::vector<TargetEmoji> targets;
+            std::regex single_emoji_regex(R"(^(?:<a?:([a-zA-Z0-9_]{1,32}):([0-9a-zA-Z]{26})>|:([0-9a-zA-Z]{26}):)$)");
+            std::smatch match;
 
-            std::string::const_iterator search_start(input_str.cbegin());
-            while (std::regex_search(search_start, input_str.cend(), match, emoji_regex)) {
-                TargetEmoji te;
-                if (!match[3].str().empty()) {
-                    te.id = match[3].str();
-                    te.name = ""; // Resolve dynamically
-                    te.animated = false;
+            for (const auto& arg : args) {
+                if (std::regex_match(arg, match, single_emoji_regex)) {
+                    TargetEmoji te;
+                    if (!match[3].str().empty()) {
+                        te.id = match[3].str();
+                        te.name = ""; // Resolve dynamically
+                        te.animated = false;
+                    } else {
+                        te.name = match[1].str();
+                        te.id = match[2].str();
+                        te.animated = !match[0].str().empty() && match[0].str()[1] == 'a';
+                    }
+                    targets.push_back(te);
                 } else {
-                    te.name = match[1].str();
-                    te.id = match[2].str();
-                    te.animated = !match[0].str().empty() && match[0].str()[1] == 'a';
+                    if (!targets.empty() && !arg.empty()) {
+                        std::string clean_name = "";
+                        for (char c : arg) {
+                            if (std::isalnum(c) || c == '_') {
+                                clean_name += c;
+                            }
+                        }
+                        if (!clean_name.empty()) {
+                            // Enforce Revolt emoji name length limit of 32 characters
+                            if (clean_name.length() > 32) {
+                                clean_name = clean_name.substr(0, 32);
+                            }
+                            targets.back().name = clean_name;
+                        }
+                    }
                 }
-                targets.push_back(te);
-                search_start = match[0].second;
             }
 
             if (targets.empty()) {

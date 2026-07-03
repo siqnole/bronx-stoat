@@ -243,6 +243,11 @@ inline stoatpp::models::MessagePayload build_rr_payload(const bronx::Database::R
     
     if (!rr_msg.rules.empty()) {
         desc += format_rr_description(rr_msg.rules);
+        std::vector<std::string> rx;
+        for (const auto& rule : rr_msg.rules) {
+            rx.push_back(rule.emoji_id);
+        }
+        payload.set_interactions(rx);
     } else {
         desc += "*(no roles configured yet)*";
     }
@@ -398,11 +403,9 @@ public:
                             g_db->add_rr_message(res.id, target_channel, msg.server_id, modalname);
                             std::cout << "[bronx rr] sent additional reaction role modal: " << modalname << " (message: " << res.id << ")\n";
                             
-                            // Copy rules to database and cache, and react
+                            // Copy rules to database and cache
                             for (const auto& rule : rr_msg_opt->rules) {
                                 g_db->add_rr_rule(res.id, rule.emoji_id, rule.role_id);
-                                bot.react_to_message(target_channel, res.id, rule.emoji_id);
-                                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                             }
                         }
                     });
@@ -1460,8 +1463,6 @@ public:
                                 g_db->add_rr_message(res.id, res.channel, msg.server_id, parse_modal_name);
                                 for (const auto& r : rules) {
                                     g_db->add_rr_rule(res.id, r.emoji, r.role_id);
-                                    bot.react_to_message(res.channel, res.id, r.emoji);
-                                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
                                 }
                                 std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
                                 bot.send_message(msg.channel_id, "✅ created modal **" + parse_modal_name + "** with " +

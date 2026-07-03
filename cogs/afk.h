@@ -91,6 +91,84 @@ inline std::string format_elapsed_time(int64_t elapsed_seconds) {
     return std::to_string(days) + "d " + std::to_string(hours % 24) + "h";
 }
 
+static std::unordered_map<std::string, std::string> parse_pairs(const std::string& text) {
+    std::unordered_map<std::string, std::string> pairs;
+    std::vector<std::string> keys = {"title:", "description:", "desc:", "colour:", "color:", "image:", "content:", "message:"};
+    
+    struct KeyPos {
+        std::string key;
+        size_t pos;
+    };
+    std::vector<KeyPos> occurrences;
+    
+    for (const auto& key : keys) {
+        size_t pos = 0;
+        while ((pos = text.find(key, pos)) != std::string::npos) {
+            if (pos == 0 || std::isspace(text[pos - 1])) {
+                occurrences.push_back({key, pos});
+            }
+            pos += key.length();
+        }
+    }
+    
+    std::sort(occurrences.begin(), occurrences.end(), [](const KeyPos& a, const KeyPos& b) {
+        return a.pos < b.pos;
+    });
+    
+    for (size_t i = 0; i < occurrences.size(); ++i) {
+        size_t start_val = occurrences[i].pos + occurrences[i].key.length();
+        size_t end_val = (i + 1 < occurrences.size()) ? occurrences[i + 1].pos : text.length();
+        
+        std::string val = text.substr(start_val, end_val - start_val);
+        val.erase(0, val.find_first_not_of(" \t\r\n"));
+        val.erase(val.find_last_not_of(" \t\r\n") + 1);
+        
+        if (!val.empty() && val.back() == ',') {
+            val.pop_back();
+            val.erase(val.find_last_not_of(" \t\r\n") + 1);
+        }
+        
+        std::string normalized_key = occurrences[i].key;
+        normalized_key.pop_back(); // remove colon
+        if (normalized_key == "desc") normalized_key = "description";
+        if (normalized_key == "colour") normalized_key = "color";
+        if (normalized_key == "message") normalized_key = "content";
+        
+        pairs[normalized_key] = val;
+    }
+    
+    return pairs;
+}
+
+static std::string get_raw_trailing_args(const std::string& content, const std::string& prefix, const std::string& command_name, const std::string& subcommand) {
+    std::string search1 = prefix + command_name;
+    std::string lower_content = content;
+    std::transform(lower_content.begin(), lower_content.end(), lower_content.begin(), ::tolower);
+    
+    std::string lower_search1 = search1;
+    std::transform(lower_search1.begin(), lower_search1.end(), lower_search1.begin(), ::tolower);
+    
+    size_t pos = lower_content.find(lower_search1);
+    if (pos == std::string::npos) return "";
+    
+    pos += lower_search1.length();
+    while (pos < content.length() && std::isspace(content[pos])) {
+        pos++;
+    }
+    
+    std::string lower_sub = subcommand;
+    std::transform(lower_sub.begin(), lower_sub.end(), lower_sub.begin(), ::tolower);
+    
+    if (pos + lower_sub.length() <= content.length() && lower_content.compare(pos, lower_sub.length(), lower_sub) == 0) {
+        pos += lower_sub.length();
+        if (pos < content.length() && std::isspace(content[pos])) {
+            pos++;
+        }
+        return content.substr(pos);
+    }
+    return "";
+}
+
 class AFKModule : public stoatpp::bot_module {
 public:
     void register_handlers(stoatpp::cluster& bot) override {
@@ -354,9 +432,11 @@ public:
                         return;
                     }
 
-                    if (sub == "message" || sub == "content" || sub == "edit") {
+                    std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+
+                    if (sub == "message" || sub == "content") {
                         if (args.size() < 2) {
-                            bot.send_message(msg.channel_id, "ℹ️ Usage: `.afk message <text content>`");
+                            bot.send_message(msg.channel_id, "ℹ️ Usage: `" + pfx + "afk " + sub + " <text content>`");
                             return;
                         }
                         std::string content = "";
@@ -375,6 +455,74 @@ public:
                             bot.send_message(msg.channel_id, "✅ AFK content/text updated.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                        }
+                        return;
+                    }
+
+                    if (sub == "edit") {
+                        std::string text = get_raw_trailing_args(msg.content, pfx, "afk", "edit");
+                        if (text.empty()) {
+                            bot.send_message(msg.channel_id, "ℹ️ Usage: `" + pfx + "afk edit key:value ...`\n"
+                                                               "Keys: `title`, `description` (or `desc`), `color` (or `colour`), `image`, `content` (or `message`)\n"
+                                                               "Use `none` to clear a field.\n"
+                                                               "Example:\n"
+                                                               "• `" + pfx + "afk edit title:I'm AFK! color:#ff0000`\n"
+                                                               "• `" + pfx + "afk edit content:Busy title:none`\n"
+                                                               "Available tokens: `{user}`, `{reason}`, `{time}`");
+                            return;
+                        }
+
+                        auto pairs = parse_pairs(text);
+                        if (pairs.empty()) {
+                            bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found. Format must be `key:value` (e.g. `title:Away color:random`).");
+                            return;
+                        }
+
+                        auto afk_opt = g_db->get_user_afk(msg.author.id);
+                        Database::UserAFK afk;
+                        if (afk_opt) afk = *afk_opt;
+                        afk.user_id = msg.author.id;
+                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+
+                        for (const auto& [key, val] : pairs) {
+                            if (key == "content") {
+                                if (val == "none" || val == "null" || val == "clear") {
+                                    tmpl.content = "";
+                                } else {
+                                    tmpl.content = val;
+                                }
+                            } else if (key == "title") {
+                                if (val == "none" || val == "null" || val == "clear") {
+                                    tmpl.title = "";
+                                } else {
+                                    tmpl.title = val;
+                                }
+                            } else if (key == "description") {
+                                if (val == "none" || val == "null" || val == "clear") {
+                                    tmpl.description = "";
+                                } else {
+                                    tmpl.description = val;
+                                }
+                            } else if (key == "color") {
+                                if (val == "none" || val == "null" || val == "clear") {
+                                    tmpl.color = "";
+                                } else {
+                                    tmpl.color = val;
+                                }
+                            } else if (key == "image") {
+                                if (val == "none" || val == "null" || val == "clear") {
+                                    tmpl.image = "";
+                                } else {
+                                    tmpl.image = val;
+                                }
+                            }
+                        }
+
+                        afk.custom_template = tmpl.dump();
+                        if (g_db->save_user_afk(afk)) {
+                            bot.send_message(msg.channel_id, "✅ AFK template updated successfully.");
+                        } else {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to save AFK template configuration.");
                         }
                         return;
                     }

@@ -202,23 +202,14 @@ public:
                 session.prefix = prefix;
 
                 auto payload = render_help_page(bot, categories, commands_by_cat, session, prefix);
+                payload.set_interactions({"⏪", "◀", "🟦", "▶", "⏩"});
 
-                bot.send_message(msg.channel_id, payload, [this, &bot, msg, categories, prefix](stoatpp::models::Message res, bool success) {
+                bot.send_message(msg.channel_id, payload, [this, msg, prefix](stoatpp::models::Message res, bool success) {
                     if (success) {
                         {
                             std::lock_guard<std::mutex> lock(help_mutex_);
                             help_sessions_[res.id] = {0, 0, msg.author.id, prefix};
                         }
-                        
-                        bot.react_to_message(msg.channel_id, res.id, "⏪");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        bot.react_to_message(msg.channel_id, res.id, "◀");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        bot.react_to_message(msg.channel_id, res.id, "🟦");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        bot.react_to_message(msg.channel_id, res.id, "▶");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        bot.react_to_message(msg.channel_id, res.id, "⏩");
                     }
                 });
             },

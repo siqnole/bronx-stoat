@@ -270,19 +270,30 @@ private:
                 // Move the ticket role above the member role so its ALLOW overrides
                 // the member role's DENY in Revolt's role-priority permission calculation.
                 if (!config.member_role_id.empty() && server_opt) {
-                    int member_rank = INT_MAX;
-                    for (const auto& r : server_opt->roles) {
-                        if (r.id == config.member_role_id) {
-                            member_rank = r.rank;
-                            break;
+                    std::vector<stoatpp::models::Role> sorted_roles = server_opt->roles;
+                    std::sort(sorted_roles.begin(), sorted_roles.end(), [](const auto& a, const auto& b) {
+                        return a.rank < b.rank;
+                    });
+
+                    std::vector<std::string> rank_order;
+                    bool inserted = false;
+                    for (const auto& r : sorted_roles) {
+                        if (r.id == user_role_id) {
+                            continue;
                         }
+                        if (r.id == config.member_role_id) {
+                            rank_order.push_back(user_role_id);
+                            inserted = true;
+                        }
+                        rank_order.push_back(r.id);
                     }
-                    if (member_rank != INT_MAX && member_rank > 0) {
-                        nlohmann::json rank_patch;
-                        rank_patch["rank"] = member_rank - 1;
-                        bot.rest().edit_role(server_id, user_role_id, rank_patch);
-                        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                    if (!inserted) {
+                        rank_order.insert(rank_order.begin(), user_role_id);
                     }
+
+                    nlohmann::json rank_body = {{"ranks", rank_order}};
+                    bot.rest().patch("/servers/" + server_id + "/roles", rank_body);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 }
 
                 bot.add_role_to_member(server_id, user_id, user_role_id);
@@ -393,11 +404,10 @@ private:
                 embed["colour"] = "#6C5CE7";
             }
             payload.embeds.push_back(embed);
+            payload.set_interactions({config.ticket_close_emoji});
 
             bot.send_message(ticket_channel_id, payload, [&bot, server_id, user_id, config, ticket_channel_id, panel_name](stoatpp::models::Message res, bool ok) {
                 if (ok) {
-                    bot.react_to_message(ticket_channel_id, res.id, config.ticket_close_emoji);
-
                     Database::Ticket ticket;
                     ticket.channel_id = ticket_channel_id;
                     ticket.server_id = server_id;
@@ -487,6 +497,7 @@ private:
             embed["colour"] = "#6C5CE7";
         }
         payload.embeds.push_back(embed);
+        payload.set_interactions({tc.reaction_emoji});
 
         bot.send_message(tc.modal_channel_id, payload, [&bot, notify_channel_id, tc](stoatpp::models::Message res, bool ok) {
             if (ok) {
@@ -496,7 +507,6 @@ private:
                     g_db->save_ticket_config(update_tc);
                 }
 
-                bot.react_to_message(tc.modal_channel_id, res.id, tc.reaction_emoji);
                 bot.send_message(notify_channel_id, "✅ Ticket panel `" + tc.name + "` sent to <#" + tc.modal_channel_id + ">.");
             } else {
                 bot.send_message(notify_channel_id, "⚠️ Failed to send ticket panel to <#" + tc.modal_channel_id + ">. Make sure I have posting permissions in that channel.");
