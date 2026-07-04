@@ -1,6 +1,6 @@
 # bronx
 
-Server management bot built on stoat++. Features MariaDB configurations, custom prefixes, welcome/leave actions, reaction roles, cleanups, reminders, command override rules, anti-raid protection, and a highly customizable event logging engine.
+Server management bot built on stoat++. Features MariaDB persistence, custom prefixes, welcome/leave actions, reaction roles, event logging, anti-raid protection, economy system, ticket management, counting game, AFK tracking, server statistics, role management, autoresponder, autoreact, and recurring messages.
 
 ---
 
@@ -36,13 +36,33 @@ The bot checks for appropriate user/bot permissions. The default permissions req
 * **Welcome / Leave & Logs Setup**:
   * `welcome` / `leave` / `log` — Requires `Manage Server` permission.
 * **Anti-Raid**:
-  * `antiraid` / `ar` — Requires `Manage Server` permission (or being the Server Owner / trusted user).
+  * `antiraid` — Requires `Manage Server` permission (or being the Server Owner / trusted user).
 * **Reaction Roles**:
   * `rr` — Requires `Manage Roles` permission.
 * **Roles**:
-  * `role` / `roleinfo` — Requires `Manage Roles` permission (changed from Assign Roles).
+  * `role create` / `role edit` — Requires `Manage Roles` permission.
+  * `role <users> <roles>` (batch assignment) — Requires `Manage Roles` permission with hierarchy enforcement.
+* **Economy**:
+  * `balance` / `beg` / `work` / `coinflip` / `slots` / `leaderboard` — Available to all users.
+  * `pay` / `deposit` / `withdraw` — Available to all users (self-service).
+  * `rob` — Available to all users (targets another user).
+* **Tickets**:
+  * `ticket setup` / `ticket edit` / `ticket panel` / `ticket config` — Requires `Manage Server` permission.
+  * `ticket list` — Requires `Manage Server` permission.
+  * `ticket close` / `ticket add` / `ticket remove` — Requires `Manage Server` or being the ticket owner.
+* **Counting**:
+  * `count set` / `count number` / `count role` / `count passive` / `count config` / `count warning` — Requires `Manage Server` permission.
+  * `count leaderboard` — Available to all users.
+* **AFK**:
+  * `afk` / `unafk` — Available to all users.
+  * `afk setup` / `afk edit` — Requires `Manage Server` permission.
+* **Stats**:
+  * `stats` (all subcommands) — Available to all users.
+* **Auto / Autoresponder / Autoreact / Recurring**:
+  * `ar` / `are` / `recurse` — Requires `Manage Server` permission.
 * **General / Utility**:
-  * `ping` / `uptime` / `say` / `remind` — Available to all users by default.
+  * `ping` / `uptime` / `say` / `remind` / `reminders` / `emoji` / `ocr` / `dl` — Available to all users by default.
+  * `stats` — Available to all users.
 
 ---
 
@@ -306,3 +326,146 @@ Commands accepting `<raw_json>` (`.welcome json`, `.leave json`, `.log json <eve
 }
 ```
 If the JSON is invalid, the bot will return a parsing error with line and character offsets.
+
+---
+
+### 10. Economy (`.balance`, `.work`, `.beg`, etc.)
+
+A per-server coin economy with work cooldowns, robbery, gambling, and a bank. All commands are available to every server member.
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `balance` | `.balance [@user]` | `.balance` | View your (or another user's) wallet and bank balance. |
+| `beg` | `.beg` | `.beg` | Beg for coins (cooldown enforced). |
+| `work` | `.work` | `.work` | Earn coins by working (cooldown enforced). |
+| `pay` | `.pay <@user\|ID> <amount>` | `.pay @siq 100` | Transfer coins from your wallet to another user. |
+| `deposit` | `.deposit <amount\|all>` | `.deposit all` | Deposit coins from your wallet into your bank. |
+| `withdraw` | `.withdraw <amount\|all>` | `.withdraw 500` | Withdraw coins from your bank into your wallet. |
+| `rob` | `.rob <@user\|ID>` | `.rob @siq` | Attempt to steal coins from another user's wallet. |
+| `leaderboard` | `.leaderboard` (alias `.lb`) | `.leaderboard` | Show the top 10 richest users in the server. |
+| `coinflip` | `.coinflip <amount> [heads\|tails]` | `.coinflip 100 heads` | Gamble coins on a coin flip. |
+| `slots` | `.slots <amount>` | `.slots 50` | Spin the slot machine to win or lose coins. |
+| `blackjack` | `.blackjack <amount>` (alias `.bj`) | `.blackjack 200` | Play a reaction-controlled blackjack game. |
+
+> **Cooldowns**: `work` and `beg` enforce per-user cooldowns stored in the database. Rob has a per-user cooldown and a minimum wallet balance requirement on the target.
+
+---
+
+### 11. Tickets (`.ticket`)
+
+Create and manage support ticket panels with category routing, staff access control, and per-ticket audit. Requires **Manage Server** for all administrative subcommands.
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `ticket setup` | `.ticket setup <name> [#category]` | `.ticket setup support` | Interactive wizard to create a new ticket panel. |
+| `ticket edit` | `.ticket edit <name> <key:val...>` | `.ticket edit support title:Help Desk` | Inline-edit a panel's embed title, description, or color. |
+| `ticket panel` | `.ticket panel <name> [#channel]` | `.ticket panel support #open-a-ticket` | Post the panel's button embed to a channel. |
+| `ticket list` | `.ticket list` | `.ticket list` | List all configured ticket panels and active tickets. |
+| `ticket close` | `.ticket close [reason]` | `.ticket close resolved` | Close the current ticket channel and archive it. |
+| `ticket add` | `.ticket add <@user>` | `.ticket add @Moderator` | Add a user to the current ticket channel. |
+| `ticket remove` | `.ticket remove <@user>` | `.ticket remove @user` | Remove a user from the current ticket channel. |
+| `ticket config` | `.ticket config <name> <key:val...>` | `.ticket config support logs:#ticket-logs` | Update panel config (log channel, staff role, etc). |
+
+---
+
+### 12. Counting (`.count`)
+
+A server counting game with leaderboards, warning messages, passive mode, and configurable reset roles. Administrative subcommands require **Manage Server**.
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `count set` | `.count set <#channel>` | `.count set #counting` | Set the counting channel for this server. |
+| `count number` | `.count number <n>` | `.count number 500` | Manually set the current count value. |
+| `count role` | `.count role <@role\|none>` | `.count role @Counter` | Assign a role to members who reach a milestone. |
+| `count passive` | `.count passive <on\|off>` | `.count passive on` | Enable passive mode (bot deletes wrong numbers silently). |
+| `count leaderboard` | `.count leaderboard` (alias `.count lb`) | `.count leaderboard` | Show top counters in the server. |
+| `count config` | `.count config` | `.count config` | Display current counting configuration. |
+| `count warning` | `.count warning <text...>` | `.count warning Wrong number! Try again.` | Set the message sent when a user counts incorrectly. |
+
+---
+
+### 13. AFK (`.afk`, `.unafk`)
+
+Set an AFK status that auto-replies when you are mentioned. Supports custom messages, per-server setup, and staff-managed server-wide AFK configuration.
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `afk [message]` | `.afk [message]` | `.afk grabbing food` | Set yourself as AFK with an optional reason message. |
+| `unafk` | `.unafk` | `.unafk` | Manually clear your AFK status. |
+| `afk setup` | `.afk setup` | `.afk setup` | Interactive wizard to configure the server-wide AFK system (channel, embed, format). Requires **Manage Server**. |
+| `afk edit` | `.afk edit <key:val...>` | `.afk edit title:Away color:#888` | Edit AFK embed appearance inline. Requires **Manage Server**. |
+| `afk test` | `.afk test` | `.afk test` | Test the AFK reply embed with your current status. Requires **Manage Server**. |
+
+> AFK status is automatically cleared when the AFK user sends a message in the server.
+
+---
+
+### 14. Stats (`.stats`)
+
+Server telemetry covering message counts, active users, channels, and command usage. Available to all users. Supports text summaries and rendered charts (if compiled with Cairo).
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `stats` / `stats overview` | `.stats [timeframe]` | `.stats 30d` | Overview: total messages, active users, commands used. |
+| `stats top` | `.stats top [timeframe]` | `.stats top 7d` | Top 10 members and channels by message count. |
+| `stats top g` | `.stats top g [timeframe]` | `.stats top g` | Global leaderboard across all servers bronx is in. |
+| `stats users` | `.stats users [timeframe]` | `.stats users 14d` | Active members bar chart (rendered image). |
+| `stats channels` | `.stats channels [timeframe]` | `.stats channels` | Channel activity pie chart (rendered image). |
+| `stats chart` | `.stats chart [line\|heatmap\|bars\|commands] [timeframe]` | `.stats chart heatmap 30d` | Render a custom chart. Chart types: `line`, `heatmap`, `bars`, `commands`. |
+
+> **Timeframe formats**: `7d`, `2w`, `1m`, `1y`, or a plain integer (treated as days). Default is 7 days. Append `bots` to any subcommand to include bot accounts.
+
+---
+
+### 15. Role Management (`.role`)
+
+Create, edit, and batch-assign roles. Requires **Manage Roles** permission. Role hierarchy is enforced — you cannot assign roles above your highest role.
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `role create` | `.role create <name [color/gradient], ...>` | `.role create VIP #ff0000` | Create one or more roles with optional solid colors or gradients. |
+| `role edit` | `.role edit <role> <options>` | `.role edit VIP 135deg #ff0000 #0000ff` | Edit a role's name, color, or gradient angle. |
+| `role <users> <roles>` | `.role <@u1,@u2> <role1,role2>` | `.role @siq VIP,Member` | Batch-toggle roles on one or more users. |
+| `role * <role> [remove]` | `.role * <role> [remove]` | `.role * Member` | Assign or remove a role from every server member. |
+
+> **Gradient support**: Roles accept `linear-gradient()` strings, multi-hex (auto-built gradient), or `deg:135` angle-only updates that preserve existing colors.
+
+---
+
+### 16. Autoresponder (`.ar`), Autoreact (`.are`), Recurring (`.recurse`)
+
+Keyword-triggered responses and reactions, plus scheduled recurring messages. All require **Manage Server** permission. Up to 25 autoresponders and 25 autoreacts per server.
+
+#### Autoresponder (`.ar`)
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `ar add` | `.ar add <name> <keyword>` | `.ar add rules read-the-rules` | Launch wizard to create a new autoresponder (3-step). |
+| `ar remove` | `.ar remove <name\|id>` | `.ar remove rules` | Delete an autoresponder by name or numeric ID. |
+| `ar list` | `.ar list` | `.ar list` | List all autoresponders (up to 25). |
+| `ar edit` | `.ar edit <name\|id> <key:val...>` | `.ar edit rules content:Please read #rules` | Inline-edit keyword, match type, content, or embed fields. |
+| `ar filter` | `.ar filter <name\|id> allow\|ignore role\|user\|channel <value>` | `.ar filter rules allow role @Member` | Scope the autoresponder to specific roles, users, or channels. |
+| `ar info` | `.ar info <name\|id>` | `.ar info rules` | Show full details and current filter configuration. |
+
+> **Match types**: `contains` (default), `exact`, `starts`, `ends`.
+
+#### Autoreact (`.are`)
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `are add` | `.are add <name> <keyword> <emoji(s)>` | `.are add hype hype 🔥✨` | Create an autoreact rule (emojis: unicode, `:id:`, or comma-separated). |
+| `are remove` | `.are remove <name\|id>` | `.are remove hype` | Delete an autoreact rule. |
+| `are list` | `.are list` | `.are list` | List all autoreact rules. |
+| `are edit` | `.are edit <name\|id> <key:val...>` | `.are edit hype emojis:🎉🔥` | Edit keyword, match type, or emoji set. |
+| `are filter` | `.are filter <name\|id> allow\|ignore ...` | `.are filter hype ignore channel #general` | Scope the autoreact rule. |
+| `are info` | `.are info <name\|id>` | `.are info hype` | Show full details and filter configuration. |
+
+#### Recurring Messages (`.recurse`)
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `recurse add` | `.recurse add <name> interval:<duration> channel:<#ch>` | `.recurse add reminder interval:1h channel:#reminders` | Create a recurring message (wizard-based). |
+| `recurse remove` | `.recurse remove <name\|id>` | `.recurse remove reminder` | Delete a recurring message. |
+| `recurse list` | `.recurse list` | `.recurse list` | List all recurring messages. |
+| `recurse edit` | `.recurse edit <name\|id> <key:val...>` | `.recurse edit reminder interval:30m` | Update interval, channel, content, or embed. |
+| `recurse info` | `.recurse info <name\|id>` | `.recurse info reminder` | Show full recurring message details. |
