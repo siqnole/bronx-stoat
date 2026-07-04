@@ -169,6 +169,32 @@ static std::string get_raw_trailing_args(const std::string& content, const std::
     return "";
 }
 
+inline std::pair<std::string, std::string> parse_reason_and_preset(const std::vector<std::string>& args, const std::string& default_preset) {
+    std::string reason = "";
+    std::string preset = default_preset;
+    bool preset_found = false;
+
+    std::vector<std::string> clean_args;
+    for (const auto& arg : args) {
+        if (!preset_found && arg.rfind(";", 0) == 0) {
+            preset = arg.substr(1);
+            preset_found = true;
+        } else {
+            clean_args.push_back(arg);
+        }
+    }
+
+    if (clean_args.empty()) {
+        reason = "AFK";
+    } else {
+        for (size_t i = 0; i < clean_args.size(); ++i) {
+            if (i > 0) reason += " ";
+            reason += clean_args[i];
+        }
+    }
+    return {reason, preset};
+}
+
 class AFKModule : public stoatpp::bot_module {
 public:
     void register_handlers(stoatpp::cluster& bot) override {
@@ -187,7 +213,8 @@ public:
                         sub == "message" || sub == "content" || sub == "edit" || 
                         sub == "title" || sub == "description" || sub == "desc" || 
                         sub == "color" || sub == "image" || sub == "json" || 
-                        sub == "test" || sub == "template" || sub == "status") {
+                        sub == "test" || sub == "template" || sub == "status" ||
+                        sub == "delete" || sub == "set") {
                         is_subcommand = true;
                     }
                 }
@@ -197,8 +224,13 @@ public:
                     std::transform(sub.begin(), sub.end(), sub.begin(), ::tolower);
 
                     if (sub == "setup") {
-                        bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\nLet's configure your custom AFK message.\n\n**Step 1/6**: Choose the template type. Reply with `text` or `embed`.");
-                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg](std::optional<stoatpp::events::Message> rep1) {
+                        std::string preset_name = "default";
+                        if (args.size() > 1) {
+                            preset_name = args[1];
+                        }
+
+                        bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard** [Preset: `" + preset_name + "`]\nLet's configure your custom AFK message.\n\n**Step 1/6**: Choose the template type. Reply with `text` or `embed`.");
+                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, preset_name](std::optional<stoatpp::events::Message> rep1) {
                             if (!rep1) {
                                 bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
                                 return;
@@ -217,7 +249,7 @@ public:
 
                             if (type_resp == "text") {
                                 bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 2/2**: Type your AFK message content.\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
-                                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, type_resp](std::optional<stoatpp::events::Message> rep2) {
+                                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, type_resp, preset_name](std::optional<stoatpp::events::Message> rep2) {
                                     if (!rep2) {
                                         bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
                                         return;
@@ -232,14 +264,8 @@ public:
                                     tmpl.type = type_resp;
                                     tmpl.content = content_resp;
 
-                                    auto afk_opt = g_db->get_user_afk(msg.author.id);
-                                    Database::UserAFK afk;
-                                    if (afk_opt) afk = *afk_opt;
-                                    afk.user_id = msg.author.id;
-                                    afk.custom_template = tmpl.dump();
-
-                                    if (g_db->save_user_afk(afk)) {
-                                        bot.send_message(msg.channel_id, "✅ **AFK Setup Complete!** Your AFK template has been saved.");
+                                    if (g_db->save_user_afk_preset(msg.author.id, preset_name, tmpl.dump())) {
+                                        bot.send_message(msg.channel_id, "✅ **AFK Setup Complete!** Your AFK template for preset `" + preset_name + "` has been saved.");
                                     } else {
                                         bot.send_message(msg.channel_id, "⚠️ Failed to save AFK template.");
                                     }
@@ -249,7 +275,7 @@ public:
 
                             // Embed setup flow
                             bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 2/6**: Type the embed **title** (or reply `skip`).\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
-                            bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [&bot, msg, type_resp](std::optional<stoatpp::events::Message> rep2) {
+                            bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [&bot, msg, type_resp, preset_name](std::optional<stoatpp::events::Message> rep2) {
                                 if (!rep2) {
                                     bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
                                     return;
@@ -265,7 +291,7 @@ public:
                                 if (title_resp != "skip") tmpl.title = title_resp;
 
                                 bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 3/6**: Type the embed **description** (or reply `skip`).\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
-                                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(90), [&bot, msg, tmpl](std::optional<stoatpp::events::Message> rep3) {
+                                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(90), [&bot, msg, tmpl, preset_name](std::optional<stoatpp::events::Message> rep3) {
                                     if (!rep3) {
                                         bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
                                         return;
@@ -279,7 +305,7 @@ public:
                                     if (desc_resp != "skip") current_tmpl.description = desc_resp;
 
                                     bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 4/6**: Type the embed **color hex** (e.g. `#5865f2` or `random`, or reply `skip`).");
-                                    bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, current_tmpl](std::optional<stoatpp::events::Message> rep4) {
+                                    bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, current_tmpl, preset_name](std::optional<stoatpp::events::Message> rep4) {
                                         if (!rep4) {
                                             bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
                                             return;
@@ -293,7 +319,7 @@ public:
                                         if (color_resp != "skip") next_tmpl.color = color_resp;
 
                                         bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 5/6**: Type the embed **image URL** (or reply `skip`).");
-                                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, next_tmpl](std::optional<stoatpp::events::Message> rep5) {
+                                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, next_tmpl, preset_name](std::optional<stoatpp::events::Message> rep5) {
                                             if (!rep5) {
                                                 bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
                                                 return;
@@ -307,7 +333,7 @@ public:
                                             if (img_resp != "skip") last_tmpl.image = img_resp;
 
                                             bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 6/6**: Type the **message content/text** to show outside the embed (or reply `skip`).\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
-                                            bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, last_tmpl](std::optional<stoatpp::events::Message> rep6) {
+                                            bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, last_tmpl, preset_name](std::optional<stoatpp::events::Message> rep6) {
                                                 if (!rep6) {
                                                     bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
                                                     return;
@@ -324,14 +350,8 @@ public:
                                                     final_tmpl.content = "";
                                                 }
 
-                                                auto afk_opt = g_db->get_user_afk(msg.author.id);
-                                                Database::UserAFK afk;
-                                                if (afk_opt) afk = *afk_opt;
-                                                afk.user_id = msg.author.id;
-                                                afk.custom_template = final_tmpl.dump();
-
-                                                if (g_db->save_user_afk(afk)) {
-                                                    bot.send_message(msg.channel_id, "✅ **AFK Setup Complete!** Your custom embed AFK template has been saved.");
+                                                if (g_db->save_user_afk_preset(msg.author.id, preset_name, final_tmpl.dump())) {
+                                                    bot.send_message(msg.channel_id, "✅ **AFK Setup Complete!** Your custom embed AFK template for preset `" + preset_name + "` has been saved.");
                                                 } else {
                                                     bot.send_message(msg.channel_id, "⚠️ Failed to save AFK template.");
                                                 }
@@ -420,12 +440,11 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.type = t;
-                        afk.custom_template = tmpl.dump();
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, "✅ AFK template type updated to `" + t + "`.");
+                        if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, "✅ AFK template type updated to `" + t + "` for preset `" + active + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
                         }
@@ -447,12 +466,11 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.content = content;
-                        afk.custom_template = tmpl.dump();
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, "✅ AFK content/text updated.");
+                        if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, "✅ AFK content/text updated for preset `" + active + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
                         }
@@ -461,28 +479,46 @@ public:
 
                     if (sub == "edit") {
                         std::string text = get_raw_trailing_args(msg.content, pfx, "afk", "edit");
-                        if (text.empty()) {
-                            bot.send_message(msg.channel_id, "ℹ️ Usage: `" + pfx + "afk edit key:value ...`\n"
+                        
+                        std::string edit_preset = "default";
+                        std::string kv_part = text;
+                        
+                        size_t space_pos = text.find_first_of(" \t\r\n");
+                        std::string first_word = (space_pos == std::string::npos) ? text : text.substr(0, space_pos);
+                        
+                        if (!first_word.empty() && first_word.find(':') == std::string::npos) {
+                            edit_preset = first_word;
+                            if (space_pos != std::string::npos) {
+                                kv_part = text.substr(space_pos + 1);
+                                size_t first_non_space = kv_part.find_first_not_of(" \t\r\n");
+                                if (first_non_space != std::string::npos) {
+                                    kv_part = kv_part.substr(first_non_space);
+                                } else {
+                                    kv_part = "";
+                                }
+                            } else {
+                                kv_part = "";
+                            }
+                        }
+
+                        if (kv_part.empty()) {
+                            bot.send_message(msg.channel_id, "ℹ️ Usage: `" + pfx + "afk edit [preset] key:value ...`\n"
                                                                "Keys: `title`, `description` (or `desc`), `color` (or `colour`), `image`, `content` (or `message`)\n"
                                                                "Use `none` to clear a field.\n"
                                                                "Example:\n"
                                                                "• `" + pfx + "afk edit title:I'm AFK! color:#ff0000`\n"
-                                                               "• `" + pfx + "afk edit content:Busy title:none`\n"
+                                                               "• `" + pfx + "afk edit sleep content:Busy title:none`\n"
                                                                "Available tokens: `{user}`, `{reason}`, `{time}`");
                             return;
                         }
 
-                        auto pairs = parse_pairs(text);
+                        auto pairs = parse_pairs(kv_part);
                         if (pairs.empty()) {
                             bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found. Format must be `key:value` (e.g. `title:Away color:random`).");
                             return;
                         }
 
-                        auto afk_opt = g_db->get_user_afk(msg.author.id);
-                        Database::UserAFK afk;
-                        if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, edit_preset));
 
                         for (const auto& [key, val] : pairs) {
                             if (key == "content") {
@@ -518,9 +554,8 @@ public:
                             }
                         }
 
-                        afk.custom_template = tmpl.dump();
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, "✅ AFK template updated successfully.");
+                        if (g_db->save_user_afk_preset(msg.author.id, edit_preset, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, "✅ AFK template for preset `" + edit_preset + "` updated successfully.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to save AFK template configuration.");
                         }
@@ -536,12 +571,11 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.title = title;
-                        afk.custom_template = tmpl.dump();
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, title.empty() ? "✅ Embed title cleared." : "✅ Embed title updated.");
+                        if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, title.empty() ? "✅ Embed title cleared for preset `" + active + "`." : "✅ Embed title updated for preset `" + active + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
                         }
@@ -557,12 +591,11 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.description = desc_text;
-                        afk.custom_template = tmpl.dump();
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, desc_text.empty() ? "✅ Embed description cleared." : "✅ Embed description updated.");
+                        if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, desc_text.empty() ? "✅ Embed description cleared for preset `" + active + "`." : "✅ Embed description updated for preset `" + active + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
                         }
@@ -579,12 +612,11 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.color = col;
-                        afk.custom_template = tmpl.dump();
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, col.empty() ? "✅ Embed color cleared." : "✅ Embed color updated.");
+                        if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, col.empty() ? "✅ Embed color cleared for preset `" + active + "`." : "✅ Embed color updated for preset `" + active + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
                         }
@@ -601,12 +633,11 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.image = img;
-                        afk.custom_template = tmpl.dump();
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, img.empty() ? "✅ Embed image cleared." : "✅ Embed image updated.");
+                        if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, img.empty() ? "✅ Embed image cleared for preset `" + active + "`." : "✅ Embed image updated for preset `" + active + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
                         }
@@ -633,10 +664,10 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        afk.user_id = msg.author.id;
-                        afk.custom_template = raw_json;
-                        if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, "✅ AFK JSON template updated.");
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(raw_json);
+                        if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
+                            bot.send_message(msg.channel_id, "✅ AFK JSON template updated for preset `" + active + "`.");
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
                         }
@@ -652,7 +683,8 @@ public:
                         int64_t elapsed = afk.since == 0 ? 300 : (std::time(nullptr) - afk.since);
                         std::string time_str = format_elapsed_time(elapsed);
 
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
 
                         if (tmpl.type == "embed") {
                             stoatpp::models::MessagePayload payload;
@@ -698,9 +730,13 @@ public:
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
                         Database::UserAFK afk;
                         if (afk_opt) afk = *afk_opt;
-                        AFKTemplate tmpl = AFKTemplate::parse(afk.custom_template);
                         
-                        std::string desc = "ℹ️ **Your AFK Template Configuration**:\n"
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+                        AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
+                        
+                        std::string desc = "ℹ️ **Your AFK Presets Configuration**:\n"
+                                           "• **Active Preset**: `" + active + "`\n\n"
+                                           "**Active Preset Details (" + active + ")**:\n"
                                            "• **Type**: `" + tmpl.type + "`\n"
                                            "• **Content/Text**: `" + (tmpl.content.empty() ? "(none)" : tmpl.content) + "`\n";
                         if (tmpl.type == "embed") {
@@ -709,20 +745,81 @@ public:
                                     "• **Embed Color**: `" + (tmpl.color.empty() ? "(none)" : tmpl.color) + "`\n"
                                     "• **Embed Image URL**: `" + (tmpl.image.empty() ? "(none)" : tmpl.image) + "`\n";
                         }
-                        desc += "\nUse `.afk setup` to run the step-by-step wizard, or `.afk test` to preview it.\n"
-                                "You can also use: `.afk type <text|embed>`, `.afk message <text>`, `.afk title <title>`, etc.";
+                        
+                        auto presets = g_db->get_user_afk_presets_list(msg.author.id);
+                        desc += "\n**Your Configured Presets**:\n• `default`";
+                        for (const auto& p : presets) {
+                            if (p != "default") {
+                                desc += ", `" + p + "`";
+                            }
+                        }
+                        desc += "\n\nUse `" + pfx + "afk set <preset>` to change active preset, `" + pfx + "afk setup <preset>` to configure a new preset, or `" + pfx + "afk delete <preset>` to delete a preset.";
                         bot.send_message(msg.channel_id, desc);
                         return;
                     }
-                }
 
-                // Regular .afk [reason] logic
-                std::string reason = "AFK";
-                if (!args.empty()) {
-                    reason = "";
-                    for (size_t i = 0; i < args.size(); ++i) {
-                        if (i > 0) reason += " ";
-                        reason += args[i];
+                    if (sub == "delete") {
+                        if (args.size() < 2) {
+                            bot.send_message(msg.channel_id, "ℹ️ Usage: `" + pfx + "afk delete <preset>`");
+                            return;
+                        }
+                        std::string del_preset = args[1];
+                        if (del_preset == "default") {
+                            AFKTemplate empty_tmpl;
+                            if (g_db->save_user_afk_preset(msg.author.id, "default", empty_tmpl.dump())) {
+                                bot.send_message(msg.channel_id, "✅ Reset default AFK template to default configuration.");
+                            } else {
+                                bot.send_message(msg.channel_id, "⚠️ Failed to reset default AFK template.");
+                            }
+                            return;
+                        }
+
+                        if (g_db->delete_user_afk_preset(msg.author.id, del_preset)) {
+                            auto afk_opt = g_db->get_user_afk(msg.author.id);
+                            if (afk_opt && afk_opt->active_preset == del_preset) {
+                                Database::UserAFK afk = *afk_opt;
+                                afk.active_preset = "default";
+                                g_db->save_user_afk(afk);
+                            }
+                            bot.send_message(msg.channel_id, "✅ Deleted AFK preset `" + del_preset + "`.");
+                        } else {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to delete preset.");
+                        }
+                        return;
+                    }
+
+                    if (sub == "set") {
+                        if (args.size() < 2) {
+                            bot.send_message(msg.channel_id, "ℹ️ Usage: `" + pfx + "afk set <preset>`");
+                            return;
+                        }
+                        std::string set_preset = args[1];
+                        
+                        bool exists = (set_preset == "default");
+                        if (!exists) {
+                            auto presets = g_db->get_user_afk_presets_list(msg.author.id);
+                            if (std::find(presets.begin(), presets.end(), set_preset) != presets.end()) {
+                                exists = true;
+                            }
+                        }
+
+                        if (!exists) {
+                            bot.send_message(msg.channel_id, "⚠️ Preset `" + set_preset + "` does not exist. Set it up using `" + pfx + "afk setup " + set_preset + "` first.");
+                            return;
+                        }
+
+                        auto afk_opt = g_db->get_user_afk(msg.author.id);
+                        Database::UserAFK afk;
+                        if (afk_opt) afk = *afk_opt;
+                        afk.user_id = msg.author.id;
+                        afk.active_preset = set_preset;
+
+                        if (g_db->save_user_afk(afk)) {
+                            bot.send_message(msg.channel_id, "✅ Your active AFK preset is now set to `" + set_preset + "`.");
+                        } else {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to save active preset selection.");
+                        }
+                        return;
                     }
                 }
 
@@ -730,12 +827,16 @@ public:
                 Database::UserAFK afk;
                 if (afk_opt) afk = *afk_opt;
                 afk.user_id = msg.author.id;
+
+                auto [reason, preset] = parse_reason_and_preset(args, afk.active_preset);
                 afk.is_afk = true;
                 afk.reason = reason;
                 afk.since = std::time(nullptr);
+                afk.active_preset = preset;
 
                 if (g_db->save_user_afk(afk)) {
-                    bot.send_message(msg.channel_id, "✅ <@" + msg.author.id + "> is now AFK: " + reason);
+                    std::string preset_info = (preset == "default") ? "" : " (Preset: `" + preset + "`)";
+                    bot.send_message(msg.channel_id, "✅ <@" + msg.author.id + "> is now AFK: " + reason + preset_info);
                 } else {
                     bot.send_message(msg.channel_id, "⚠️ Failed to set AFK status.");
                 }
@@ -886,7 +987,8 @@ public:
                     int64_t elapsed = std::time(nullptr) - target_afk_opt->since;
                     std::string time_str = format_elapsed_time(elapsed);
 
-                    AFKTemplate tmpl = AFKTemplate::parse(target_afk_opt->custom_template);
+                    std::string active = target_afk_opt->active_preset.empty() ? "default" : target_afk_opt->active_preset;
+                    AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(mentioned_id, active));
 
                     if (tmpl.type == "embed") {
                         stoatpp::models::MessagePayload payload;
