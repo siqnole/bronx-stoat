@@ -199,12 +199,16 @@ public:
         bool is_afk = false;
         std::string reason;
         int64_t since = 0;
+        std::string active_preset = "default";
     };
 
 private:
     MYSQL* mysql_ = nullptr;
     std::unordered_map<std::string, UserAFK> user_afk_cache_;
     std::shared_mutex user_afk_cache_mutex_;
+
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> user_afk_presets_cache_;
+    std::shared_mutex user_afk_presets_cache_mutex_;
 
     std::unordered_map<std::string, std::vector<std::string>> cache_;
     std::shared_mutex cache_mutex_;
@@ -814,6 +818,22 @@ public:
                 return false;
             }
 
+            // Migration: add active_preset to user_afk table
+            mysql_query(mysql_, "ALTER TABLE user_afk ADD COLUMN IF NOT EXISTS active_preset VARCHAR(50) NOT NULL DEFAULT 'default'");
+
+            // Create Table user_afk_presets
+            std::string create_user_afk_presets = 
+                "CREATE TABLE IF NOT EXISTS user_afk_presets ("
+                "  user_id VARCHAR(30) NOT NULL,"
+                "  preset_name VARCHAR(50) NOT NULL,"
+                "  template_json TEXT DEFAULT NULL,"
+                "  PRIMARY KEY (user_id, preset_name)"
+                ")";
+            if (mysql_query(mysql_, create_user_afk_presets.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'user_afk_presets': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+
 
             // Load counting configs into cache
             {
@@ -1246,7 +1266,7 @@ public:
         }
 
         // Load user_afk
-        std::string select_afk = "SELECT user_id, COALESCE(custom_template, ''), is_afk, COALESCE(reason, ''), since FROM user_afk";
+        std::string select_afk = "SELECT user_id, COALESCE(custom_template, ''), is_afk, COALESCE(reason, ''), since, COALESCE(active_preset, 'default') FROM user_afk";
         if (mysql_query(mysql_, select_afk.c_str()) == 0) {
             MYSQL_RES* res = mysql_store_result(mysql_);
             if (res) {
@@ -1259,7 +1279,25 @@ public:
                     afk.is_afk = row[2] ? (std::stoi(row[2]) != 0) : false;
                     afk.reason = row[3] ? row[3] : "";
                     afk.since = row[4] ? std::stoll(row[4]) : 0;
+                    afk.active_preset = row[5] ? row[5] : "default";
                     user_afk_cache_[afk.user_id] = afk;
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        // Load user_afk_presets
+        std::string select_presets = "SELECT user_id, preset_name, COALESCE(template_json, '') FROM user_afk_presets";
+        if (mysql_query(mysql_, select_presets.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> lock(user_afk_presets_cache_mutex_);
+                while ((row = mysql_fetch_row(res))) {
+                    std::string uid = row[0] ? row[0] : "";
+                    std::string preset = row[1] ? row[1] : "";
+                    std::string tmpl_raw = row[2] ? row[2] : "";
+                    user_afk_presets_cache_[uid][preset] = tmpl_raw;
                 }
                 mysql_free_result(res);
             }
@@ -1281,7 +1319,8 @@ public:
                   << "           loaded " << rm_cache_.size() << " recurring messages.\n"
                   << "           loaded " << ticket_config_cache_.size() << " ticket configurations.\n"
                   << "           loaded " << ticket_cache_.size() << " active tickets.\n"
-                  << "           loaded " << user_afk_cache_.size() << " user afk configurations.\n";
+                  << "           loaded " << user_afk_cache_.size() << " user afk configurations.\n"
+                  << "           loaded " << user_afk_presets_cache_.size() << " user afk preset configurations.\n";
         return true;
     }
 
@@ -3668,16 +3707,17 @@ public:
         std::string esc_tmpl = escape_string(afk.custom_template);
         std::string esc_reason = escape_string(afk.reason);
         int is_afk_val = afk.is_afk ? 1 : 0;
+        std::string esc_preset = escape_string(afk.active_preset);
 
-        
         std::string query = 
-            "INSERT INTO user_afk (user_id, custom_template, is_afk, reason, since) "
-            "VALUES ('" + esc_user_id + "', '" + esc_tmpl + "', " + std::to_string(is_afk_val) + ", '" + esc_reason + "', " + std::to_string(afk.since) + ") "
+            "INSERT INTO user_afk (user_id, custom_template, is_afk, reason, since, active_preset) "
+            "VALUES ('" + esc_user_id + "', '" + esc_tmpl + "', " + std::to_string(is_afk_val) + ", '" + esc_reason + "', " + std::to_string(afk.since) + ", '" + esc_preset + "') "
             "ON DUPLICATE KEY UPDATE "
             "custom_template = '" + esc_tmpl + "', "
             "is_afk = " + std::to_string(is_afk_val) + ", "
             "reason = '" + esc_reason + "', "
-            "since = " + std::to_string(afk.since);
+            "since = " + std::to_string(afk.since) + ", "
+            "active_preset = '" + esc_preset + "'";
             
         if (mysql_query(mysql_, query.c_str())) {
             std::cerr << "[bronx db] failed to save user afk: " << mysql_error(mysql_) << "\n";
@@ -3689,6 +3729,105 @@ public:
             user_afk_cache_[afk.user_id] = afk;
         }
         return true;
+    }
+
+    std::string get_user_afk_preset(const std::string& user_id, const std::string& preset_name) {
+        if (preset_name == "default") {
+            auto afk_opt = get_user_afk(user_id);
+            if (afk_opt) {
+                return afk_opt->custom_template;
+            }
+            return "";
+        }
+        std::shared_lock<std::shared_mutex> lock(user_afk_presets_cache_mutex_);
+        auto it = user_afk_presets_cache_.find(user_id);
+        if (it != user_afk_presets_cache_.end()) {
+            auto pit = it->second.find(preset_name);
+            if (pit != it->second.end()) {
+                return pit->second;
+            }
+        }
+        // Fallback to default
+        auto afk_opt = get_user_afk(user_id);
+        if (afk_opt) {
+            return afk_opt->custom_template;
+        }
+        return "";
+    }
+
+    bool save_user_afk_preset(const std::string& user_id, const std::string& preset_name, const std::string& tmpl_json) {
+        if (preset_name == "default") {
+            auto afk_opt = get_user_afk(user_id);
+            UserAFK afk;
+            if (afk_opt) afk = *afk_opt;
+            afk.user_id = user_id;
+            afk.custom_template = tmpl_json;
+            return save_user_afk(afk);
+        }
+
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_preset = escape_string(preset_name);
+        std::string esc_tmpl = escape_string(tmpl_json);
+
+        std::string query = 
+            "INSERT INTO user_afk_presets (user_id, preset_name, template_json) "
+            "VALUES ('" + esc_user_id + "', '" + esc_preset + "', '" + esc_tmpl + "') "
+            "ON DUPLICATE KEY UPDATE template_json = '" + esc_tmpl + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save user afk preset: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> lock(user_afk_presets_cache_mutex_);
+            user_afk_presets_cache_[user_id][preset_name] = tmpl_json;
+        }
+        return true;
+    }
+
+    bool delete_user_afk_preset(const std::string& user_id, const std::string& preset_name) {
+        if (preset_name == "default") {
+            // Cannot delete default preset, reset it to empty/default configuration
+            auto afk_opt = get_user_afk(user_id);
+            UserAFK afk;
+            if (afk_opt) afk = *afk_opt;
+            afk.user_id = user_id;
+            afk.custom_template = "";
+            return save_user_afk(afk);
+        }
+
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_preset = escape_string(preset_name);
+
+        std::string query = "DELETE FROM user_afk_presets WHERE user_id = '" + esc_user_id + "' AND preset_name = '" + esc_preset + "'";
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to delete user afk preset: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> lock(user_afk_presets_cache_mutex_);
+            auto it = user_afk_presets_cache_.find(user_id);
+            if (it != user_afk_presets_cache_.end()) {
+                it->second.erase(preset_name);
+            }
+        }
+        return true;
+    }
+
+    std::vector<std::string> get_user_afk_presets_list(const std::string& user_id) {
+        std::shared_lock<std::shared_mutex> lock(user_afk_presets_cache_mutex_);
+        std::vector<std::string> presets;
+        auto it = user_afk_presets_cache_.find(user_id);
+        if (it != user_afk_presets_cache_.end()) {
+            for (const auto& [name, _] : it->second) {
+                presets.push_back(name);
+            }
+        }
+        return presets;
     }
 
 };

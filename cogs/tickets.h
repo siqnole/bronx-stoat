@@ -711,7 +711,7 @@ public:
                     bot.send_message(msg.channel_id, "📋 **Ticket System Commands:**\n"
                                                      "• `" + pfx + "ticket setup [panel]` — Setup wizard for a named ticket panel.\n"
                                                      "• `" + pfx + "ticket edit [panel] [key:val ...]` — Edit panel settings (omit keys to list all).\n"
-                                                     "• `" + pfx + "ticket panel [panel]` — Send the ticket creation panel.\n"
+                                                     "• `" + pfx + "ticket panel [panel] [#channel]` — Send the ticket creation panel.\n"
                                                      "• `" + pfx + "ticket list` — List all configured panels.\n"
                                                      "• `" + pfx + "ticket close` — Close the current ticket.\n"
                                                      "• `" + pfx + "ticket add <@user>` — Add a user to the current ticket.\n"
@@ -1051,12 +1051,51 @@ public:
                     }
 
                     if (subcommand == "panel" || subcommand == "send") {
-                        auto tc_opt = g_db->get_ticket_config(msg.server_id, panel_name);
-                        if (!tc_opt || tc_opt->modal_channel_id.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ Ticket panel `" + panel_name + "` is not set up yet. Use `" + pfx + "ticket setup " + panel_name + "` first.");
+                        std::string target_panel = "default";
+                        std::string target_channel_id = "";
+
+                        for (size_t i = 1; i < args.size(); ++i) {
+                            std::string arg = args[i];
+                            bool is_channel = false;
+                            std::string chan_part = arg;
+                            
+                            if (arg.rfind("channel:", 0) == 0) {
+                                chan_part = arg.substr(8);
+                                is_channel = true;
+                            } else if (arg.rfind("<#", 0) == 0 && arg.back() == '>') {
+                                is_channel = true;
+                            } else if (arg.size() == 26) {
+                                is_channel = true;
+                            }
+
+                            if (is_channel) {
+                                if (chan_part.rfind("<#", 0) == 0 && chan_part.back() == '>') {
+                                    target_channel_id = chan_part.substr(2, chan_part.size() - 3);
+                                } else {
+                                    target_channel_id = chan_part;
+                                }
+                            } else {
+                                target_panel = arg;
+                            }
+                        }
+
+                        auto tc_opt = g_db->get_ticket_config(msg.server_id, target_panel);
+                        if (!tc_opt) {
+                            bot.send_message(msg.channel_id, "⚠️ Ticket panel `" + target_panel + "` is not set up yet. Use `" + pfx + "ticket setup " + target_panel + "` first.");
                             return;
                         }
-                        send_ticket_panel(bot, *tc_opt, msg.channel_id);
+
+                        auto tc = *tc_opt;
+                        if (!target_channel_id.empty()) {
+                            tc.modal_channel_id = target_channel_id;
+                        }
+
+                        if (tc.modal_channel_id.empty()) {
+                            bot.send_message(msg.channel_id, "⚠️ No destination channel configured for panel `" + target_panel + "`. Set it using `" + pfx + "ticket edit " + target_panel + " channel:#channel`.");
+                            return;
+                        }
+
+                        send_ticket_panel(bot, tc, msg.channel_id);
                         return;
                     }
 
