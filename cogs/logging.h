@@ -1537,7 +1537,10 @@ public:
                 details += "• **Description:** " + old_desc + " ➔ " + new_desc + "\n";
             }
             if (e.data.contains("system_channel")) {
-                std::string old_sc = srv && srv->system_channel ? *srv->system_channel : "none";
+                std::string old_sc = "none";
+                if (srv && srv->raw.contains("system_channel") && !srv->raw["system_channel"].is_null()) {
+                    old_sc = srv->raw["system_channel"].get<std::string>();
+                }
                 std::string new_sc = e.data["system_channel"].is_null() ? "none" : e.data["system_channel"].get<std::string>();
                 details += "• **System Channel:** " + old_sc + " ➔ " + new_sc + "\n";
             }
