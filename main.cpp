@@ -28,6 +28,7 @@
 #include "cogs/stats.h"
 #include "cogs/economy.h"
 #include "cogs/blackjack.h"
+#include "cogs/games.h"
 #include "cogs/welcome_leave.h"
 #include "cogs/logging.h"
 #include "cogs/command_config.h"
@@ -39,6 +40,7 @@
 #include "cogs/counting.h"
 #include "cogs/afk.h"
 #include "cogs/roblox.h"
+#include "cogs/rss.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -209,6 +211,7 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::StatsModule>());
     bot.use(std::make_unique<bronx::cogs::EconomyModule>());
     bot.use(std::make_unique<bronx::cogs::BlackjackModule>());
+    bot.use(std::make_unique<bronx::cogs::GamesModule>());
     bot.use(std::make_unique<bronx::cogs::WelcomeLeaveModule>());
     bot.use(std::make_unique<bronx::cogs::LoggingModule>());
     bot.use(std::make_unique<bronx::cogs::CommandConfigModule>());
@@ -220,6 +223,7 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::CountingModule>());
     bot.use(std::make_unique<bronx::cogs::AFKModule>());
     bot.use(std::make_unique<bronx::cogs::RobloxModule>());
+    bot.use(std::make_unique<bronx::cogs::RSSModule>());
 
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {

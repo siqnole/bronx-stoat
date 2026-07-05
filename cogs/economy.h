@@ -1,6 +1,7 @@
 #pragma once
 #include "stoatpp/bot_module.h"
 #include "helpers.h"
+#include "games.h"
 #include <vector>
 #include <string>
 #include <random>
@@ -381,43 +382,73 @@ public:
             "coinflip",
             {"cf", "flip"},
             "flips a coin and bets on the outcome.",
-            "coinflip <amount> [heads/tails]",
-            {"<amount>", "[choice]"},
+            "coinflip [amount/fun] [choice/user]",
+            {"[amount]", "[choice]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (!g_db) return;
 
-                if (args.empty()) {
-                    bot.send_message(msg.channel_id, "invalid syntax. use `coinflip <amount> [heads/tails]`.");
+                int64_t bet = 0;
+                std::string second_arg = "";
+                bool is_duel = false;
+                std::string target_uid = "";
+                std::string choice = "heads";
+
+                auto parse_bet = [&](const std::string& str, int64_t wallet) -> std::pair<bool, int64_t> {
+                    if (str == "all" || str == "max") return {true, wallet};
+                    if (str == "half") return {true, wallet / 2};
+                    try {
+                        size_t idx;
+                        int64_t val = std::stoll(str, &idx);
+                        if (idx == str.size()) return {true, val};
+                    } catch(...) {}
+                    return {false, 0};
+                };
+
+                auto self = g_db->get_economy_user(msg.author.id);
+                int64_t wallet_bal = self ? self->wallet : 0;
+
+                if (!args.empty()) {
+                    auto [is_num, parsed_bet] = parse_bet(args[0], wallet_bal);
+                    if (is_num) {
+                        bet = parsed_bet;
+                        if (args.size() > 1) {
+                            second_arg = args[1];
+                        }
+                    } else {
+                        bet = 0;
+                        second_arg = args[0];
+                    }
+                }
+
+                if (second_arg.size() > 3 && second_arg.front() == '<' && second_arg[1] == '@' && second_arg.back() == '>') {
+                    is_duel = true;
+                    target_uid = second_arg.substr(2, second_arg.size() - 3);
+                } else if (second_arg.size() == 26 && second_arg.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
+                    is_duel = true;
+                    target_uid = second_arg;
+                }
+
+                if (is_duel) {
+                    if (bronx::cogs::GamesModule::instance) {
+                        bronx::cogs::GamesModule::instance->create_challenge(bot, "coinflip", msg.author.id, target_uid, msg.channel_id, bet);
+                    } else {
+                        bot.send_message(msg.channel_id, "games module is not loaded.");
+                    }
                     return;
                 }
 
-                auto self = g_db->get_economy_user(msg.author.id);
-                if (!self) return;
-
-                int64_t bet = 0;
-                if (args[0] == "all" || args[0] == "max") {
-                    bet = self->wallet;
-                } else if (args[0] == "half") {
-                    bet = self->wallet / 2;
-                } else {
-                    try {
-                        bet = std::stoll(args[0]);
-                    } catch (...) {}
-                }
-
-                if (bet < 10) {
+                if (bet > 0 && bet < 10) {
                     bot.send_message(msg.channel_id, "minimum bet is 10 coins.");
                     return;
                 }
 
-                if (self->wallet < bet) {
+                if (bet > 0 && wallet_bal < bet) {
                     bot.send_message(msg.channel_id, "you do not have enough coins in your wallet.");
                     return;
                 }
 
-                std::string choice = "heads";
-                if (args.size() > 1) {
-                    choice = args[1];
+                if (!second_arg.empty()) {
+                    choice = second_arg;
                     std::transform(choice.begin(), choice.end(), choice.begin(), ::tolower);
                 }
 
@@ -427,7 +458,6 @@ public:
                 }
 
                 bool guess_heads = (choice == "heads" || choice == "h");
-
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<> dis(0, 1);
@@ -435,8 +465,10 @@ public:
 
                 bool won = (heads == guess_heads);
 
-                int64_t delta = won ? bet : -bet;
-                g_db->update_balances(msg.author.id, delta, 0);
+                if (bet > 0) {
+                    int64_t delta = won ? bet : -bet;
+                    g_db->update_balances(msg.author.id, delta, 0);
+                }
 
                 stoatpp::models::MessagePayload payload;
                 payload.content = " ";
@@ -447,9 +479,17 @@ public:
                 std::string result_str = heads ? "heads" : "tails";
                 std::string desc = "the coin landed on **" + result_str + "**!\n\n";
                 if (won) {
-                    desc += "you won **" + std::to_string(bet) + "** coins!";
+                    if (bet > 0) {
+                        desc += "you won **" + std::to_string(bet) + "** coins!";
+                    } else {
+                        desc += "you won (for fun)!";
+                    }
                 } else {
-                    desc += "you lost **" + std::to_string(bet) + "** coins.";
+                    if (bet > 0) {
+                        desc += "you lost **" + std::to_string(bet) + "** coins.";
+                    } else {
+                        desc += "you lost (for fun).";
+                    }
                 }
                 embed.set_description(desc);
 

@@ -141,6 +141,16 @@ public:
         bool owner_tokens = false;   // if true, owner-only tokens are resolved
     };
 
+    struct RssFeed {
+        int id = 0;
+        std::string server_id;
+        std::string url;
+        std::string channels; // comma-separated channel IDs
+        uint64_t last_checked = 0;
+        std::string seen_items; // JSON array of strings
+        int check_interval = 1200; // in seconds, default to 20 minutes (1200)
+    };
+
     // ── Counting ─────────────────────────────────────────────────────────────
     struct CountingConfig {
         std::string server_id;
@@ -278,6 +288,12 @@ private:
     // channel_id -> id (for uniqueness)
     std::unordered_map<std::string, int> rm_channel_index_;
     std::shared_mutex rm_cache_mutex_;
+
+    // id -> RssFeed
+    std::unordered_map<int, RssFeed> rss_cache_;
+    // server_id -> list of IDs
+    std::unordered_map<std::string, std::vector<int>> rss_server_index_;
+    std::shared_mutex rss_cache_mutex_;
 
     // id -> AutoresponderConfig
     std::unordered_map<int, AutoresponderConfig> arsp_cache_;
@@ -691,6 +707,19 @@ public:
             "  INDEX idx_rm_server (server_id),"
             "  UNIQUE KEY uq_rm_channel (channel_id)"
             ")";
+
+        // Create Table rss_feeds
+        std::string create_rss =
+            "CREATE TABLE IF NOT EXISTS rss_feeds ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  url VARCHAR(1024) NOT NULL,"
+            "  channels TEXT NOT NULL,"
+            "  last_checked BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+            "  seen_items TEXT DEFAULT NULL,"
+            "  check_interval INT UNSIGNED NOT NULL DEFAULT 1200,"
+            "  INDEX idx_rss_server (server_id)"
+            ")";
             // Autoresponder table
             std::string sql_ar =
                 "CREATE TABLE IF NOT EXISTS autoresponders ("
@@ -908,6 +937,13 @@ public:
             std::cerr << "[bronx db] failed to create table 'recurring_messages': " << mysql_error(mysql_) << "\n";
             return false;
         }
+
+        if (mysql_query(mysql_, create_rss.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'rss_feeds': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        // Migration: add check_interval column to rss_feeds if it doesn't exist yet
+        mysql_query(mysql_, "ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS check_interval INT UNSIGNED NOT NULL DEFAULT 1200");
 
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes, default_enabled FROM prefixes";
@@ -1222,6 +1258,29 @@ public:
             }
         }
 
+        // Load rss_feeds
+        std::string select_rss = "SELECT id, server_id, url, channels, last_checked, COALESCE(seen_items,'[]'), check_interval FROM rss_feeds";
+        if (mysql_query(mysql_, select_rss.c_str()) == 0) {
+            MYSQL_RES* rss_res = mysql_store_result(mysql_);
+            if (rss_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> rss_lock(rss_cache_mutex_);
+                while ((row = mysql_fetch_row(rss_res))) {
+                    RssFeed feed;
+                    feed.id           = row[0] ? std::stoi(row[0]) : 0;
+                    feed.server_id    = row[1] ? row[1] : "";
+                    feed.url          = row[2] ? row[2] : "";
+                    feed.channels     = row[3] ? row[3] : "";
+                    feed.last_checked = row[4] ? std::stoull(row[4]) : 0;
+                    feed.seen_items   = row[5] ? row[5] : "[]";
+                    feed.check_interval = row[6] ? std::stoi(row[6]) : 1200;
+                    rss_cache_[feed.id] = feed;
+                    rss_server_index_[feed.server_id].push_back(feed.id);
+                }
+                mysql_free_result(rss_res);
+            }
+        }
+
         // Load ticket_configs
         std::string select_tc = "SELECT server_id, name, modal_channel_id, modal_message_id, modal_content, modal_embed_json, "
                                 "reaction_emoji, input_creation_enabled, naming_scheme, category_id, "
@@ -1357,6 +1416,7 @@ public:
                   << "           loaded " << action_msg_cache_.size() << " action message configurations.\n"
                   << "           loaded " << ar_cache_.size() << " antiraid configurations.\n"
                   << "           loaded " << rm_cache_.size() << " recurring messages.\n"
+                  << "           loaded " << rss_cache_.size() << " RSS feeds.\n"
                   << "           loaded " << ticket_config_cache_.size() << " ticket configurations.\n"
                   << "           loaded " << ticket_cache_.size() << " active tickets.\n"
                   << "           loaded " << user_afk_cache_.size() << " user afk configurations.\n"
@@ -3146,6 +3206,168 @@ public:
         std::lock_guard<std::shared_mutex> cache_lock(rm_cache_mutex_);
         auto it = rm_cache_.find(id);
         if (it != rm_cache_.end()) it->second.last_sent = ts;
+        return true;
+    }
+
+    // --- RSS Feeds CRUD ---
+
+    std::optional<RssFeed> get_rss_by_id(int id, const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(rss_cache_mutex_);
+        auto it = rss_cache_.find(id);
+        if (it != rss_cache_.end() && it->second.server_id == server_id) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<RssFeed> get_rss_by_url(const std::string& server_id, const std::string& url) {
+        std::shared_lock<std::shared_mutex> lock(rss_cache_mutex_);
+        auto it = rss_server_index_.find(server_id);
+        if (it != rss_server_index_.end()) {
+            for (int id : it->second) {
+                auto fit = rss_cache_.find(id);
+                if (fit != rss_cache_.end() && fit->second.url == url) {
+                    return fit->second;
+                }
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::vector<RssFeed> get_rss_feeds_for_server(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(rss_cache_mutex_);
+        std::vector<RssFeed> out;
+        auto it = rss_server_index_.find(server_id);
+        if (it != rss_server_index_.end()) {
+            for (int id : it->second) {
+                auto fit = rss_cache_.find(id);
+                if (fit != rss_cache_.end()) {
+                    out.push_back(fit->second);
+                }
+            }
+        }
+        return out;
+    }
+
+    std::vector<RssFeed> get_all_rss_feeds() {
+        std::shared_lock<std::shared_mutex> lock(rss_cache_mutex_);
+        std::vector<RssFeed> out;
+        out.reserve(rss_cache_.size());
+        for (const auto& [id, feed] : rss_cache_) {
+            out.push_back(feed);
+        }
+        return out;
+    }
+
+    bool add_rss_feed(RssFeed& feed) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string esc_server   = escape_string(feed.server_id);
+        std::string esc_url      = escape_string(feed.url);
+        std::string esc_channels = escape_string(feed.channels);
+        std::string esc_seen     = feed.seen_items.empty() ? "[]" : escape_string(feed.seen_items);
+
+        std::string sql =
+            "INSERT INTO rss_feeds (server_id, url, channels, last_checked, seen_items, check_interval) "
+            "VALUES ('" + esc_server + "', '" + esc_url + "', '" + esc_channels + "', 0, '" + esc_seen + "', " + std::to_string(feed.check_interval) + ")";
+
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] add_rss_feed failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        feed.id = static_cast<int>(mysql_insert_id(mysql_));
+        feed.last_checked = 0;
+
+        std::lock_guard<std::shared_mutex> cache_lock(rss_cache_mutex_);
+        rss_cache_[feed.id] = feed;
+        rss_server_index_[feed.server_id].push_back(feed.id);
+        return true;
+    }
+
+    bool remove_rss_feed(int id, const std::string& server_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string sql =
+            "DELETE FROM rss_feeds WHERE id = " + std::to_string(id) +
+            " AND server_id = '" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] remove_rss_feed failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        if (mysql_affected_rows(mysql_) == 0) return false;
+
+        std::lock_guard<std::shared_mutex> cache_lock(rss_cache_mutex_);
+        auto it = rss_cache_.find(id);
+        if (it != rss_cache_.end()) {
+            auto& sv = rss_server_index_[it->second.server_id];
+            sv.erase(std::remove(sv.begin(), sv.end(), id), sv.end());
+            rss_cache_.erase(it);
+        }
+        return true;
+    }
+
+    bool update_rss_feed_channels(int id, const std::string& server_id, const std::string& channels) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string sql =
+            "UPDATE rss_feeds SET channels = '" + escape_string(channels) + "' "
+            "WHERE id = " + std::to_string(id) + " AND server_id = '" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] update_rss_feed_channels failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        std::lock_guard<std::shared_mutex> cache_lock(rss_cache_mutex_);
+        auto it = rss_cache_.find(id);
+        if (it != rss_cache_.end()) {
+            it->second.channels = channels;
+        }
+        return true;
+    }
+
+    bool update_rss_feed_check(int id, uint64_t last_checked, const std::string& seen_items) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string sql =
+            "UPDATE rss_feeds SET last_checked = " + std::to_string(last_checked) +
+            ", seen_items = '" + escape_string(seen_items) + "' "
+            "WHERE id = " + std::to_string(id);
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] update_rss_feed_check failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        std::lock_guard<std::shared_mutex> cache_lock(rss_cache_mutex_);
+        auto it = rss_cache_.find(id);
+        if (it != rss_cache_.end()) {
+            it->second.last_checked = last_checked;
+            it->second.seen_items = seen_items;
+        }
+        return true;
+    }
+
+    bool update_rss_feed_interval(int id, int interval) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string sql =
+            "UPDATE rss_feeds SET check_interval = " + std::to_string(interval) +
+            " WHERE id = " + std::to_string(id);
+        if (mysql_query(mysql_, sql.c_str())) {
+            std::cerr << "[bronx db] update_rss_feed_interval failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        std::lock_guard<std::shared_mutex> cache_lock(rss_cache_mutex_);
+        auto it = rss_cache_.find(id);
+        if (it != rss_cache_.end()) {
+            it->second.check_interval = interval;
+        }
         return true;
     }
 
