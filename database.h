@@ -2302,6 +2302,15 @@ public:
         return mysql_query(mysql_, sql.c_str()) == 0;
     }
 
+    bool prestige_user(const std::string& user_id, int64_t new_bank_limit) {
+        ensure_economy_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "UPDATE users SET wallet = 0, bank = 0, prestige = prestige + 1, bank_limit = " + std::to_string(new_bank_limit) + 
+                          " WHERE user_id = '" + escape_string(user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
     bool update_beg_cooldown(const std::string& user_id) {
         std::lock_guard<std::mutex> lock(db_mutex_);
         if (!mysql_) return false;

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <iostream>
 #include <chrono>
+#include <cstdio>
 
 namespace bronx::cogs {
 
@@ -94,6 +95,13 @@ public:
                 std::uniform_int_distribution<int64_t> dist(50, 250);
                 int64_t amount = dist(gen);
 
+                auto u = g_db->get_economy_user(msg.author.id);
+                double multiplier = 1.0;
+                if (u) {
+                    multiplier += (u->prestige * 0.15);
+                }
+                amount = static_cast<int64_t>(amount * multiplier);
+
                 g_db->update_balances(msg.author.id, amount, 0);
 
                 bot.send_message(msg.channel_id, "you begged and received **" + std::to_string(amount) + "** coins.");
@@ -125,6 +133,13 @@ public:
 
                 std::string job = jobs[job_dist(gen)];
                 int64_t pay = pay_dist(gen);
+
+                auto u = g_db->get_economy_user(msg.author.id);
+                double multiplier = 1.0;
+                if (u) {
+                    multiplier += (u->prestige * 0.15);
+                }
+                pay = static_cast<int64_t>(pay * multiplier);
 
                 g_db->update_balances(msg.author.id, pay, 0);
 
@@ -609,6 +624,331 @@ public:
             "Economy",
             0,
             5
+        });
+
+        // 11. hustle command
+        bot.register_command({
+            "hustle",
+            {},
+            "does a Bronx side hustle to earn some quick coins.",
+            "hustle",
+            {},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                std::vector<std::string> hustles = {
+                    "flipped a pair of deadstock Jordans and made **%d** coins.",
+                    "sold loosey cigarettes outside the 161st St subway station and made **%d** coins.",
+                    "distributed your fire mixtape on Grand Concourse and got **%d** coins in tips.",
+                    "sold bootleg DVDs on Fordham Road and earned **%d** coins.",
+                    "washed windshields at a red light in the South Bronx and earned **%d** coins.",
+                    "ran a street-side shaved ice stand during a heatwave and made **%d** coins.",
+                    "did a gig delivering bacon-egg-and-cheese sandwiches on a moped and made **%d** coins.",
+                    "helped someone move a couch up a 5th-floor walk-up in Tremont and earned **%d** coins."
+                };
+
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<size_t> hustle_dist(0, hustles.size() - 1);
+                std::uniform_int_distribution<int64_t> pay_dist(300, 900);
+
+                std::string hustle_tmpl = hustles[hustle_dist(gen)];
+                int64_t pay = pay_dist(gen);
+
+                auto u = g_db->get_economy_user(msg.author.id);
+                double multiplier = 1.0;
+                if (u) {
+                    multiplier += (u->prestige * 0.15);
+                }
+                pay = static_cast<int64_t>(pay * multiplier);
+
+                g_db->update_balances(msg.author.id, pay, 0);
+
+                char buf[512];
+                snprintf(buf, sizeof(buf), hustle_tmpl.c_str(), pay);
+                bot.send_message(msg.channel_id, "you " + std::string(buf));
+            },
+            "Economy",
+            0,
+            1800
+        });
+
+        // 12. crime command
+        bot.register_command({
+            "crime",
+            {"rob-bank", "heist"},
+            "commits a crime in the Bronx streets for a high payout, but with a risk of getting caught.",
+            "crime",
+            {},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                auto self = g_db->get_economy_user(msg.author.id);
+                if (!self) return;
+
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<int> success_dist(0, 99);
+                bool success = (success_dist(gen) < 60);
+
+                double multiplier = 1.0 + (self->prestige * 0.15);
+
+                if (success) {
+                    std::vector<std::string> success_scenarios = {
+                        "you successfully pickpocketed a tourist at Yankee Stadium and ran away with **%d** coins!",
+                        "you bypassed a security camera and hotwired an old sedan, selling it to a chop shop for **%d** coins!",
+                        "you successfully snuck into a fancy rooftop party in Manhattan and swiped a wallet with **%d** coins!",
+                        "you set up a fake shell game on the sidewalk and hustled some gullible marks out of **%d** coins!",
+                        "you hacked into a vending machine using a paperclip and retrieved **%d** coins!"
+                    };
+                    std::uniform_int_distribution<size_t> sc_dist(0, success_scenarios.size() - 1);
+                    std::uniform_int_distribution<int64_t> pay_dist(1000, 3000);
+
+                    std::string sc_tmpl = success_scenarios[sc_dist(gen)];
+                    int64_t pay = static_cast<int64_t>(pay_dist(gen) * multiplier);
+
+                    g_db->update_balances(msg.author.id, pay, 0);
+
+                    char buf[512];
+                    snprintf(buf, sizeof(buf), sc_tmpl.c_str(), pay);
+                    bot.send_message(msg.channel_id, std::string(buf));
+                } else {
+                    std::vector<std::string> fail_scenarios = {
+                        "you tried to shoplift a bodega but the owner chased you out with a broom! you lost **%d** coins in the escape.",
+                        "you attempted to hotwire a car but the car alarm went off, drawing the police! you paid a fine of **%d** coins.",
+                        "you tried to swipe a handbag at Grand Concourse, but a bystander tackled you! you had to pay **%d** coins to settle the situation.",
+                        "you tried to sell bootleg merchandise, but undercover officers confiscated your stock and fined you **%d** coins."
+                    };
+                    std::uniform_int_distribution<size_t> fail_dist(0, fail_scenarios.size() - 1);
+                    std::uniform_int_distribution<int64_t> fine_dist(500, 1500);
+
+                    std::string fail_tmpl = fail_scenarios[fail_dist(gen)];
+                    int64_t fine = fine_dist(gen);
+                    if (self->wallet < fine) {
+                        fine = self->wallet;
+                    }
+
+                    g_db->update_balances(msg.author.id, -fine, 0);
+
+                    char buf[512];
+                    snprintf(buf, sizeof(buf), fail_tmpl.c_str(), fine);
+                    bot.send_message(msg.channel_id, std::string(buf));
+                }
+            },
+            "Economy",
+            0,
+            3600
+        });
+
+        // 13. search command
+        bot.register_command({
+            "search",
+            {"scavenge", "find"},
+            "searches a nearby Bronx spot for spare change.",
+            "search",
+            {},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                std::vector<std::string> locations = {
+                    "under the sofa cushions of the local community center",
+                    "inside a subway station trash can",
+                    "around the seats of a Bronx bus",
+                    "in the grass at Pelham Bay Park",
+                    "under a sewer grate on 161st St",
+                    "behind a vending machine in a laundromat",
+                    "inside the pockets of an old winter jacket you haven't worn in years"
+                };
+
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<size_t> loc_dist(0, locations.size() - 1);
+                std::uniform_int_distribution<int64_t> pay_dist(100, 400);
+
+                std::string loc = locations[loc_dist(gen)];
+                int64_t pay = pay_dist(gen);
+
+                auto u = g_db->get_economy_user(msg.author.id);
+                double multiplier = 1.0;
+                if (u) {
+                    multiplier += (u->prestige * 0.15);
+                }
+                pay = static_cast<int64_t>(pay * multiplier);
+
+                g_db->update_balances(msg.author.id, pay, 0);
+
+                bot.send_message(msg.channel_id, "you searched **" + loc + "** and found **" + std::to_string(pay) + "** coins!");
+            },
+            "Economy",
+            0,
+            600
+        });
+
+        // 14. highlow command
+        bot.register_command({
+            "highlow",
+            {"hl"},
+            "bets coins on a game of high-low.",
+            "highlow <amount>",
+            {"<amount>"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "invalid syntax. use `highlow <amount>`.");
+                    return;
+                }
+
+                auto self = g_db->get_economy_user(msg.author.id);
+                if (!self) return;
+
+                int64_t bet = 0;
+                if (args[0] == "all" || args[0] == "max") {
+                    bet = self->wallet;
+                } else if (args[0] == "half") {
+                    bet = self->wallet / 2;
+                } else {
+                    try {
+                        bet = std::stoll(args[0]);
+                    } catch (...) {}
+                }
+
+                if (bet < 10) {
+                    bot.send_message(msg.channel_id, "minimum bet is 10 coins.");
+                    return;
+                }
+
+                if (self->wallet < bet) {
+                    bot.send_message(msg.channel_id, "you do not have enough coins in your wallet.");
+                    return;
+                }
+
+                std::random_device rd;
+                std::mt19937 gen(rd());
+                std::uniform_int_distribution<int> num_dist(1, 100);
+                int secret = num_dist(gen);
+                int hint = num_dist(gen);
+                while (hint == secret) {
+                    hint = num_dist(gen);
+                }
+
+                bot.send_message(msg.channel_id, "🔍 **High-Low Game**\n"
+                                                 "I am thinking of a secret number between **1** and **100**.\n"
+                                                 "The hint is: **" + std::to_string(hint) + "**\n"
+                                                 "Is the secret number **higher** or **lower** than the hint? Type `higher` (`h`) or `lower` (`l`).\n"
+                                                 "You have 30 seconds!");
+
+                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [this, &bot, msg, secret, hint, bet](std::optional<stoatpp::events::Message> reply) {
+                    if (!g_db) return;
+                    if (!reply) {
+                        g_db->update_balances(msg.author.id, -bet, 0);
+                        bot.send_message(msg.channel_id, "⏱️ <@" + msg.author.id + "> took too long to answer and lost their bet of **" + std::to_string(bet) + "** coins.");
+                        return;
+                    }
+
+                    std::string answer = reply->content;
+                    std::transform(answer.begin(), answer.end(), answer.begin(), ::tolower);
+
+                    if (answer != "higher" && answer != "h" && answer != "lower" && answer != "l") {
+                        g_db->update_balances(msg.author.id, -bet, 0);
+                        bot.send_message(msg.channel_id, "❌ Invalid guess! You lost your bet of **" + std::to_string(bet) + "** coins.");
+                        return;
+                    }
+
+                    bool guess_higher = (answer == "higher" || answer == "h");
+                    bool actual_higher = (secret > hint);
+                    bool won = (guess_higher == actual_higher);
+
+                    stoatpp::models::MessagePayload payload;
+                    payload.content = " ";
+                    stoatpp::models::Embed embed;
+                    embed.set_colour(won ? 0x2ECC71 : 0xE74C3C);
+                    embed.set_title("🔍 High-Low Result");
+
+                    std::string desc = "The secret number was **" + std::to_string(secret) + "** (Hint was **" + std::to_string(hint) + "**).\n\n";
+                    if (won) {
+                        g_db->update_balances(msg.author.id, bet, 0);
+                        desc += "🎉 Correct! You won **" + std::to_string(bet) + "** coins!";
+                    } else {
+                        g_db->update_balances(msg.author.id, -bet, 0);
+                        desc += "❌ Incorrect! You lost **" + std::to_string(bet) + "** coins.";
+                    }
+                    embed.set_description(desc);
+                    payload.add_embed(embed);
+                    bot.send_message(msg.channel_id, payload);
+                });
+            },
+            "Economy",
+            0,
+            10
+        });
+
+        // 15. prestige command
+        bot.register_command({
+            "prestige",
+            {},
+            "resets your balances for a permanent multiplier and bank capacity boost.",
+            "prestige",
+            {},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                auto self = g_db->get_economy_user(msg.author.id);
+                if (!self) return;
+
+                int64_t networth = self->wallet + self->bank;
+                int64_t required = 250000 * (self->prestige + 1);
+
+                if (networth < required) {
+                    bot.send_message(msg.channel_id, "❌ **Prestige Requirements Not Met**\n"
+                                                     "You need a net worth of **" + std::to_string(required) + "** coins to prestige to level **" + std::to_string(self->prestige + 1) + "**.\n"
+                                                     "Your current net worth is **" + std::to_string(networth) + "** coins.");
+                    return;
+                }
+
+                bot.send_message(msg.channel_id, "⚠️ **Confirm Prestige Level " + std::to_string(self->prestige + 1) + "**\n"
+                                                 "Prestiging resets your **wallet** and **bank** balance to **0**!\n"
+                                                 "In return, you will gain:\n"
+                                                 "- Permanent **+15%** earnings multiplier (new total: **+" + std::to_string((self->prestige + 1) * 15) + "%**)\n"
+                                                 "- Expanded bank limit of **" + std::to_string(10000 + 50000 * (self->prestige + 1)) + "** coins\n\n"
+                                                 "Type `confirm` within 30 seconds to proceed.");
+
+                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [this, &bot, msg, self](std::optional<stoatpp::events::Message> reply) {
+                    if (!g_db) return;
+                    if (!reply) {
+                        bot.send_message(msg.channel_id, "⏱️ Prestige confirmation timed out. Action cancelled.");
+                        return;
+                    }
+
+                    std::string answer = reply->content;
+                    std::transform(answer.begin(), answer.end(), answer.begin(), ::tolower);
+
+                    if (answer == "confirm") {
+                        auto current = g_db->get_economy_user(msg.author.id);
+                        if (!current) return;
+                        
+                        int64_t current_networth = current->wallet + current->bank;
+                        int64_t req = 250000 * (current->prestige + 1);
+                        if (current_networth < req) {
+                            bot.send_message(msg.channel_id, "❌ Your net worth has changed and you no longer meet the prestige requirement.");
+                            return;
+                        }
+
+                        int64_t new_limit = 10000 + 50000 * (current->prestige + 1);
+                        if (g_db->prestige_user(msg.author.id, new_limit)) {
+                            int new_prestige = current->prestige + 1;
+                            bot.send_message(msg.channel_id, "🎉 **Prestige Success!** 🎉\n"
+                                                             "Congratulations <@" + msg.author.id + ">, you have prestiged to level **" + std::to_string(new_prestige) + "**!\n"
+                                                             "Your new bank limit is **" + std::to_string(new_limit) + "** coins, and your earnings are boosted by **+" + std::to_string(new_prestige * 15) + "%**!");
+                        } else {
+                            bot.send_message(msg.channel_id, "❌ An error occurred while prestiging. Please try again.");
+                        }
+                    } else {
+                        bot.send_message(msg.channel_id, "❌ Confirmation failed. Prestige cancelled.");
+                    }
+                });
+            },
+            "Economy"
         });
     }
 };

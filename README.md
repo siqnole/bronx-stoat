@@ -43,9 +43,9 @@ The bot checks for appropriate user/bot permissions. The default permissions req
   * `role create` / `role edit` — Requires `Manage Roles` permission.
   * `role <users> <roles>` (batch assignment) — Requires `Manage Roles` permission with hierarchy enforcement.
 * **Economy**:
-  * `balance` / `beg` / `work` / `coinflip` / `slots` / `leaderboard` — Available to all users.
-  * `pay` / `deposit` / `withdraw` — Available to all users (self-service).
-  * `rob` — Available to all users (targets another user).
+  * `balance` / `beg` / `work` / `hustle` / `crime` / `search` / `leaderboard` — Available to all users.
+  * `pay` / `deposit` / `withdraw` / `prestige` — Available to all users (self-service).
+  * `rob` / `coinflip` / `slots` / `blackjack` / `highlow` — Available to all users (games/gambling/robbing).
 * **Tickets**:
   * `ticket setup` / `ticket edit` / `ticket panel` / `ticket config` — Requires `Manage Server` permission.
   * `ticket list` — Requires `Manage Server` permission.
@@ -331,23 +331,28 @@ If the JSON is invalid, the bot will return a parsing error with line and charac
 
 ### 10. Economy (`.balance`, `.work`, `.beg`, etc.)
 
-A per-server coin economy with work cooldowns, robbery, gambling, and a bank. All commands are available to every server member.
+A per-server coin economy with work cooldowns, side hustles, crimes, scavenging, robbery, gambling, a bank, and prestige system. All commands are available to every server member.
 
 | Command | Syntax | Example | Description |
 | :--- | :--- | :--- | :--- |
-| `balance` | `.balance [@user]` | `.balance` | View your (or another user's) wallet and bank balance. |
-| `beg` | `.beg` | `.beg` | Beg for coins (cooldown enforced). |
-| `work` | `.work` | `.work` | Earn coins by working (cooldown enforced). |
+| `balance` | `.balance [@user]` | `.balance` | View your (or another user's) wallet, bank balance, networth, and prestige level. |
+| `beg` | `.beg` | `.beg` | Beg for coins (45s cooldown). Payout is boosted by prestige multiplier. |
+| `work` | `.work` | `.work` | Earn coins by working a shift (1h cooldown). Payout is boosted by prestige multiplier. |
+| `hustle` | `.hustle` | `.hustle` | Earn coins by running a Bronx side hustle (30m cooldown). Payout is boosted by prestige multiplier. |
+| `crime` | `.crime` (aliases `.rob-bank`, `.heist`) | `.crime` | Commit a street crime (1h cooldown). 60% success rate to win big; 40% chance to fail and get fined. Payout is boosted by prestige multiplier. |
+| `search` | `.search` (aliases `.scavenge`, `.find`) | `.search` | Scavenge locations for loose change (10m cooldown). Payout is boosted by prestige multiplier. |
 | `pay` | `.pay <@user\|ID> <amount>` | `.pay @siq 100` | Transfer coins from your wallet to another user. |
 | `deposit` | `.deposit <amount\|all>` | `.deposit all` | Deposit coins from your wallet into your bank. |
 | `withdraw` | `.withdraw <amount\|all>` | `.withdraw 500` | Withdraw coins from your bank into your wallet. |
-| `rob` | `.rob <@user\|ID>` | `.rob @siq` | Attempt to steal coins from another user's wallet. |
+| `rob` | `.rob <@user\|ID>` | `.rob @siq` | Attempt to steal coins from another user's wallet (2h cooldown). |
 | `leaderboard` | `.leaderboard` (alias `.lb`) | `.leaderboard` | Show the top 10 richest users in the server. |
 | `coinflip` | `.coinflip <amount> [heads\|tails]` | `.coinflip 100 heads` | Gamble coins on a coin flip. |
 | `slots` | `.slots <amount>` | `.slots 50` | Spin the slot machine to win or lose coins. |
 | `blackjack` | `.blackjack <amount>` (alias `.bj`) | `.blackjack 200` | Play a reaction-controlled blackjack game. |
+| `highlow` | `.highlow <amount>` (alias `.hl`) | `.highlow 200` | Play an interactive high-low guessing game to double your bet. |
+| `prestige` | `.prestige` | `.prestige` | Resets wallet and bank balance to 0 in exchange for +1 prestige level (needs `250,000 * (current_prestige + 1)` networth). Grants permanent +15% multiplier on all earnings commands and +50,000 bank capacity limit. |
 
-> **Cooldowns**: `work` and `beg` enforce per-user cooldowns stored in the database. Rob has a per-user cooldown and a minimum wallet balance requirement on the target.
+> **Cooldowns**: Earning commands (`work`, `beg`, `hustle`, `crime`, `search`, `rob`) enforce per-user cooldowns managed by the cluster.
 
 ---
 
