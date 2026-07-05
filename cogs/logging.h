@@ -499,7 +499,11 @@ public:
                                                  "- `channel_create` (Placeholders: `{channel}`, `{channelName}`, `{channelId}`)\n"
                                                  "- `channel_delete` (Placeholders: `{channelName}`, `{channelId}`)\n"
                                                  "- `channel_update` (Placeholders: `{channel}`, `{channelName}`, `{channelId}`, `{details}`)\n"
-                                                 "- `webhook_update` (Placeholders: `{webhookId}`, `{channel}`, `{action}`)");
+                                                 "- `webhook_update` (Placeholders: `{webhookId}`, `{channel}`, `{action}`)\n"
+                                                 "- `reaction_add` (Placeholders: `{user}`, `{username}`, `{channel}`, `{messageId}`, `{emoji}`)\n"
+                                                 "- `reaction_remove` (Placeholders: `{user}`, `{username}`, `{channel}`, `{messageId}`, `{emoji}`)\n"
+                                                 "- `server_update` (Placeholders: `{server}`, `{details}`)\n"
+                                                 "- `member_update` (Placeholders: `{user}`, `{username}`, `{details}`)");
                 return;
             }
 
@@ -523,13 +527,13 @@ public:
                         events = {"moderation"};
                     } else if (cat == "utility" || cat == "server") {
                         ch_name = "server-logs";
-                        events = {"role_create", "role_delete", "role_update", "channel_create", "channel_delete", "channel_update", "webhook_update"};
+                        events = {"role_create", "role_delete", "role_update", "channel_create", "channel_delete", "channel_update", "webhook_update", "server_update"};
                     } else if (cat == "messages" || cat == "message" || cat == "msg") {
                         ch_name = "message-logs";
-                        events = {"message_edit", "message_delete"};
+                        events = {"message_edit", "message_delete", "reaction_add", "reaction_remove"};
                     } else if (cat == "members" || cat == "member") {
                         ch_name = "member-logs";
-                        events = {"member_join", "member_leave", "user_update"};
+                        events = {"member_join", "member_leave", "user_update", "member_update"};
                     } else {
                         bot.send_message(msg.channel_id, "⚠️ Invalid category. Choose from: `moderation`, `utility`, `messages`, `members`.");
                         return;
@@ -658,7 +662,7 @@ public:
                     return;
                 }
 
-                auto send_edit_help = [&bot, msg, pfx]() {
+                 auto send_edit_help = [&bot, msg, pfx]() {
                     bot.send_message(msg.channel_id,
                         "usage: `" + pfx + "log edit <event_type> key:value ...`\n"
                         "keys: `title`, `description`, `color`, `image`, `content`\n"
@@ -672,7 +676,10 @@ public:
                         "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n"
                         "• **Roles (`role_create`, `role_delete`, `role_update`):** `{role}`, `{roleName}`, `{roleId}`, `{details}`\n"
                         "• **Channels (`channel_create`, `channel_delete`, `channel_update`):** `{channel}`, `{channelName}`, `{channelId}`, `{details}`\n"
-                        "• **Webhooks (`webhook_update`):** `{webhookId}`, `{channel}`, `{action}`\n\n"
+                        "• **Webhooks (`webhook_update`):** `{webhookId}`, `{channel}`, `{action}`\n"
+                        "• **Reactions (`reaction_add`, `reaction_remove`):** `{user}`, `{username}`, `{channel}`, `{messageId}`, `{emoji}`\n"
+                        "• **Server Update (`server_update`):** `{server}`, `{details}`\n"
+                        "• **Member Update (`member_update`):** `{user}`, `{username}`, `{details}`\n\n"
                         "**Examples:**\n"
                         "• `" + pfx + "log edit delete title:🗑️ Message Deleted color:#ff3333 description:**Author:** {author}\\n**Content:** {content}`\n"
                         "• `" + pfx + "log edit mod title:🛡️ {action} color:#ffa500 content:<@{target}> was moderated`"
@@ -692,7 +699,10 @@ public:
                         "• **AntiRaid (`antiraid`):** `{action}`, `{rule}`, `{user}`, `{username}`, `{details}`\n"
                         "• **Roles (`role_create`, `role_delete`, `role_update`):** `{role}`, `{roleName}`, `{roleId}`, `{details}`\n"
                         "• **Channels (`channel_create`, `channel_delete`, `channel_update`):** `{channel}`, `{channelName}`, `{channelId}`, `{details}`\n"
-                        "• **Webhooks (`webhook_update`):** `{webhookId}`, `{channel}`, `{action}`\n\n"
+                        "• **Webhooks (`webhook_update`):** `{webhookId}`, `{channel}`, `{action}`\n"
+                        "• **Reactions (`reaction_add`, `reaction_remove`):** `{user}`, `{username}`, `{channel}`, `{messageId}`, `{emoji}`\n"
+                        "• **Server Update (`server_update`):** `{server}`, `{details}`\n"
+                        "• **Member Update (`member_update`):** `{user}`, `{username}`, `{details}`\n\n"
                         "**Example:**\n"
                         "```json\n"
                         "{\n"
@@ -733,12 +743,17 @@ public:
                 else if (ev == "channel_delete" || ev == "channeldelete") ev = "channel_delete";
                 else if (ev == "channel_update" || ev == "channeledit" || ev == "channelupdate") ev = "channel_update";
                 else if (ev == "webhook_update" || ev == "webhook" || ev == "webhookupdate") ev = "webhook_update";
+                else if (ev == "reaction_add" || ev == "reactionadd" || ev == "react") ev = "reaction_add";
+                else if (ev == "reaction_remove" || ev == "reactionremove" || ev == "unreact") ev = "reaction_remove";
+                else if (ev == "server_update" || ev == "serverupdate" || ev == "server") ev = "server_update";
+                else if (ev == "member_update" || ev == "memberupdate" || ev == "member") ev = "member_update";
 
                 if (ev != "message_delete" && ev != "message_edit" && ev != "member_join" && ev != "member_leave" && ev != "moderation" && ev != "user_update" && ev != "antiraid" &&
                     ev != "role_create" && ev != "role_delete" && ev != "role_update" &&
                     ev != "channel_create" && ev != "channel_delete" && ev != "channel_update" &&
-                    ev != "webhook_update") {
-                    bot.send_message(msg.channel_id, "⚠️ Invalid event type. Choose from: `delete`, `edit`, `join`, `leave`, `mod`, `user`, `antiraid`, `role_create`, `role_delete`, `role_update`, `channel_create`, `channel_delete`, `channel_update`, `webhook_update`.");
+                    ev != "webhook_update" && ev != "reaction_add" && ev != "reaction_remove" &&
+                    ev != "server_update" && ev != "member_update") {
+                    bot.send_message(msg.channel_id, "⚠️ Invalid event type. Choose from: `delete`, `edit`, `join`, `leave`, `mod`, `user`, `antiraid`, `role_create`, `role_delete`, `role_update`, `channel_create`, `channel_delete`, `channel_update`, `webhook_update`, `reaction_add`, `reaction_remove`, `server_update`, `member_update`.");
                     return;
                 }
 
@@ -1432,6 +1447,161 @@ public:
             };
 
             dispatch_log(bot, server_id, "webhook_update", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: MESSAGE REACTION ADD ---
+        bot.on_message_react([this, &bot](const stoatpp::events::MessageReact& e) {
+            if (!g_db) return;
+            if (e.user_id == bot.current_user().id) return;
+
+            auto chan_opt = bot.get_channel(e.channel_id);
+            if (!chan_opt || !chan_opt->server || chan_opt->server->empty()) return;
+            std::string server_id = *chan_opt->server;
+
+            auto usr_opt = bot.get_user(e.user_id);
+            std::string username = usr_opt ? usr_opt->username : "";
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"user", "<@" + e.user_id + ">"},
+                {"username", username},
+                {"channel", "<#" + e.channel_id + ">"},
+                {"messageId", e.id},
+                {"emoji", e.emoji_id}
+            };
+
+            auto default_fallback = [e, username]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "➕ Reaction Added";
+                embed["colour"] = "#44ff44"; // Green
+                embed["description"] = "• **User:** <@" + e.user_id + "> (" + username + ")\n"
+                                       "• **Channel:** <#" + e.channel_id + ">\n"
+                                       "• **Message ID:** `" + e.id + "`\n"
+                                       "• **Emoji:** " + e.emoji_id;
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, server_id, "reaction_add", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: MESSAGE REACTION REMOVE ---
+        bot.on_message_unreact([this, &bot](const stoatpp::events::MessageUnreact& e) {
+            if (!g_db) return;
+            if (e.user_id == bot.current_user().id) return;
+
+            auto chan_opt = bot.get_channel(e.channel_id);
+            if (!chan_opt || !chan_opt->server || chan_opt->server->empty()) return;
+            std::string server_id = *chan_opt->server;
+
+            auto usr_opt = bot.get_user(e.user_id);
+            std::string username = usr_opt ? usr_opt->username : "";
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"user", "<@" + e.user_id + ">"},
+                {"username", username},
+                {"channel", "<#" + e.channel_id + ">"},
+                {"messageId", e.id},
+                {"emoji", e.emoji_id}
+            };
+
+            auto default_fallback = [e, username]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "➖ Reaction Removed";
+                embed["colour"] = "#ff4444"; // Red
+                embed["description"] = "• **User:** <@" + e.user_id + "> (" + username + ")\n"
+                                       "• **Channel:** <#" + e.channel_id + ">\n"
+                                       "• **Message ID:** `" + e.id + "`\n"
+                                       "• **Emoji:** " + e.emoji_id;
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, server_id, "reaction_remove", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: SERVER UPDATE ---
+        bot.on_server_update([this, &bot](const stoatpp::events::ServerUpdate& e) {
+            if (!g_db) return;
+
+            auto srv = bot.get_server(e.id);
+            std::string server_name = srv ? srv->name : "Server";
+
+            std::string details = "";
+            if (e.data.contains("name")) {
+                std::string old_name = srv ? srv->name : "";
+                std::string new_name = e.data["name"].get<std::string>();
+                details += "• **Name:** " + (old_name.empty() ? "" : old_name + " ➔ ") + new_name + "\n";
+                server_name = new_name;
+            }
+            if (e.data.contains("description")) {
+                std::string old_desc = srv && srv->description ? *srv->description : "none";
+                std::string new_desc = e.data["description"].is_null() ? "none" : e.data["description"].get<std::string>();
+                details += "• **Description:** " + old_desc + " ➔ " + new_desc + "\n";
+            }
+            if (e.data.contains("system_channel")) {
+                std::string old_sc = srv && srv->system_channel ? *srv->system_channel : "none";
+                std::string new_sc = e.data["system_channel"].is_null() ? "none" : e.data["system_channel"].get<std::string>();
+                details += "• **System Channel:** " + old_sc + " ➔ " + new_sc + "\n";
+            }
+
+            if (details.empty()) {
+                details = "• Server settings modified.";
+            }
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"server", server_name},
+                {"details", details}
+            };
+
+            auto default_fallback = [server_name, details]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "🖥️ Server Settings Updated";
+                embed["colour"] = "#ffa500"; // Orange
+                embed["description"] = "• **Server:** " + server_name + "\n" + details;
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, e.id, "server_update", placeholders, default_fallback);
+        });
+
+        // --- GATEWAY EVENT: SERVER MEMBER UPDATE ---
+        bot.on_server_member_update([this, &bot](const stoatpp::events::ServerMemberUpdate& e) {
+            if (!g_db) return;
+
+            auto usr_opt = bot.get_user(e.user_id);
+            std::string username = usr_opt ? usr_opt->username : "";
+
+            std::string details = "";
+            if (e.data.contains("nickname")) {
+                std::string new_nick = e.data["nickname"].is_null() ? "none" : e.data["nickname"].get<std::string>();
+                details += "• **Nickname Change:** ➔ " + new_nick + "\n";
+            }
+
+            for (const auto& field : e.clear) {
+                if (field == "Nickname") {
+                    details += "• **Nickname Change:** Nickname removed\n";
+                }
+            }
+
+            if (e.data.contains("roles") && e.data["roles"].is_array()) {
+                details += "• **Roles updated**\n";
+            }
+
+            if (details.empty()) return;
+
+            std::unordered_map<std::string, std::string> placeholders = {
+                {"user", "<@" + e.user_id + ">"},
+                {"username", username},
+                {"details", details}
+            };
+
+            auto default_fallback = [e, username, details]() {
+                nlohmann::json embed = nlohmann::json::object();
+                embed["title"] = "👥 Member Updated";
+                embed["colour"] = "#ffa500"; // Orange
+                embed["description"] = "• **Member:** <@" + e.user_id + "> (" + username + ")\n" + details;
+                return std::make_pair("", embed);
+            };
+
+            dispatch_log(bot, e.server_id, "member_update", placeholders, default_fallback);
         });
     }
 };
