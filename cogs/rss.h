@@ -22,6 +22,7 @@ struct FeedItem {
     std::string link;
     std::string description;
     std::string image_url;
+    std::string feed_logo_url;
 };
 
 struct TargetCheckState {
@@ -228,6 +229,14 @@ inline void fetch_feed_items(const std::string& url_str, std::function<void(std:
         // Try parsing JSON feed
         nlohmann::json j = nlohmann::json::parse(body, nullptr, false);
         if (!j.is_discarded() && j.contains("items") && j["items"].is_array()) {
+            std::string feed_image_url;
+            if (j.contains("icon") && j["icon"].is_string()) {
+                feed_image_url = j["icon"].get<std::string>();
+            } else if (j.contains("favicon") && j["favicon"].is_string()) {
+                feed_image_url = j["favicon"].get<std::string>();
+            }
+            feed_image_url = clean_image_url(unescape_html(feed_image_url));
+
             for (const auto& item_j : j["items"]) {
                 FeedItem item;
                 if (item_j.contains("id") && item_j["id"].is_string()) {
@@ -268,12 +277,19 @@ inline void fetch_feed_items(const std::string& url_str, std::function<void(std:
                 }
 
                 item.image_url = clean_image_url(item.image_url);
+                item.feed_logo_url = feed_image_url;
                 if (item.guid.empty()) item.guid = item.link;
                 if (!item.guid.empty()) items.push_back(item);
             }
         }
         // Try parsing Atom
         else if (body.find("<feed") != std::string::npos) {
+            std::string feed_image_url = extract_tag(body, "logo");
+            if (feed_image_url.empty()) {
+                feed_image_url = extract_tag(body, "icon");
+            }
+            feed_image_url = clean_image_url(unescape_html(feed_image_url));
+
             size_t pos = 0;
             while (true) {
                 size_t entry_start = body.find("<entry>", pos);
@@ -373,11 +389,23 @@ inline void fetch_feed_items(const std::string& url_str, std::function<void(std:
                 }
 
                 item.image_url = clean_image_url(item.image_url);
+                item.feed_logo_url = feed_image_url;
                 if (!item.guid.empty()) items.push_back(item);
             }
         }
         // Try parsing RSS
         else {
+            std::string feed_image_url;
+            size_t channel_img_pos = body.find("<image>");
+            if (channel_img_pos != std::string::npos) {
+                size_t channel_img_end = body.find("</image>", channel_img_pos);
+                if (channel_img_end != std::string::npos) {
+                    std::string img_xml = body.substr(channel_img_pos, channel_img_end + 8 - channel_img_pos);
+                    feed_image_url = extract_tag(img_xml, "url");
+                }
+            }
+            feed_image_url = clean_image_url(unescape_html(feed_image_url));
+
             size_t pos = 0;
             while (true) {
                 size_t item_start = body.find("<item>", pos);
@@ -453,6 +481,7 @@ inline void fetch_feed_items(const std::string& url_str, std::function<void(std:
                 }
 
                 item.image_url = clean_image_url(item.image_url);
+                item.feed_logo_url = feed_image_url;
                 if (!item.guid.empty()) items.push_back(item);
             }
         }
@@ -556,6 +585,12 @@ inline void check_and_post_feed(stoatpp::cluster& bot, Database::RssFeed feed, b
                     std::string file_id = bot.rest().upload_from_url(it_item->image_url);
                     if (!file_id.empty()) {
                         embed["media"] = file_id;
+                    }
+                }
+                if (!it_item->feed_logo_url.empty()) {
+                    std::string file_id = bot.rest().upload_from_url(it_item->feed_logo_url);
+                    if (!file_id.empty()) {
+                        embed["icon_url"] = bot.config().cdn_url + "/attachments/" + file_id + "/logo.png";
                     }
                 }
                 payload.embeds.push_back(embed);
@@ -669,6 +704,12 @@ public:
                             std::string file_id = bot.rest().upload_from_url(item.image_url);
                             if (!file_id.empty()) {
                                 embed["media"] = file_id;
+                            }
+                        }
+                        if (!item.feed_logo_url.empty()) {
+                            std::string file_id = bot.rest().upload_from_url(item.feed_logo_url);
+                            if (!file_id.empty()) {
+                                embed["icon_url"] = bot.config().cdn_url + "/attachments/" + file_id + "/logo.png";
                             }
                         }
                         payload.embeds.push_back(embed);
@@ -944,6 +985,12 @@ public:
                             std::string file_id = bot_ptr->rest().upload_from_url(item.image_url);
                             if (!file_id.empty()) {
                                 embed["media"] = file_id;
+                            }
+                        }
+                        if (!item.feed_logo_url.empty()) {
+                            std::string file_id = bot_ptr->rest().upload_from_url(item.feed_logo_url);
+                            if (!file_id.empty()) {
+                                embed["icon_url"] = bot_ptr->config().cdn_url + "/attachments/" + file_id + "/logo.png";
                             }
                         }
                         payload.embeds.push_back(embed);

@@ -9,6 +9,8 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <cmath>
+#include <stdexcept>
 
 namespace bronx::cogs {
 
@@ -26,15 +28,182 @@ private:
         return true;
     }
 
-    // Try to parse the message body as a single positive integer.
-    // Trims leading/trailing whitespace. Returns -1 on failure.
+    struct MathParser {
+        std::string src;
+        size_t pos = 0;
+
+        void skip_whitespace() {
+            while (pos < src.size() && std::isspace((unsigned char)src[pos])) {
+                pos++;
+            }
+        }
+
+        char peek() {
+            skip_whitespace();
+            if (pos >= src.size()) return '\0';
+            return src[pos];
+        }
+
+        char get() {
+            skip_whitespace();
+            if (pos >= src.size()) return '\0';
+            return src[pos++];
+        }
+
+        double parse_number() {
+            skip_whitespace();
+            size_t start = pos;
+            if (peek() == '-' || peek() == '+') {
+                get();
+            }
+            while (pos < src.size() && (std::isdigit((unsigned char)src[pos]) || src[pos] == '.')) {
+                pos++;
+            }
+            if (start == pos) {
+                throw std::runtime_error("expected number");
+            }
+            std::string num_str = src.substr(start, pos - start);
+            try {
+                return std::stod(num_str);
+            } catch (...) {
+                throw std::runtime_error("invalid number");
+            }
+        }
+
+        double parse_factor() {
+            skip_whitespace();
+            char c = peek();
+            if (c == '(') {
+                get(); // consume '('
+                double val = parse_expression();
+                if (get() != ')') {
+                    throw std::runtime_error("expected ')'");
+                }
+                return val;
+            }
+            return parse_number();
+        }
+
+        double parse_term() {
+            double val = parse_factor();
+            while (true) {
+                char op = peek();
+                if (op == '*') {
+                    get();
+                    val *= parse_factor();
+                } else if (op == '/') {
+                    get();
+                    double denom = parse_factor();
+                    if (denom == 0.0) {
+                        throw std::runtime_error("division by zero");
+                    }
+                    val /= denom;
+                } else {
+                    break;
+                }
+            }
+            return val;
+        }
+
+        double parse_expression() {
+            double val = parse_term();
+            while (true) {
+                char op = peek();
+                if (op == '+') {
+                    get();
+                    val += parse_term();
+                } else if (op == '-') {
+                    get();
+                    val -= parse_term();
+                } else {
+                    break;
+                }
+            }
+            return val;
+        }
+
+        explicit MathParser(std::string s) : src(std::move(s)) {}
+
+        double parse() {
+            pos = 0;
+            double val = parse_expression();
+            skip_whitespace();
+            if (pos < src.size()) {
+                throw std::runtime_error("unexpected trailing characters");
+            }
+            return val;
+        }
+    };
+
+    // Try to parse the message body as a math expression or equation.
+    // Trims leading/trailing whitespace and filters out commas.
+    // Returns the parsed integer value, or -1 on failure.
     static int64_t parse_count_message(const std::string& content) {
         std::string s = content;
+        // 1. Remove all commas
+        s.erase(std::remove(s.begin(), s.end(), ','), s.end());
+
+        // 2. Trim whitespace
         s.erase(0, s.find_first_not_of(" \t\r\n"));
         s.erase(s.find_last_not_of(" \t\r\n") + 1);
         if (s.empty()) return -1;
-        for (char c : s) if (!std::isdigit((unsigned char)c)) return -1;
-        try { return (int64_t)std::stoull(s); } catch (...) { return -1; }
+
+        // 3. Check character set. We only allow digits, ., +, -, *, /, (, ), =, and whitespace.
+        for (char c : s) {
+            if (!std::isdigit((unsigned char)c) && c != '.' && c != '+' && c != '-' &&
+                c != '*' && c != '/' && c != '(' && c != ')' && c != '=' && !std::isspace((unsigned char)c)) {
+                return -1;
+            }
+        }
+
+        // 4. Split on '=' if present
+        std::string lhs = s;
+        std::string rhs = "";
+        size_t eq_pos = s.find('=');
+        if (eq_pos != std::string::npos) {
+            // Ensure only one '=' sign
+            if (s.find('=', eq_pos + 1) != std::string::npos) {
+                return -1;
+            }
+            lhs = s.substr(0, eq_pos);
+            rhs = s.substr(eq_pos + 1);
+
+            // Trim lhs and rhs
+            lhs.erase(0, lhs.find_first_not_of(" \t\r\n"));
+            lhs.erase(lhs.find_last_not_of(" \t\r\n") + 1);
+            rhs.erase(0, rhs.find_first_not_of(" \t\r\n"));
+            rhs.erase(rhs.find_last_not_of(" \t\r\n") + 1);
+        }
+
+        // 5. Evaluate LHS
+        double lhs_val = 0;
+        try {
+            MathParser parser(lhs);
+            lhs_val = parser.parse();
+        } catch (...) {
+            return -1;
+        }
+
+        // 6. If RHS is present, evaluate/parse RHS and compare
+        if (!rhs.empty()) {
+            double rhs_val = 0;
+            try {
+                MathParser parser(rhs);
+                rhs_val = parser.parse();
+            } catch (...) {
+                return -1;
+            }
+
+            // Check if they are equal (within a small threshold)
+            if (std::abs(lhs_val - rhs_val) > 1e-5) {
+                return -1;
+            }
+        }
+
+        // Return rounded integer if valid and non-negative
+        if (lhs_val < 0.0) return -1;
+        
+        return (int64_t)std::round(lhs_val);
     }
 
     // Format seconds into a human-readable string (e.g. "1h 30m")
