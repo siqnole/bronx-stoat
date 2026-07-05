@@ -38,6 +38,7 @@
 #include "cogs/tickets.h"
 #include "cogs/counting.h"
 #include "cogs/afk.h"
+#include "cogs/roblox.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -134,7 +135,7 @@ int main(int argc, char* argv[]) {
     cfg.dispatch_commands_on_edit = true;
     cfg.case_insensitive_commands = true;
     
-    cfg.command_prefix = "!";
+    cfg.command_prefix = ".";
     if (const char* pfx = std::getenv("COMMAND_PREFIX")) {
         cfg.command_prefix = pfx;
     }
@@ -218,6 +219,7 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::TicketsModule>());
     bot.use(std::make_unique<bronx::cogs::CountingModule>());
     bot.use(std::make_unique<bronx::cogs::AFKModule>());
+    bot.use(std::make_unique<bronx::cogs::RobloxModule>());
 
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
@@ -227,7 +229,7 @@ int main(int argc, char* argv[]) {
                   << e.channels.size() << " channels.\n";
         std::cout << "              users in ready payload: " << e.users.size() << "\n";
 
-        std::string status_text = "made with c++! | coming soon | " + std::to_string(e.servers.size()) + " servers";
+        std::string status_text = "serving " + std::to_string(e.servers.size()) + " servers!";
         bot.update_status(status_text, "Online", [](bool success) {
             if (success) {
                 std::cout << "[bronx] successfully set presence status.\n";

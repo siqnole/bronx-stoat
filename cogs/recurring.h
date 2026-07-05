@@ -291,7 +291,7 @@ private:
     static void send_recurring(stoatpp::cluster& bot,
                                const Database::RecurringMessage& rm,
                                const std::string& target_channel_id,
-                               std::function<void(bool)> callback = nullptr) {
+                               std::function<void(bool success, std::string error_details)> callback = nullptr) {
         stoatpp::models::MessagePayload payload;
 
         if (rm.message_type == "embed") {
@@ -333,9 +333,24 @@ private:
             payload.content = apply_tokens(rm.content, bot, rm.server_id, rm.owner_tokens);
         }
 
-        bot.send_message(target_channel_id, payload, [callback](stoatpp::models::Message, bool ok) {
-            if (callback) callback(ok);
-        });
+        std::thread([&bot, target_channel_id, payload, callback]() {
+            auto res = bot.rest().post("/channels/" + target_channel_id + "/messages", payload.to_json());
+            if (res.success()) {
+                if (callback) callback(true, "");
+            } else {
+                std::string err;
+                if (res.status_code == 403 || res.status_code == 404) {
+                    err = "Make sure the bot has View Channel and Send Messages permissions (HTTP " + std::to_string(res.status_code) + ").";
+                } else if (res.body.is_object() && res.body.contains("error") && res.body["error"].is_string()) {
+                    err = res.body["error"].get<std::string>();
+                } else if (!res.body.is_null()) {
+                    err = res.body.dump();
+                } else {
+                    err = "HTTP " + std::to_string(res.status_code);
+                }
+                if (callback) callback(false, err);
+            }
+        }).detach();
     }
 
 public:
@@ -643,11 +658,13 @@ public:
                             return;
                         }
                         // test = preview only, does NOT reset the timer
-                        send_recurring(bot, *rm_opt, rm_opt->channel_id, [&bot, msg, rm_opt](bool ok) {
+                        send_recurring(bot, *rm_opt, rm_opt->channel_id, [&bot, msg, rm_opt](bool ok, std::string err) {
                             if (ok) {
-                                bot.send_message(msg.channel_id, "\u2705 Test message **\"" + rm_opt->name + "\"** sent to <#" + rm_opt->channel_id + "> *(timer unchanged)*.");
+                                bot.send_message(msg.channel_id, "✅ Test message **\"" + rm_opt->name + "\"** sent to <#" + rm_opt->channel_id + "> *(timer unchanged)*.");
                             } else {
-                                bot.send_message(msg.channel_id, "\u26a0\ufe0f Failed to send test message. Check that the bot has permission to post in <#" + rm_opt->channel_id + ">.");
+                                std::string details = "⚠️ Failed to send test message. Check that the bot has permission to post in <#" + rm_opt->channel_id + ">.";
+                                if (!err.empty()) details += "\n*Details: " + err + "*";
+                                bot.send_message(msg.channel_id, details);
                             }
                         });
                         return;
@@ -674,14 +691,16 @@ public:
                             std::chrono::duration_cast<std::chrono::seconds>(
                                 std::chrono::system_clock::now().time_since_epoch()).count());
                         g_db->update_recurring_last_sent(rm_opt->id, now_ts);
-                        send_recurring(bot, *rm_opt, rm_opt->channel_id, [&bot, msg, rm_opt, now_ts](bool ok) {
+                        send_recurring(bot, *rm_opt, rm_opt->channel_id, [&bot, msg, rm_opt, now_ts](bool ok, std::string err) {
                             if (ok) {
                                 uint64_t next_ts = now_ts + rm_opt->interval_seconds;
                                 bot.send_message(msg.channel_id,
-                                    "\u2705 Sent **\"" + rm_opt->name + "\"** to <#" + rm_opt->channel_id +
+                                    "✅ Sent **\"" + rm_opt->name + "\"** to <#" + rm_opt->channel_id +
                                     "> and reset timer. Next post: <t:" + std::to_string(next_ts) + ":R>.");
                             } else {
-                                bot.send_message(msg.channel_id, "\u26a0\ufe0f Failed to send message. Timer was still reset.");
+                                std::string details = "⚠️ Failed to send message. Timer was still reset.";
+                                if (!err.empty()) details += "\n*Details: " + err + "*";
+                                bot.send_message(msg.channel_id, details);
                             }
                         });
                         return;

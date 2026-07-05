@@ -841,7 +841,10 @@ public:
                     bot.send_message(msg.channel_id, "⚠️ Failed to set AFK status.");
                 }
             },
-            "Utility"
+            "Utility",
+            0,
+            0,
+            {"setup [preset]", "clear", "type <text|embed>", "message <text...>", "edit [preset] <key:val...>", "title <title>", "description <desc>", "color <color>", "image <url>", "json <raw_json>", "test", "template", "delete <preset>", "set <preset>"}
         });
 
         bot.register_command({

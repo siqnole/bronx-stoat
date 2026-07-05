@@ -14,13 +14,18 @@ find_path(MARIADB_INCLUDE_DIR mysql.h
     PATHS
     /home/linuxbrew/.linuxbrew/opt/mariadb-connector-c/include/mariadb
     /usr/include/mariadb
+    /usr/include/mysql
     /usr/local/include/mariadb
+    /usr/local/include/mysql
 )
 
 find_library(MARIADB_LIBRARY NAMES mariadb mysqlclient
     PATHS
     /home/linuxbrew/.linuxbrew/opt/mariadb-connector-c/lib
     /usr/lib
+    /usr/lib64
+    /usr/lib64/mysql
+    /usr/lib/mysql
     /usr/local/lib
 )
 

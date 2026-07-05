@@ -202,10 +202,19 @@ public:
         std::string active_preset = "default";
     };
 
+    struct RobloxLink {
+        std::string user_id;
+        uint64_t roblox_id = 0;
+        std::string roblox_username;
+    };
+
 private:
     MYSQL* mysql_ = nullptr;
     std::unordered_map<std::string, UserAFK> user_afk_cache_;
     std::shared_mutex user_afk_cache_mutex_;
+
+    std::unordered_map<std::string, RobloxLink> roblox_links_cache_;
+    std::shared_mutex roblox_links_cache_mutex_;
 
     std::unordered_map<std::string, std::unordered_map<std::string, std::string>> user_afk_presets_cache_;
     std::shared_mutex user_afk_presets_cache_mutex_;
@@ -834,6 +843,19 @@ public:
                 return false;
             }
 
+            // Create Table roblox_links
+            std::string create_roblox_links = 
+                "CREATE TABLE IF NOT EXISTS roblox_links ("
+                "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+                "  roblox_id BIGINT NOT NULL,"
+                "  roblox_username VARCHAR(100) NOT NULL,"
+                "  linked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                ")";
+            if (mysql_query(mysql_, create_roblox_links.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'roblox_links': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+
 
             // Load counting configs into cache
             {
@@ -1303,6 +1325,24 @@ public:
             }
         }
 
+        // Load roblox links
+        std::string select_roblox = "SELECT user_id, roblox_id, roblox_username FROM roblox_links";
+        if (mysql_query(mysql_, select_roblox.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> lock(roblox_links_cache_mutex_);
+                while ((row = mysql_fetch_row(res))) {
+                    RobloxLink link;
+                    link.user_id = row[0] ? row[0] : "";
+                    link.roblox_id = row[1] ? std::stoull(row[1]) : 0;
+                    link.roblox_username = row[2] ? row[2] : "";
+                    roblox_links_cache_[link.user_id] = link;
+                }
+                mysql_free_result(res);
+            }
+        }
+
         std::cout << "[bronx db] database successfully initialized.\n"
 
                   << "           loaded " << cache_.size() << " prefix configurations.\n"
@@ -1320,7 +1360,8 @@ public:
                   << "           loaded " << ticket_config_cache_.size() << " ticket configurations.\n"
                   << "           loaded " << ticket_cache_.size() << " active tickets.\n"
                   << "           loaded " << user_afk_cache_.size() << " user afk configurations.\n"
-                  << "           loaded " << user_afk_presets_cache_.size() << " user afk preset configurations.\n";
+                  << "           loaded " << user_afk_presets_cache_.size() << " user afk preset configurations.\n"
+                  << "           loaded " << roblox_links_cache_.size() << " roblox linked accounts.\n";
         return true;
     }
 
@@ -3828,6 +3869,78 @@ public:
             }
         }
         return presets;
+    }
+
+    std::optional<RobloxLink> get_roblox_link(const std::string& user_id) {
+        std::shared_lock<std::shared_mutex> lock(roblox_links_cache_mutex_);
+        auto it = roblox_links_cache_.find(user_id);
+        if (it != roblox_links_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    std::optional<RobloxLink> get_roblox_link_by_roblox_username(const std::string& username) {
+        std::shared_lock<std::shared_mutex> lock(roblox_links_cache_mutex_);
+        std::string target = username;
+        std::transform(target.begin(), target.end(), target.begin(), ::tolower);
+        for (const auto& [_, link] : roblox_links_cache_) {
+            std::string name_lower = link.roblox_username;
+            std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
+            if (name_lower == target) {
+                return link;
+            }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<RobloxLink> get_roblox_link_by_roblox_id(uint64_t roblox_id) {
+        std::shared_lock<std::shared_mutex> lock(roblox_links_cache_mutex_);
+        for (const auto& [_, link] : roblox_links_cache_) {
+            if (link.roblox_id == roblox_id) {
+                return link;
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool save_roblox_link(const std::string& user_id, uint64_t roblox_id, const std::string& roblox_username) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_roblox_username = escape_string(roblox_username);
+
+        std::string query = 
+            "INSERT INTO roblox_links (user_id, roblox_id, roblox_username) "
+            "VALUES ('" + esc_user_id + "', " + std::to_string(roblox_id) + ", '" + esc_roblox_username + "') "
+            "ON DUPLICATE KEY UPDATE "
+            "roblox_id = " + std::to_string(roblox_id) + ", "
+            "roblox_username = '" + esc_roblox_username + "'";
+            
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save roblox link: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        
+        {
+            std::lock_guard<std::shared_mutex> lock(roblox_links_cache_mutex_);
+            roblox_links_cache_[user_id] = {user_id, roblox_id, roblox_username};
+        }
+        return true;
+    }
+
+    bool delete_roblox_link(const std::string& user_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_user_id = escape_string(user_id);
+        std::string query = "DELETE FROM roblox_links WHERE user_id = '" + esc_user_id + "'";
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to delete roblox link: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        {
+            std::lock_guard<std::shared_mutex> lock(roblox_links_cache_mutex_);
+            roblox_links_cache_.erase(user_id);
+        }
+        return true;
     }
 
 };

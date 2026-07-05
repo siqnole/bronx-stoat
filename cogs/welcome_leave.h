@@ -10,6 +10,27 @@ namespace bronx::cogs {
 
 class WelcomeLeaveModule : public stoatpp::bot_module {
 private:
+    static void send_verbose_test_message(stoatpp::cluster& bot, const std::string& target_channel, const stoatpp::models::MessagePayload& payload, const std::string& cmd_channel, const std::string& success_msg, const std::string& error_prefix) {
+        std::thread([&bot, target_channel, payload, cmd_channel, success_msg, error_prefix]() {
+            auto res = bot.rest().post("/channels/" + target_channel + "/messages", payload.to_json());
+            if (res.success()) {
+                bot.send_message(cmd_channel, success_msg);
+            } else {
+                std::string err_msg = "⚠️ " + error_prefix;
+                if (res.status_code == 403 || res.status_code == 404) {
+                    err_msg += "\n*Details: Make sure the bot is in that channel and has View Channel and Send Messages permissions (HTTP " + std::to_string(res.status_code) + ").*";
+                } else if (res.body.is_object() && res.body.contains("error") && res.body["error"].is_string()) {
+                    err_msg += "\n*Details: " + res.body["error"].get<std::string>() + "*";
+                } else if (!res.body.is_null()) {
+                    err_msg += "\n*Details: " + res.body.dump() + "*";
+                } else {
+                    err_msg += " (HTTP " + std::to_string(res.status_code) + ")";
+                }
+                bot.send_message(cmd_channel, err_msg);
+            }
+        }).detach();
+    }
+
     static std::string format_placeholders(std::string text, const stoatpp::models::User& user, const stoatpp::models::Server& server, int64_t member_count) {
         std::string mention = "<@" + user.id + ">";
         
@@ -520,24 +541,16 @@ public:
                                         payload.embeds.push_back(embed);
                                     }
 
-                                    bot.send_message(config.welcome_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
-                                        if (sent_ok) {
-                                            bot.send_message(msg.channel_id, "✅ Test welcome message successfully sent to the configured channel.");
-                                        } else {
-                                            bot.send_message(msg.channel_id, "⚠️ Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
-                                        }
-                                    });
+                                    send_verbose_test_message(bot, config.welcome_channel_id, payload, msg.channel_id,
+                                         "✅ Test welcome message successfully sent to the configured channel.",
+                                         "Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
                                 }).detach();
                             } else {
                                 stoatpp::models::MessagePayload payload;
                                 payload.content = format_placeholders(config.welcome_content, msg.author, server, final_count);
-                                bot.send_message(config.welcome_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
-                                    if (sent_ok) {
-                                        bot.send_message(msg.channel_id, "✅ Test welcome message successfully sent to the configured channel.");
-                                    } else {
-                                        bot.send_message(msg.channel_id, "⚠️ Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
-                                    }
-                                });
+                                send_verbose_test_message(bot, config.welcome_channel_id, payload, msg.channel_id,
+                                     "✅ Test welcome message successfully sent to the configured channel.",
+                                     "Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
                             }
                         });
                     }
@@ -741,13 +754,9 @@ public:
                                 payload.content = format_placeholders(config.welcome_dm_content, msg.author, server, final_count);
                             }
 
-                            bot.send_message(dm_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
-                                if (sent_ok) {
-                                    bot.send_message(msg.channel_id, "✅ Test welcome DM successfully sent to you.");
-                                } else {
-                                    bot.send_message(msg.channel_id, "⚠️ Failed to send test welcome DM.");
-                                }
-                            });
+                            send_verbose_test_message(bot, dm_channel_id, payload, msg.channel_id,
+                                "✅ Test welcome DM successfully sent to you.",
+                                "Failed to send test welcome DM.");
                         }).detach();
                     });
                     return;
@@ -1233,24 +1242,16 @@ public:
                                         payload.embeds.push_back(embed);
                                     }
 
-                                    bot.send_message(config.leave_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
-                                        if (sent_ok) {
-                                            bot.send_message(msg.channel_id, "✅ Test leave message successfully sent to the configured channel.");
-                                        } else {
-                                            bot.send_message(msg.channel_id, "⚠️ Failed to send test leave message. Make sure the bot has permission to post in that channel.");
-                                        }
-                                    });
+                                    send_verbose_test_message(bot, config.leave_channel_id, payload, msg.channel_id,
+                                         "✅ Test leave message successfully sent to the configured channel.",
+                                         "Failed to send test leave message. Make sure the bot has permission to post in that channel.");
                                 }).detach();
                             } else {
                                 stoatpp::models::MessagePayload payload;
                                 payload.content = format_placeholders(config.leave_content, msg.author, server, final_count);
-                                bot.send_message(config.leave_channel_id, payload, [&bot, msg](stoatpp::models::Message, bool sent_ok) {
-                                    if (sent_ok) {
-                                        bot.send_message(msg.channel_id, "✅ Test leave message successfully sent to the configured channel.");
-                                    } else {
-                                        bot.send_message(msg.channel_id, "⚠️ Failed to send test leave message. Make sure the bot has permission to post in that channel.");
-                                    }
-                                });
+                                send_verbose_test_message(bot, config.leave_channel_id, payload, msg.channel_id,
+                                     "✅ Test leave message successfully sent to the configured channel.",
+                                     "Failed to send test leave message. Make sure the bot has permission to post in that channel.");
                             }
                     });
                     return;

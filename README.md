@@ -469,3 +469,47 @@ Keyword-triggered responses and reactions, plus scheduled recurring messages. Al
 | `recurse list` | `.recurse list` | `.recurse list` | List all recurring messages. |
 | `recurse edit` | `.recurse edit <name\|id> <key:val...>` | `.recurse edit reminder interval:30m` | Update interval, channel, content, or embed. |
 | `recurse info` | `.recurse info <name\|id>` | `.recurse info reminder` | Show full recurring message details. |
+
+---
+
+### 17. Roblox Integration (`.roblox` / `.rbx`)
+
+Manage Roblox account linking and view rich profile details.
+
+| Command | Syntax | Example | Description |
+| :--- | :--- | :--- | :--- |
+| `roblox set` | `.roblox set <username>` | `.roblox set siqnole` | Interactive account linking verification wizard. |
+| `roblox` | `.roblox [@user\|username]` | `.roblox @user` | Display a user's linked Roblox profile, or search by public username. Shows RAP, estimated value (Rolimons), socials (friends, followers, following), and 3D character renders. |
+
+---
+
+## Build & Run
+
+### 1. Manual Build
+To build the bot natively:
+```bash
+mkdir -p build
+cd build
+cmake ..
+make -j$(nproc)
+./bronx
+```
+
+### 2. Containerized Build & Run (Podman/Docker)
+The bot can be containerized using a multi-stage Fedora build to package all libraries and OCR/cairo engines.
+
+**Build the image:**
+```bash
+podman build -t bronx-bot .
+```
+
+**Run the container:**
+To run the bot in host networking mode (allowing it to connect to your local MariaDB database at `127.0.0.1`):
+```bash
+podman run -d --name bronx-bot --net=host --restart on-failure bronx-bot
+```
+
+**View logs:**
+```bash
+podman logs -f bronx-bot
+```
