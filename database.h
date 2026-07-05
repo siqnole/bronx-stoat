@@ -9,6 +9,7 @@
 #include <mysql.h>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
+#include <algorithm>
 
 namespace bronx {
 
@@ -93,6 +94,28 @@ public:
         int spam_threshold_seconds = 2;
         std::string spam_action = "none";
         std::string default_profile_action = "none";
+    };
+
+    struct MasqueradeConfig {
+        std::string server_id;
+        std::optional<std::string> avatar;
+        std::optional<std::string> colour;
+        std::optional<std::string> name;
+    };
+
+    struct Tupper {
+        int id;
+        std::string user_id;
+        std::string name;
+        std::string avatar_url;
+        std::string prefix;
+        std::string suffix;
+    };
+
+    struct TupperProxy {
+        std::string message_id;
+        std::string user_id;
+        std::string tupper_name;
     };
 
 
@@ -321,6 +344,12 @@ private:
     // Server ID -> default prefix enabled (true = default prefix active)
     std::unordered_map<std::string, bool> pfx_default_cache_;
     std::shared_mutex pfx_default_cache_mutex_;
+
+    std::unordered_map<std::string, MasqueradeConfig> masquerade_cache_;
+    std::shared_mutex masquerade_cache_mutex_;
+
+    std::unordered_map<std::string, std::vector<Tupper>> tupper_cache_;
+    std::shared_mutex tupper_cache_mutex_;
 
     std::string escape_string(const std::string& input) {
         if (!mysql_) return "";
@@ -666,6 +695,47 @@ public:
             ")";
         if (mysql_query(mysql_, create_action_msgs.c_str())) {
             std::cerr << "[bronx db] failed to create table 'action_message_configs': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table masquerade_configs
+        std::string create_masq = 
+            "CREATE TABLE IF NOT EXISTS masquerade_configs ("
+            "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  avatar VARCHAR(256) DEFAULT NULL,"
+            "  colour VARCHAR(128) DEFAULT NULL,"
+            "  name VARCHAR(32) DEFAULT NULL"
+            ")";
+        if (mysql_query(mysql_, create_masq.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'masquerade_configs': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table tuppers
+        std::string create_tuppers = 
+            "CREATE TABLE IF NOT EXISTS tuppers ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  name VARCHAR(32) NOT NULL,"
+            "  avatar_url VARCHAR(256) NOT NULL,"
+            "  prefix VARCHAR(30) DEFAULT NULL,"
+            "  suffix VARCHAR(30) DEFAULT NULL,"
+            "  UNIQUE KEY uq_user_tupper (user_id, name)"
+            ")";
+        if (mysql_query(mysql_, create_tuppers.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'tuppers': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table tupper_proxies
+        std::string create_tupper_proxies = 
+            "CREATE TABLE IF NOT EXISTS tupper_proxies ("
+            "  message_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  tupper_name VARCHAR(32) NOT NULL"
+            ")";
+        if (mysql_query(mysql_, create_tupper_proxies.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'tupper_proxies': " << mysql_error(mysql_) << "\n";
             return false;
         }
 
@@ -1384,25 +1454,127 @@ public:
             }
         }
 
-        // Load roblox links
-        std::string select_roblox = "SELECT user_id, roblox_id, roblox_username FROM roblox_links";
-        if (mysql_query(mysql_, select_roblox.c_str()) == 0) {
-            MYSQL_RES* res = mysql_store_result(mysql_);
-            if (res) {
-                MYSQL_ROW row;
-                std::lock_guard<std::shared_mutex> lock(roblox_links_cache_mutex_);
-                while ((row = mysql_fetch_row(res))) {
-                    RobloxLink link;
-                    link.user_id = row[0] ? row[0] : "";
-                    link.roblox_id = row[1] ? std::stoull(row[1]) : 0;
-                    link.roblox_username = row[2] ? row[2] : "";
-                    roblox_links_cache_[link.user_id] = link;
+        // Load autoresponders cache
+        {
+            auto load_json_arr = [](const char* raw) -> std::vector<std::string> {
+                std::vector<std::string> out;
+                if (!raw) return out;
+                try {
+                    auto j = nlohmann::json::parse(raw);
+                    if (j.is_array()) {
+                        for (const auto& v : j) {
+                            if (v.is_string()) out.push_back(v.get<std::string>());
+                        }
+                    }
+                } catch (...) {}
+                return out;
+            };
+
+            if (mysql_query(mysql_,
+                "SELECT id,server_id,name,keyword,match_type,message_type,content,embed_json,"
+                "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels "
+                "FROM autoresponders") == 0) {
+                MYSQL_RES* res = mysql_store_result(mysql_);
+                if (res) {
+                    MYSQL_ROW row;
+                    std::lock_guard<std::shared_mutex> arsp_lock(arsp_cache_mutex_);
+                    while ((row = mysql_fetch_row(res))) {
+                        AutoresponderConfig c;
+                        c.id          = row[0] ? std::stoi(row[0]) : 0;
+                        c.server_id   = row[1] ? row[1] : "";
+                        c.name        = row[2] ? row[2] : "";
+                        c.keyword     = row[3] ? row[3] : "";
+                        c.match_type  = row[4] ? row[4] : "contains";
+                        c.message_type= row[5] ? row[5] : "text";
+                        c.content     = row[6] ? row[6] : "";
+                        c.embed_json  = row[7] ? row[7] : "";
+                        c.filter.allow_roles    = load_json_arr(row[8]);
+                        c.filter.allow_users    = load_json_arr(row[9]);
+                        c.filter.allow_channels = load_json_arr(row[10]);
+                        c.filter.ignore_roles   = load_json_arr(row[11]);
+                        c.filter.ignore_users   = load_json_arr(row[12]);
+                        c.filter.ignore_channels= load_json_arr(row[13]);
+                        arsp_cache_[c.id] = c;
+                        arsp_server_index_[c.server_id].push_back(c.id);
+                    }
+                    mysql_free_result(res);
                 }
-                mysql_free_result(res);
+            }
+
+            if (mysql_query(mysql_,
+                "SELECT id,server_id,name,keyword,match_type,emojis,"
+                "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels "
+                "FROM autoreacts") == 0) {
+                MYSQL_RES* res = mysql_store_result(mysql_);
+                if (res) {
+                    MYSQL_ROW row;
+                    std::lock_guard<std::shared_mutex> arct_lock(arct_cache_mutex_);
+                    while ((row = mysql_fetch_row(res))) {
+                        AutoreactConfig c;
+                        c.id          = row[0] ? std::stoi(row[0]) : 0;
+                        c.server_id   = row[1] ? row[1] : "";
+                        c.name        = row[2] ? row[2] : "";
+                        c.keyword     = row[3] ? row[3] : "";
+                        c.match_type  = row[4] ? row[4] : "contains";
+                        c.emojis      = row[5] ? row[5] : "";
+                        c.filter.allow_roles    = load_json_arr(row[6]);
+                        c.filter.allow_users    = load_json_arr(row[7]);
+                        c.filter.allow_channels = load_json_arr(row[8]);
+                        c.filter.ignore_roles   = load_json_arr(row[9]);
+                        c.filter.ignore_users   = load_json_arr(row[10]);
+                        c.filter.ignore_channels= load_json_arr(row[11]);
+                        arct_cache_[c.id] = c;
+                        arct_server_index_[c.server_id].push_back(c.id);
+                    }
+                    mysql_free_result(res);
+                }
+            }
+        }
+
+        // Load masquerade_configs
+        std::string select_masq = "SELECT server_id, avatar, colour, name FROM masquerade_configs";
+        if (mysql_query(mysql_, select_masq.c_str()) == 0) {
+            MYSQL_RES* masq_res = mysql_store_result(mysql_);
+            if (masq_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> masq_lock(masquerade_cache_mutex_);
+                while ((row = mysql_fetch_row(masq_res))) {
+                    std::string s_id = row[0] ? row[0] : "";
+                    MasqueradeConfig cfg;
+                    cfg.server_id = s_id;
+                    if (row[1]) cfg.avatar = row[1];
+                    if (row[2]) cfg.colour = row[2];
+                    if (row[3]) cfg.name = row[3];
+                    masquerade_cache_[s_id] = cfg;
+                }
+                mysql_free_result(masq_res);
+            }
+        }
+
+        // Load tuppers
+        std::string select_tuppers = "SELECT id, user_id, name, avatar_url, COALESCE(prefix,''), COALESCE(suffix,'') FROM tuppers";
+        if (mysql_query(mysql_, select_tuppers.c_str()) == 0) {
+            MYSQL_RES* tupper_res = mysql_store_result(mysql_);
+            if (tupper_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> tupper_lock(tupper_cache_mutex_);
+                while ((row = mysql_fetch_row(tupper_res))) {
+                    Tupper t;
+                    t.id = row[0] ? std::stoi(row[0]) : 0;
+                    t.user_id = row[1] ? row[1] : "";
+                    t.name = row[2] ? row[2] : "";
+                    t.avatar_url = row[3] ? row[3] : "";
+                    t.prefix = row[4] ? row[4] : "";
+                    t.suffix = row[5] ? row[5] : "";
+                    tupper_cache_[t.user_id].push_back(t);
+                }
+                mysql_free_result(tupper_res);
             }
         }
 
         std::cout << "[bronx db] database successfully initialized.\n"
+                  << "           loaded " << masquerade_cache_.size() << " masquerade configurations.\n"
+                  << "           loaded " << tupper_cache_.size() << " user tupper profiles.\n"
 
                   << "           loaded " << cache_.size() << " prefix configurations.\n"
                   << "           loaded " << rr_cache_.size() << " reaction role messages.\n"
@@ -1421,7 +1593,9 @@ public:
                   << "           loaded " << ticket_cache_.size() << " active tickets.\n"
                   << "           loaded " << user_afk_cache_.size() << " user afk configurations.\n"
                   << "           loaded " << user_afk_presets_cache_.size() << " user afk preset configurations.\n"
-                  << "           loaded " << roblox_links_cache_.size() << " roblox linked accounts.\n";
+                  << "           loaded " << roblox_links_cache_.size() << " roblox linked accounts.\n"
+                  << "           loaded " << arsp_cache_.size() << " autoresponders.\n"
+                  << "           loaded " << arct_cache_.size() << " autoreacts.\n";
         return true;
     }
 
@@ -1867,81 +2041,6 @@ public:
                         entries.push_back({row[0], std::stoi(row[1])});
                     }
                 }
-
-            // Load autoresponders cache
-            {
-                auto load_json_arr = [](const char* raw) -> std::vector<std::string> {
-                    std::vector<std::string> out;
-                    if (!raw) return out;
-                    try {
-                        auto j = nlohmann::json::parse(raw);
-                        if (j.is_array()) {
-                            for (const auto& v : j) {
-                                if (v.is_string()) out.push_back(v.get<std::string>());
-                            }
-                        }
-                    } catch (...) {}
-                    return out;
-                };
-
-                if (mysql_query(mysql_,
-                    "SELECT id,server_id,name,keyword,match_type,message_type,content,embed_json,"
-                    "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels "
-                    "FROM autoresponders") == 0) {
-                    MYSQL_RES* res = mysql_store_result(mysql_);
-                    if (res) {
-                        MYSQL_ROW row;
-                        while ((row = mysql_fetch_row(res))) {
-                            AutoresponderConfig c;
-                            c.id          = row[0] ? std::stoi(row[0]) : 0;
-                            c.server_id   = row[1] ? row[1] : "";
-                            c.name        = row[2] ? row[2] : "";
-                            c.keyword     = row[3] ? row[3] : "";
-                            c.match_type  = row[4] ? row[4] : "contains";
-                            c.message_type= row[5] ? row[5] : "text";
-                            c.content     = row[6] ? row[6] : "";
-                            c.embed_json  = row[7] ? row[7] : "";
-                            c.filter.allow_roles    = load_json_arr(row[8]);
-                            c.filter.allow_users    = load_json_arr(row[9]);
-                            c.filter.allow_channels = load_json_arr(row[10]);
-                            c.filter.ignore_roles   = load_json_arr(row[11]);
-                            c.filter.ignore_users   = load_json_arr(row[12]);
-                            c.filter.ignore_channels= load_json_arr(row[13]);
-                            arsp_cache_[c.id] = c;
-                            arsp_server_index_[c.server_id].push_back(c.id);
-                        }
-                        mysql_free_result(res);
-                    }
-                }
-
-                if (mysql_query(mysql_,
-                    "SELECT id,server_id,name,keyword,match_type,emojis,"
-                    "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,ignore_channels "
-                    "FROM autoreacts") == 0) {
-                    MYSQL_RES* res = mysql_store_result(mysql_);
-                    if (res) {
-                        MYSQL_ROW row;
-                        while ((row = mysql_fetch_row(res))) {
-                            AutoreactConfig c;
-                            c.id          = row[0] ? std::stoi(row[0]) : 0;
-                            c.server_id   = row[1] ? row[1] : "";
-                            c.name        = row[2] ? row[2] : "";
-                            c.keyword     = row[3] ? row[3] : "";
-                            c.match_type  = row[4] ? row[4] : "contains";
-                            c.emojis      = row[5] ? row[5] : "";
-                            c.filter.allow_roles    = load_json_arr(row[6]);
-                            c.filter.allow_users    = load_json_arr(row[7]);
-                            c.filter.allow_channels = load_json_arr(row[8]);
-                            c.filter.ignore_roles   = load_json_arr(row[9]);
-                            c.filter.ignore_users   = load_json_arr(row[10]);
-                            c.filter.ignore_channels= load_json_arr(row[11]);
-                            arct_cache_[c.id] = c;
-                            arct_server_index_[c.server_id].push_back(c.id);
-                        }
-                        mysql_free_result(res);
-                    }
-                }
-            }
                 mysql_free_result(res);
             }
         }
@@ -2270,6 +2369,271 @@ public:
             }
         }
         return entries;
+    }
+
+    std::optional<MasqueradeConfig> get_masquerade_config(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(masquerade_cache_mutex_);
+        auto it = masquerade_cache_.find(server_id);
+        if (it != masquerade_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool save_masquerade_config(const MasqueradeConfig& cfg) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_server_id = escape_string(cfg.server_id);
+        std::string val_avatar = cfg.avatar ? "'" + escape_string(*cfg.avatar) + "'" : "NULL";
+        std::string val_colour = cfg.colour ? "'" + escape_string(*cfg.colour) + "'" : "NULL";
+        std::string val_name = cfg.name ? "'" + escape_string(*cfg.name) + "'" : "NULL";
+
+        std::string query = 
+            "INSERT INTO masquerade_configs (server_id, avatar, colour, name) "
+            "VALUES ('" + esc_server_id + "', " + val_avatar + ", " + val_colour + ", " + val_name + ") "
+            "ON DUPLICATE KEY UPDATE avatar = " + val_avatar + ", colour = " + val_colour + ", name = " + val_name;
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save masquerade_config: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(masquerade_cache_mutex_);
+            masquerade_cache_[cfg.server_id] = cfg;
+        }
+
+        return true;
+    }
+
+    bool delete_masquerade_config(const std::string& server_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_server = escape_string(server_id);
+        std::string query = "DELETE FROM masquerade_configs WHERE server_id = '" + esc_server + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to delete masquerade_config: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(masquerade_cache_mutex_);
+            masquerade_cache_.erase(server_id);
+        }
+
+        return true;
+    }
+
+    std::vector<Tupper> get_user_tuppers(const std::string& user_id) {
+        std::shared_lock<std::shared_mutex> lock(tupper_cache_mutex_);
+        auto it = tupper_cache_.find(user_id);
+        if (it != tupper_cache_.end()) {
+            return it->second;
+        }
+        return {};
+    }
+
+    bool add_tupper(const std::string& user_id, const std::string& name, const std::string& avatar_url, const std::string& prefix, const std::string& suffix) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_name = escape_string(name);
+        std::string esc_avatar = escape_string(avatar_url);
+        std::string esc_prefix = escape_string(prefix);
+        std::string esc_suffix = escape_string(suffix);
+
+        std::string query = 
+            "INSERT INTO tuppers (user_id, name, avatar_url, prefix, suffix) "
+            "VALUES ('" + esc_user_id + "', '" + esc_name + "', '" + esc_avatar + "', '" + esc_prefix + "', '" + esc_suffix + "')";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to add tupper: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Fetch inserted ID
+        int insert_id = static_cast<int>(mysql_insert_id(mysql_));
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(tupper_cache_mutex_);
+            Tupper t{insert_id, user_id, name, avatar_url, prefix, suffix};
+            tupper_cache_[user_id].push_back(t);
+        }
+
+        return true;
+    }
+
+    bool remove_tupper(const std::string& user_id, const std::string& name) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_name = escape_string(name);
+
+        std::string query = "DELETE FROM tuppers WHERE user_id = '" + esc_user_id + "' AND name = '" + esc_name + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to remove tupper: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(tupper_cache_mutex_);
+            auto& list = tupper_cache_[user_id];
+            list.erase(std::remove_if(list.begin(), list.end(), [&name](const Tupper& t) {
+                return t.name == name;
+            }), list.end());
+        }
+
+        return true;
+    }
+
+    bool update_tupper_avatar(const std::string& user_id, const std::string& name, const std::string& avatar_url) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_name = escape_string(name);
+        std::string esc_avatar = escape_string(avatar_url);
+
+        std::string query = "UPDATE tuppers SET avatar_url = '" + esc_avatar + "' WHERE user_id = '" + esc_user_id + "' AND name = '" + esc_name + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to update tupper avatar: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(tupper_cache_mutex_);
+            for (auto& t : tupper_cache_[user_id]) {
+                if (t.name == name) {
+                    t.avatar_url = avatar_url;
+                    break;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    bool update_tupper_brackets(const std::string& user_id, const std::string& name, const std::string& prefix, const std::string& suffix) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_name = escape_string(name);
+        std::string esc_prefix = escape_string(prefix);
+        std::string esc_suffix = escape_string(suffix);
+
+        std::string query = "UPDATE tuppers SET prefix = '" + esc_prefix + "', suffix = '" + esc_suffix + "' WHERE user_id = '" + esc_user_id + "' AND name = '" + esc_name + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to update tupper brackets: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(tupper_cache_mutex_);
+            for (auto& t : tupper_cache_[user_id]) {
+                if (t.name == name) {
+                    t.prefix = prefix;
+                    t.suffix = suffix;
+                    break;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    bool rename_tupper(const std::string& user_id, const std::string& old_name, const std::string& new_name) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_old_name = escape_string(old_name);
+        std::string esc_new_name = escape_string(new_name);
+
+        std::string query = "UPDATE tuppers SET name = '" + esc_new_name + "' WHERE user_id = '" + esc_user_id + "' AND name = '" + esc_old_name + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to rename tupper: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(tupper_cache_mutex_);
+            for (auto& t : tupper_cache_[user_id]) {
+                if (t.name == old_name) {
+                    t.name = new_name;
+                    break;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    bool add_tupper_proxy(const std::string& message_id, const std::string& user_id, const std::string& tupper_name) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_msg_id = escape_string(message_id);
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_tupper = escape_string(tupper_name);
+
+        std::string query = 
+            "INSERT INTO tupper_proxies (message_id, user_id, tupper_name) "
+            "VALUES ('" + esc_msg_id + "', '" + esc_user_id + "', '" + esc_tupper + "')";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to add tupper proxy: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        return true;
+    }
+
+    std::optional<TupperProxy> get_tupper_proxy(const std::string& message_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_msg_id = escape_string(message_id);
+        std::string query = "SELECT user_id, tupper_name FROM tupper_proxies WHERE message_id = '" + esc_msg_id + "'";
+
+        if (mysql_query(mysql_, query.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    TupperProxy tp;
+                    tp.message_id = message_id;
+                    tp.user_id = row[0] ? row[0] : "";
+                    tp.tupper_name = row[1] ? row[1] : "";
+                    mysql_free_result(res);
+                    return tp;
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        return std::nullopt;
+    }
+
+    bool delete_tupper_proxy(const std::string& message_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_msg_id = escape_string(message_id);
+        std::string query = "DELETE FROM tupper_proxies WHERE message_id = '" + esc_msg_id + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to delete tupper proxy: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        return true;
     }
 
     std::optional<WelcomeLeaveConfig> get_welcome_leave_config(const std::string& server_id) {

@@ -15,6 +15,7 @@
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 #include <unordered_map>
+#include <ctime>
 
 // Include our Cogs
 #include "cogs/general.h"
@@ -41,6 +42,8 @@
 #include "cogs/afk.h"
 #include "cogs/roblox.h"
 #include "cogs/rss.h"
+#include "cogs/masquerade.h"
+#include "cogs/tupper.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -149,6 +152,29 @@ int main(int argc, char* argv[]) {
         cfg.ws_url = ws_url;
     }
 
+    cfg.masquerade_handler = [](stoatpp::cluster& bot, const std::string& channel_id, stoatpp::models::MessagePayload& payload) {
+        if (!bronx::g_db) return;
+        auto chan_opt = bot.get_channel(channel_id);
+        if (!chan_opt || !chan_opt->server) return;
+        std::string server_id = *(chan_opt->server);
+
+        auto masq_opt = bronx::g_db->get_masquerade_config(server_id);
+        if (masq_opt) {
+            if (!payload.masquerade) {
+                payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
+            }
+            if (masq_opt->name && !payload.masquerade->name) {
+                payload.masquerade->name = masq_opt->name;
+            }
+            if (masq_opt->avatar && !payload.masquerade->avatar) {
+                payload.masquerade->avatar = masq_opt->avatar;
+            }
+            if (masq_opt->colour && !payload.masquerade->colour) {
+                payload.masquerade->colour = masq_opt->colour;
+            }
+        }
+    };
+
     cfg.prefix_resolver = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg) -> std::vector<std::string> {
         std::vector<std::string> prefixes;
         std::string bot_id = bot.current_user().id;
@@ -224,6 +250,8 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::AFKModule>());
     bot.use(std::make_unique<bronx::cogs::RobloxModule>());
     bot.use(std::make_unique<bronx::cogs::RSSModule>());
+    bot.use(std::make_unique<bronx::cogs::MasqueradeModule>());
+    bot.use(std::make_unique<bronx::cogs::TupperModule>());
 
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
@@ -233,7 +261,7 @@ int main(int argc, char* argv[]) {
                   << e.channels.size() << " channels.\n";
         std::cout << "              users in ready payload: " << e.users.size() << "\n";
 
-        std::string status_text = "serving " + std::to_string(e.servers.size()) + " servers!";
+        std::string status_text = "serving " + std::to_string(e.servers.size()) + " servers";
         bot.update_status(status_text, "Online", [](bool success) {
             if (success) {
                 std::cout << "[bronx] successfully set presence status.\n";
@@ -241,6 +269,59 @@ int main(int argc, char* argv[]) {
                 std::cout << "[bronx] failed to set presence status.\n";
             }
         });
+
+        // Shifting status timer (runs every 90 seconds)
+        bot.start_timer([&bot](stoatpp::timer t) {
+            static int status_index = 1;
+            std::string status_text;
+            
+            size_t server_count = bot.get_servers().size();
+            size_t user_count = bot.get_total_member_count();
+            const auto& cmds = bot.get_commands();
+            size_t cmd_count = cmds.size();
+            
+            static bool seeded = false;
+            if (!seeded) {
+                std::srand(static_cast<unsigned int>(std::time(nullptr)));
+                seeded = true;
+            }
+
+            switch (status_index) {
+                case 0:
+                    status_text = "serving " + std::to_string(server_count) + " servers";
+                    break;
+                case 1:
+                    status_text = "watching over " + std::to_string(user_count) + " users";
+                    break;
+                case 2:
+                    status_text = "bronx.siqnole.dev";
+                    break;
+                case 3:
+                    status_text = ".help";
+                    break;
+                case 4: {
+                    std::string rand_cmd = "ping";
+                    if (cmd_count > 0) {
+                        int idx = std::rand() % cmd_count;
+                        rand_cmd = cmds[idx].name;
+                    }
+                    status_text = "try ." + rand_cmd;
+                    break;
+                }
+                case 5:
+                    status_text = "i have " + std::to_string(cmd_count) + " commands !";
+                    break;
+                case 6:
+                    status_text = "made in c++!";
+                    break;
+                default:
+                    status_text = "bronx.siqnole.dev";
+                    break;
+            }
+
+            bot.update_status(status_text, "Online");
+            status_index = (status_index + 1) % 7;
+        }, 90);
 
         // Fix historical DB rows where bot users were mis-tagged as is_bot=FALSE.
         // Revolt only sends "bot": true reliably in the Ready payload; message payloads
@@ -271,6 +352,38 @@ int main(int argc, char* argv[]) {
     bot.on_message([&bot](const stoatpp::events::Message& msg) {
         std::cout << "[bronx event] message in channel " << msg.channel_id
                   << " by " << msg.author.username << ": " << msg.content << "\n";
+
+        // Tupperbox proxying check
+        if (!msg.author.bot && !msg.content.empty() && msg.content[0] != '\\' && bronx::g_db) {
+            std::vector<bronx::Database::Tupper> tuppers = bronx::g_db->get_user_tuppers(msg.author.id);
+            for (const auto& t : tuppers) {
+                bool prefix_match = t.prefix.empty() || (msg.content.rfind(t.prefix, 0) == 0);
+                bool suffix_match = t.suffix.empty() || (msg.content.size() >= t.prefix.size() + t.suffix.size() &&
+                                                          msg.content.substr(msg.content.size() - t.suffix.size()) == t.suffix);
+
+                if (prefix_match && suffix_match) {
+                    std::string inner = msg.content.substr(t.prefix.size(), msg.content.size() - t.prefix.size() - t.suffix.size());
+                    if (!inner.empty()) {
+                        bot.delete_message(msg.channel_id, msg.id);
+
+                        stoatpp::models::MessagePayload payload;
+                        payload.content = inner;
+                        payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
+                        payload.masquerade->name = t.name + " [" + msg.author.username + "]";
+                        payload.masquerade->avatar = t.avatar_url;
+
+                        std::string author_id = msg.author.id;
+                        std::string tupper_name = t.name;
+                        bot.send_message(msg.channel_id, payload, [&bot, author_id, tupper_name](stoatpp::models::Message res, bool success) {
+                            if (success && bronx::g_db) {
+                                bronx::g_db->add_tupper_proxy(res.id, author_id, tupper_name);
+                            }
+                        });
+                        return; // Handled proxy, skip further processing
+                    }
+                }
+            }
+        }
 
         if (!msg.author.bot && !msg.channel_id.empty() && !msg.author.id.empty()) {
             std::lock_guard<std::mutex> lock(g_invoker_mutex);
@@ -363,9 +476,31 @@ int main(int argc, char* argv[]) {
         std::cout << "[bronx event] message deleted! id: " << e.id << " in channel " << e.channel_id << "\n";
     });
 
-    bot.on_message_react([](const stoatpp::events::MessageReact& e) {
+    bot.on_message_react([&bot](const stoatpp::events::MessageReact& e) {
         std::cout << "[bronx event] react: user " << e.user_id 
                   << " added emoji " << e.emoji_id << " to message " << e.id << "\n";
+
+        if (bronx::g_db) {
+            auto proxy_opt = bronx::g_db->get_tupper_proxy(e.id);
+            if (proxy_opt) {
+                if (e.emoji_id == "❌") {
+                    if (e.user_id == proxy_opt->user_id) {
+                        bot.delete_message(e.channel_id, e.id);
+                        bronx::g_db->delete_tupper_proxy(e.id);
+                    }
+                } else if (e.emoji_id == "❓" || e.emoji_id == "❔") {
+                    std::string proxy_user = proxy_opt->user_id;
+                    std::string tupper = proxy_opt->tupper_name;
+                    std::thread([&bot, e, proxy_user, tupper]() {
+                        auto dm_res = bot.rest().open_dm(e.user_id);
+                        if (dm_res.success() && dm_res.body.is_object() && dm_res.body.contains("_id")) {
+                            std::string dm_channel = dm_res.body["_id"].get<std::string>();
+                            bot.send_message(dm_channel, "💬 The message with ID `" + e.id + "` in <#" + e.channel_id + "> was sent by <@" + proxy_user + "> (User ID: `" + proxy_user + "`) using the tupper profile **" + tupper + "**.");
+                        }
+                    }).detach();
+                }
+            }
+        }
     });
 
     bot.on_message_unreact([](const stoatpp::events::MessageUnreact& e) {

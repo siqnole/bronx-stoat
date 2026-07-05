@@ -369,6 +369,39 @@ public:
             "General"
         });
 
+        bot.register_command({
+            "support",
+            {"bug", "feedback", "invite"},
+            "show support server, website, docs, source code, and invite links.",
+            "",
+            {},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling support/invite...\n";
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+
+                std::string desc = "**[Invite](https://stoat.chat/bot/01FZB4GBHDVYY6KT8JH4RBX4KR)** - Invite bronx to your own server! :01KWKZDHDNYYFJYS6BHM5CW2V5:\n\n"
+                                   "**[Website](https://bronx.siqnole.dev)** - Learn more about Bronx\n"
+                                   "**[Documentation](https://bronx.siqnole.dev/docs)** - Commands, features, and setup guides :01KWKZKZBSHJ85GFK12409YR10:\n"
+                                   "**[Support Server](https://stt.gg/crBC07Ea)** - Join our community to get help, report bugs, or submit feedback\n"
+                                   "**[Source Code](https://codeberg.org/siq/bronx-stoat)** - Check out our repository on Codeberg\n\n"
+                                   "--- \n"
+                                   "Thank you for supporting bronx!! :01KWKZKRW2J4HY0S2KRA1PNA04:";
+
+                nlohmann::json embed = {
+                    {"title", "help & support"},
+                    {"description", desc},
+                    {"colour", "#a29bfe"}
+                };
+
+                embed["icon_url"] = msg.author.avatar_url(bot.config().cdn_url);
+
+                payload.embeds.push_back(embed);
+                bot.send_message(msg.channel_id, payload);
+            },
+            "General"
+        });
+
         bot.on_message_react([&bot](const stoatpp::events::MessageReact& e) {
             std::unique_lock<std::mutex> lock(helpers::g_pages_mutex);
             auto it = helpers::g_pages.find(e.id);

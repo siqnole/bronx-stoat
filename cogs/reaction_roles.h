@@ -586,7 +586,7 @@ public:
                                     std::string channel_id = msg.channel_id;
 
                                     if (!existing_rr) {
-                                        auto res = bot.rest().get("/channels/" + msg.channel_id + "/messages/" + target);
+                                        auto res = bot.rest().get_message(msg.channel_id, target);
                                         if (!res.success()) {
                                             bot.send_message(msg.channel_id, "failed to verify message ID `" + target + "` in this channel.");
                                             return;
@@ -1406,7 +1406,7 @@ public:
                             }
                         }
 
-                        auto res = bot.rest().get("/channels/" + msg.channel_id + "/messages/" + actual_msg_id);
+                        auto res = bot.rest().get_message(msg.channel_id, actual_msg_id);
                         if (!res.success()) {
                             bot.send_reply(msg, "failed to download target message. make sure the message ID is correct and in this channel.", true);
                             return;

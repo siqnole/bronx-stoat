@@ -231,7 +231,7 @@ private:
             auto user_opt = bot.get_user(user_id);
             std::optional<stoatpp::models::User> user_rest_holder;
             if (!user_opt) {
-                auto ures = bot.rest().get("/users/" + user_id);
+                auto ures = bot.rest().get_user(user_id);
                 if (ures.success() && ures.body.is_object()) {
                     stoatpp::models::User u;
                     u.id = ures.body.contains("_id") ? ures.body["_id"].get<std::string>() : user_id;
@@ -330,8 +330,7 @@ private:
                         }
 
                         // 1. Bulk edit server role positions route
-                        nlohmann::json rank_body = {{"ranks", rank_order}};
-                        auto res1 = bot.rest().patch("/servers/" + server_id + "/roles/ranks", rank_body);
+                        auto res1 = bot.rest().edit_role_ranks(server_id, rank_order);
                         std::cout << "[bronx debug] patch /roles/ranks status: " << res1.status_code << ", success: " << (res1.success() ? "yes" : "no") << ", body: " << res1.body.dump() << "\n";
                         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
@@ -339,7 +338,7 @@ private:
                         if (found_member) {
                             nlohmann::json ind_body;
                             ind_body["rank"] = member_rank - 1;
-                            auto res2 = bot.rest().patch("/servers/" + server_id + "/roles/" + user_role_id, ind_body);
+                            auto res2 = bot.rest().edit_role(server_id, user_role_id, ind_body);
                             std::cout << "[bronx debug] patch /roles/" << user_role_id << " status: " << res2.status_code << ", success: " << (res2.success() ? "yes" : "no") << ", body: " << res2.body.dump() << "\n";
                             std::this_thread::sleep_for(std::chrono::milliseconds(50));
                         }
@@ -373,7 +372,7 @@ private:
                 auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
                 std::optional<stoatpp::models::Member> bot_rest_member;
                 if (!bot_member_opt) {
-                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                    auto res = bot.rest().get_server_member(server_id, bot.current_user().id);
                     if (res.success() && res.body.is_object()) {
                         bot_rest_member = stoatpp::models::Member::from_json(res.body);
                         bot_member_opt = bot_rest_member;
@@ -408,7 +407,7 @@ private:
                 auto target_member_opt = bot.get_member(server_id, uid);
                 std::optional<stoatpp::models::Member> target_rest_member;
                 if (!target_member_opt) {
-                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + uid);
+                    auto res = bot.rest().get_server_member(server_id, uid);
                     if (res.success() && res.body.is_object()) {
                         target_rest_member = stoatpp::models::Member::from_json(res.body);
                         target_member_opt = target_rest_member;
@@ -418,7 +417,7 @@ private:
                 auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
                 std::optional<stoatpp::models::Member> bot_rest_member;
                 if (!bot_member_opt) {
-                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                    auto res = bot.rest().get_server_member(server_id, bot.current_user().id);
                     if (res.success() && res.body.is_object()) {
                         bot_rest_member = stoatpp::models::Member::from_json(res.body);
                         bot_member_opt = bot_rest_member;
@@ -456,7 +455,7 @@ private:
                             auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
                             std::optional<stoatpp::models::Member> bot_rest_member;
                             if (!bot_member_opt) {
-                                auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                                auto res = bot.rest().get_server_member(server_id, bot.current_user().id);
                                 if (res.success() && res.body.is_object()) {
                                     bot_rest_member = stoatpp::models::Member::from_json(res.body);
                                     bot_member_opt = bot_rest_member;
@@ -486,7 +485,7 @@ private:
             // User-level overrides are unreliable on Revolt; role-level ones work correctly.
             {
                 std::string bot_id = bot.current_user().id;
-                auto bot_mbr = bot.rest().get("/servers/" + server_id + "/members/" + bot_id);
+                auto bot_mbr = bot.rest().get_server_member(server_id, bot_id);
                 int64_t bot_allow = stoatpp::permissions::ViewChannel |
                                     stoatpp::permissions::SendMessages |
                                     stoatpp::permissions::EmbedLinks |
@@ -511,7 +510,7 @@ private:
                 auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
                 std::optional<stoatpp::models::Member> bot_rest_member;
                 if (!bot_member_opt) {
-                    auto res = bot.rest().get("/servers/" + server_id + "/members/" + bot.current_user().id);
+                    auto res = bot.rest().get_server_member(server_id, bot.current_user().id);
                     if (res.success() && res.body.is_object()) {
                         bot_rest_member = stoatpp::models::Member::from_json(res.body);
                         bot_member_opt = bot_rest_member;
@@ -603,7 +602,7 @@ private:
 
         std::thread([&bot, ticket, channel_id]() {
             // Delete custom user-role
-            auto ures = bot.rest().get("/users/" + ticket.user_id);
+            auto ures = bot.rest().get_user(ticket.user_id);
             if (ures.success() && ures.body.is_object()) {
                 std::string username = ures.body.value("username", "user");
                 std::string target_role_name = "ticket-" + username + "-" + std::to_string(ticket.ticket_number);

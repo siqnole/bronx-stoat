@@ -12,7 +12,7 @@ class WelcomeLeaveModule : public stoatpp::bot_module {
 private:
     static void send_verbose_test_message(stoatpp::cluster& bot, const std::string& target_channel, const stoatpp::models::MessagePayload& payload, const std::string& cmd_channel, const std::string& success_msg, const std::string& error_prefix) {
         std::thread([&bot, target_channel, payload, cmd_channel, success_msg, error_prefix]() {
-            auto res = bot.rest().post("/channels/" + target_channel + "/messages", payload.to_json());
+            auto res = bot.rest().create_message(target_channel, payload);
             if (res.success()) {
                 bot.send_message(cmd_channel, success_msg);
             } else {

@@ -216,7 +216,7 @@ inline void resolve_user(stoatpp::cluster& bot, const std::string& server_id, co
                 }
             }
 
-            auto search_res = bot.rest().get("/users/search?query=" + search_username);
+            auto search_res = bot.rest().search_users(search_username);
             if (search_res.success() && search_res.body.is_array()) {
                 for (const auto& u : search_res.body) {
                     auto user = stoatpp::models::User::from_json(u);
@@ -238,6 +238,22 @@ inline void resolve_user(stoatpp::cluster& bot, const std::string& server_id, co
             callback({}, {}, false);
         }
     }).detach();
+}
+
+inline std::string upload_avatar(stoatpp::cluster& bot, const std::string& input_url) {
+    if (input_url.empty()) return "";
+    if (input_url.rfind(bot.config().autumn_url, 0) == 0) {
+        return input_url;
+    }
+    try {
+        std::string file_id = bot.rest().upload_from_url(input_url);
+        if (!file_id.empty()) {
+            return bot.config().autumn_url + "/attachments/" + file_id;
+        }
+    } catch (...) {
+        // Fall back to original url if download/upload fails
+    }
+    return input_url;
 }
 
 } // namespace bronx::helpers

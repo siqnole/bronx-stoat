@@ -334,7 +334,7 @@ private:
         }
 
         std::thread([&bot, target_channel_id, payload, callback]() {
-            auto res = bot.rest().post("/channels/" + target_channel_id + "/messages", payload.to_json());
+            auto res = bot.rest().create_message(target_channel_id, payload);
             if (res.success()) {
                 if (callback) callback(true, "");
             } else {
