@@ -101,6 +101,14 @@ public:
         std::optional<std::string> avatar;
         std::optional<std::string> colour;
         std::optional<std::string> name;
+        bool disabled = false;
+    };
+
+    struct UserMasquerade {
+        std::string user_id;
+        std::optional<std::string> avatar;
+        std::optional<std::string> colour;
+        std::optional<std::string> name;
     };
 
     struct Tupper {
@@ -241,6 +249,27 @@ public:
         std::string roblox_username;
     };
 
+    // ── Social Subscriptions ────────────────────────────────────────────────
+    struct SocialSubscription {
+        int id = 0;
+        std::string server_id;
+        std::string platform;       // "youtube" | "twitch" | "tiktok" | "twitter" | "bluesky"
+        std::string channel_handle; // e.g. "@MrBeast", "xqc", "did:plc:..."
+        std::string channels;       // comma-separated Revolt channel IDs to post to
+        std::string events;         // comma-separated: "live","vod","post" etc.
+        uint64_t last_checked = 0;
+        std::string seen_items;     // JSON array of already-posted IDs
+    };
+
+    // Per-event embed config (same flexibility as welcome/logging embeds)
+    struct SocialEmbedConfig {
+        int sub_id = 0;             // FK → social_subscriptions.id
+        std::string event_type;     // "live" | "vod" | "post" | "clip"
+        std::string message_type = "embed"; // "text" | "embed"
+        std::string content;        // plain-text prefix / mention
+        std::string embed_json;     // JSON for the embed builder
+    };
+
 private:
     MYSQL* mysql_ = nullptr;
     std::unordered_map<std::string, UserAFK> user_afk_cache_;
@@ -318,6 +347,15 @@ private:
     std::unordered_map<std::string, std::vector<int>> rss_server_index_;
     std::shared_mutex rss_cache_mutex_;
 
+    // id -> SocialSubscription
+    std::unordered_map<int, SocialSubscription> social_sub_cache_;
+    std::unordered_map<std::string, std::vector<int>> social_sub_server_index_;
+    std::shared_mutex social_sub_cache_mutex_;
+
+    // sub_id:event_type -> SocialEmbedConfig
+    std::unordered_map<std::string, SocialEmbedConfig> social_embed_cache_;
+    std::shared_mutex social_embed_cache_mutex_;
+
     // id -> AutoresponderConfig
     std::unordered_map<int, AutoresponderConfig> arsp_cache_;
     std::unordered_map<std::string, std::vector<int>> arsp_server_index_;
@@ -347,6 +385,9 @@ private:
 
     std::unordered_map<std::string, MasqueradeConfig> masquerade_cache_;
     std::shared_mutex masquerade_cache_mutex_;
+
+    std::unordered_map<std::string, UserMasquerade> user_masq_cache_;
+    std::shared_mutex user_masq_cache_mutex_;
 
     std::unordered_map<std::string, std::vector<Tupper>> tupper_cache_;
     std::shared_mutex tupper_cache_mutex_;
@@ -704,10 +745,26 @@ public:
             "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
             "  avatar VARCHAR(256) DEFAULT NULL,"
             "  colour VARCHAR(128) DEFAULT NULL,"
-            "  name VARCHAR(32) DEFAULT NULL"
+            "  name VARCHAR(32) DEFAULT NULL,"
+            "  disabled TINYINT(1) NOT NULL DEFAULT 0"
             ")";
         if (mysql_query(mysql_, create_masq.c_str())) {
             std::cerr << "[bronx db] failed to create table 'masquerade_configs': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        // Migration: add disabled column if it doesn't exist yet
+        mysql_query(mysql_, "ALTER TABLE masquerade_configs ADD COLUMN IF NOT EXISTS disabled TINYINT(1) NOT NULL DEFAULT 0");
+
+        // Create Table user_masquerades
+        std::string create_user_masq =
+            "CREATE TABLE IF NOT EXISTS user_masquerades ("
+            "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  avatar  VARCHAR(256) DEFAULT NULL,"
+            "  colour  VARCHAR(128) DEFAULT NULL,"
+            "  name    VARCHAR(32)  DEFAULT NULL"
+            ")";
+        if (mysql_query(mysql_, create_user_masq.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'user_masquerades': " << mysql_error(mysql_) << "\n";
             return false;
         }
 
@@ -1014,6 +1071,31 @@ public:
         }
         // Migration: add check_interval column to rss_feeds if it doesn't exist yet
         mysql_query(mysql_, "ALTER TABLE rss_feeds ADD COLUMN IF NOT EXISTS check_interval INT UNSIGNED NOT NULL DEFAULT 1200");
+
+        // Create Table social_subscriptions
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS social_subscriptions ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  platform VARCHAR(20) NOT NULL,"
+            "  channel_handle VARCHAR(256) NOT NULL,"
+            "  channels TEXT NOT NULL DEFAULT '',"
+            "  events VARCHAR(256) NOT NULL DEFAULT 'live,vod,post',"
+            "  last_checked BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+            "  seen_items TEXT DEFAULT NULL,"
+            "  INDEX idx_social_server (server_id)"
+            ")");
+
+        // Create Table social_embed_configs
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS social_embed_configs ("
+            "  sub_id INT NOT NULL,"
+            "  event_type VARCHAR(20) NOT NULL,"
+            "  message_type VARCHAR(10) NOT NULL DEFAULT 'embed',"
+            "  content TEXT DEFAULT NULL,"
+            "  embed_json JSON DEFAULT NULL,"
+            "  PRIMARY KEY (sub_id, event_type)"
+            ")");
 
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes, default_enabled FROM prefixes";
@@ -1351,6 +1433,49 @@ public:
             }
         }
 
+        // Load social_subscriptions
+        if (mysql_query(mysql_, "SELECT id,server_id,platform,channel_handle,channels,events,last_checked,COALESCE(seen_items,'[]') FROM social_subscriptions") == 0) {
+            MYSQL_RES* ss_res = mysql_store_result(mysql_);
+            if (ss_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> ss_lock(social_sub_cache_mutex_);
+                while ((row = mysql_fetch_row(ss_res))) {
+                    SocialSubscription sub;
+                    sub.id             = row[0] ? std::stoi(row[0]) : 0;
+                    sub.server_id      = row[1] ? row[1] : "";
+                    sub.platform       = row[2] ? row[2] : "";
+                    sub.channel_handle = row[3] ? row[3] : "";
+                    sub.channels       = row[4] ? row[4] : "";
+                    sub.events         = row[5] ? row[5] : "live,vod,post";
+                    sub.last_checked   = row[6] ? std::stoull(row[6]) : 0;
+                    sub.seen_items     = row[7] ? row[7] : "[]";
+                    social_sub_cache_[sub.id] = sub;
+                    social_sub_server_index_[sub.server_id].push_back(sub.id);
+                }
+                mysql_free_result(ss_res);
+            }
+        }
+
+        // Load social_embed_configs
+        if (mysql_query(mysql_, "SELECT sub_id,event_type,message_type,COALESCE(content,''),COALESCE(embed_json,'') FROM social_embed_configs") == 0) {
+            MYSQL_RES* sec_res = mysql_store_result(mysql_);
+            if (sec_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> sec_lock(social_embed_cache_mutex_);
+                while ((row = mysql_fetch_row(sec_res))) {
+                    SocialEmbedConfig sec;
+                    sec.sub_id       = row[0] ? std::stoi(row[0]) : 0;
+                    sec.event_type   = row[1] ? row[1] : "";
+                    sec.message_type = row[2] ? row[2] : "embed";
+                    sec.content      = row[3] ? row[3] : "";
+                    sec.embed_json   = row[4] ? row[4] : "";
+                    std::string key  = std::to_string(sec.sub_id) + ":" + sec.event_type;
+                    social_embed_cache_[key] = sec;
+                }
+                mysql_free_result(sec_res);
+            }
+        }
+
         // Load ticket_configs
         std::string select_tc = "SELECT server_id, name, modal_channel_id, modal_message_id, modal_content, modal_embed_json, "
                                 "reaction_emoji, input_creation_enabled, naming_scheme, category_id, "
@@ -1532,7 +1657,7 @@ public:
         }
 
         // Load masquerade_configs
-        std::string select_masq = "SELECT server_id, avatar, colour, name FROM masquerade_configs";
+        std::string select_masq = "SELECT server_id, avatar, colour, name, disabled FROM masquerade_configs";
         if (mysql_query(mysql_, select_masq.c_str()) == 0) {
             MYSQL_RES* masq_res = mysql_store_result(mysql_);
             if (masq_res) {
@@ -1545,9 +1670,30 @@ public:
                     if (row[1]) cfg.avatar = row[1];
                     if (row[2]) cfg.colour = row[2];
                     if (row[3]) cfg.name = row[3];
+                    cfg.disabled = row[4] && std::string(row[4]) == "1";
                     masquerade_cache_[s_id] = cfg;
                 }
                 mysql_free_result(masq_res);
+            }
+        }
+
+        // Load user_masquerades
+        std::string select_user_masq = "SELECT user_id, avatar, colour, name FROM user_masquerades";
+        if (mysql_query(mysql_, select_user_masq.c_str()) == 0) {
+            MYSQL_RES* um_res = mysql_store_result(mysql_);
+            if (um_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> um_lock(user_masq_cache_mutex_);
+                while ((row = mysql_fetch_row(um_res))) {
+                    std::string u_id = row[0] ? row[0] : "";
+                    UserMasquerade um;
+                    um.user_id = u_id;
+                    if (row[1]) um.avatar = row[1];
+                    if (row[2]) um.colour = row[2];
+                    if (row[3]) um.name = row[3];
+                    user_masq_cache_[u_id] = um;
+                }
+                mysql_free_result(um_res);
             }
         }
 
@@ -1589,6 +1735,7 @@ public:
                   << "           loaded " << ar_cache_.size() << " antiraid configurations.\n"
                   << "           loaded " << rm_cache_.size() << " recurring messages.\n"
                   << "           loaded " << rss_cache_.size() << " RSS feeds.\n"
+                  << "           loaded " << social_sub_cache_.size() << " social subscriptions.\n"
                   << "           loaded " << ticket_config_cache_.size() << " ticket configurations.\n"
                   << "           loaded " << ticket_cache_.size() << " active tickets.\n"
                   << "           loaded " << user_afk_cache_.size() << " user afk configurations.\n"
@@ -2396,11 +2543,12 @@ public:
         std::string val_avatar = cfg.avatar ? "'" + escape_string(*cfg.avatar) + "'" : "NULL";
         std::string val_colour = cfg.colour ? "'" + escape_string(*cfg.colour) + "'" : "NULL";
         std::string val_name = cfg.name ? "'" + escape_string(*cfg.name) + "'" : "NULL";
+        std::string val_disabled = cfg.disabled ? "1" : "0";
 
         std::string query = 
-            "INSERT INTO masquerade_configs (server_id, avatar, colour, name) "
-            "VALUES ('" + esc_server_id + "', " + val_avatar + ", " + val_colour + ", " + val_name + ") "
-            "ON DUPLICATE KEY UPDATE avatar = " + val_avatar + ", colour = " + val_colour + ", name = " + val_name;
+            "INSERT INTO masquerade_configs (server_id, avatar, colour, name, disabled) "
+            "VALUES ('" + esc_server_id + "', " + val_avatar + ", " + val_colour + ", " + val_name + ", " + val_disabled + ") "
+            "ON DUPLICATE KEY UPDATE avatar = " + val_avatar + ", colour = " + val_colour + ", name = " + val_name + ", disabled = " + val_disabled;
 
         if (mysql_query(mysql_, query.c_str())) {
             std::cerr << "[bronx db] failed to save masquerade_config: " << mysql_error(mysql_) << "\n";
@@ -2433,6 +2581,58 @@ public:
             masquerade_cache_.erase(server_id);
         }
 
+        return true;
+    }
+
+    std::optional<UserMasquerade> get_user_masquerade(const std::string& user_id) {
+        std::shared_lock<std::shared_mutex> lock(user_masq_cache_mutex_);
+        auto it = user_masq_cache_.find(user_id);
+        if (it != user_masq_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool save_user_masquerade(const UserMasquerade& um) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_uid = escape_string(um.user_id);
+        std::string val_avatar = um.avatar ? "'" + escape_string(*um.avatar) + "'" : "NULL";
+        std::string val_colour = um.colour ? "'" + escape_string(*um.colour) + "'" : "NULL";
+        std::string val_name   = um.name   ? "'" + escape_string(*um.name)   + "'" : "NULL";
+
+        std::string query =
+            "INSERT INTO user_masquerades (user_id, avatar, colour, name) "
+            "VALUES ('" + esc_uid + "', " + val_avatar + ", " + val_colour + ", " + val_name + ") "
+            "ON DUPLICATE KEY UPDATE avatar = " + val_avatar + ", colour = " + val_colour + ", name = " + val_name;
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to save user_masquerade: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(user_masq_cache_mutex_);
+            user_masq_cache_[um.user_id] = um;
+        }
+        return true;
+    }
+
+    bool delete_user_masquerade(const std::string& user_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+        std::string esc_uid = escape_string(user_id);
+        std::string query = "DELETE FROM user_masquerades WHERE user_id = '" + esc_uid + "'";
+
+        if (mysql_query(mysql_, query.c_str())) {
+            std::cerr << "[bronx db] failed to delete user_masquerade: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(user_masq_cache_mutex_);
+            user_masq_cache_.erase(user_id);
+        }
         return true;
     }
 
@@ -4534,6 +4734,177 @@ public:
         {
             std::lock_guard<std::shared_mutex> lock(roblox_links_cache_mutex_);
             roblox_links_cache_.erase(user_id);
+        }
+        return true;
+    }
+
+    // ── Social Subscriptions CRUD ────────────────────────────────────────────
+
+    std::vector<SocialSubscription> get_all_social_subs() {
+        std::shared_lock<std::shared_mutex> lock(social_sub_cache_mutex_);
+        std::vector<SocialSubscription> out;
+        out.reserve(social_sub_cache_.size());
+        for (const auto& [id, sub] : social_sub_cache_) out.push_back(sub);
+        return out;
+    }
+
+    std::vector<SocialSubscription> get_social_subs_for_server(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(social_sub_cache_mutex_);
+        std::vector<SocialSubscription> out;
+        auto it = social_sub_server_index_.find(server_id);
+        if (it == social_sub_server_index_.end()) return out;
+        for (int id : it->second) {
+            auto fit = social_sub_cache_.find(id);
+            if (fit != social_sub_cache_.end()) out.push_back(fit->second);
+        }
+        return out;
+    }
+
+    std::optional<SocialSubscription> get_social_sub_by_id(int id, const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(social_sub_cache_mutex_);
+        auto it = social_sub_cache_.find(id);
+        if (it != social_sub_cache_.end() && it->second.server_id == server_id)
+            return it->second;
+        return std::nullopt;
+    }
+
+    bool add_social_sub(SocialSubscription& sub) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q =
+            "INSERT INTO social_subscriptions (server_id,platform,channel_handle,channels,events,last_checked,seen_items) VALUES ('"
+            + escape_string(sub.server_id) + "','"
+            + escape_string(sub.platform) + "','"
+            + escape_string(sub.channel_handle) + "','"
+            + escape_string(sub.channels) + "','"
+            + escape_string(sub.events) + "',0,'[]')";
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] add_social_sub failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        sub.id = static_cast<int>(mysql_insert_id(mysql_));
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(social_sub_cache_mutex_);
+            social_sub_cache_[sub.id] = sub;
+            social_sub_server_index_[sub.server_id].push_back(sub.id);
+        }
+        return true;
+    }
+
+    bool remove_social_sub(int id, const std::string& server_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "DELETE FROM social_subscriptions WHERE id=" + std::to_string(id)
+                        + " AND server_id='" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] remove_social_sub failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(social_sub_cache_mutex_);
+            social_sub_cache_.erase(id);
+            auto& idx = social_sub_server_index_[server_id];
+            idx.erase(std::remove(idx.begin(), idx.end(), id), idx.end());
+        }
+        // Also remove its embed configs
+        {
+            std::lock_guard<std::mutex> dbl(db_mutex_); // already held – inner query
+        }
+        mysql_query(mysql_, ("DELETE FROM social_embed_configs WHERE sub_id=" + std::to_string(id)).c_str());
+        {
+            std::lock_guard<std::shared_mutex> sec_lock(social_embed_cache_mutex_);
+            for (const std::string ev : {"live","vod","post","clip"}) {
+                social_embed_cache_.erase(std::to_string(id) + ":" + ev);
+            }
+        }
+        return true;
+    }
+
+    bool update_social_sub_channels(int id, const std::string& server_id, const std::string& channels) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "UPDATE social_subscriptions SET channels='" + escape_string(channels)
+                        + "' WHERE id=" + std::to_string(id)
+                        + " AND server_id='" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, q.c_str())) return false;
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(social_sub_cache_mutex_);
+            auto it = social_sub_cache_.find(id);
+            if (it != social_sub_cache_.end()) it->second.channels = channels;
+        }
+        return true;
+    }
+
+    bool update_social_sub_events(int id, const std::string& server_id, const std::string& events) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "UPDATE social_subscriptions SET events='" + escape_string(events)
+                        + "' WHERE id=" + std::to_string(id)
+                        + " AND server_id='" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, q.c_str())) return false;
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(social_sub_cache_mutex_);
+            auto it = social_sub_cache_.find(id);
+            if (it != social_sub_cache_.end()) it->second.events = events;
+        }
+        return true;
+    }
+
+    bool update_social_sub_check(int id, uint64_t last_checked, const std::string& seen_items) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "UPDATE social_subscriptions SET last_checked=" + std::to_string(last_checked)
+                        + ", seen_items='" + escape_string(seen_items)
+                        + "' WHERE id=" + std::to_string(id);
+        if (mysql_query(mysql_, q.c_str())) return false;
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(social_sub_cache_mutex_);
+            auto it = social_sub_cache_.find(id);
+            if (it != social_sub_cache_.end()) {
+                it->second.last_checked = last_checked;
+                it->second.seen_items   = seen_items;
+            }
+        }
+        return true;
+    }
+
+    // ── Social Embed Config CRUD ─────────────────────────────────────────────
+
+    std::optional<SocialEmbedConfig> get_social_embed(int sub_id, const std::string& event_type) {
+        std::shared_lock<std::shared_mutex> lock(social_embed_cache_mutex_);
+        std::string key = std::to_string(sub_id) + ":" + event_type;
+        auto it = social_embed_cache_.find(key);
+        if (it != social_embed_cache_.end()) return it->second;
+        return std::nullopt;
+    }
+
+    bool save_social_embed(const SocialEmbedConfig& cfg) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q =
+            "INSERT INTO social_embed_configs (sub_id,event_type,message_type,content,embed_json) VALUES ("
+            + std::to_string(cfg.sub_id) + ",'" + escape_string(cfg.event_type) + "','"
+            + escape_string(cfg.message_type) + "','"
+            + escape_string(cfg.content) + "','"
+            + escape_string(cfg.embed_json) + "') "
+            "ON DUPLICATE KEY UPDATE "
+            "message_type='" + escape_string(cfg.message_type) + "', "
+            "content='"      + escape_string(cfg.content)       + "', "
+            "embed_json='"   + escape_string(cfg.embed_json)    + "'";
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] save_social_embed failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        {
+            std::lock_guard<std::shared_mutex> lock(social_embed_cache_mutex_);
+            std::string key = std::to_string(cfg.sub_id) + ":" + cfg.event_type;
+            social_embed_cache_[key] = cfg;
+        }
+        return true;
+    }
+
+    bool delete_social_embed(int sub_id, const std::string& event_type) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "DELETE FROM social_embed_configs WHERE sub_id=" + std::to_string(sub_id)
+                        + " AND event_type='" + escape_string(event_type) + "'";
+        if (mysql_query(mysql_, q.c_str())) return false;
+        {
+            std::lock_guard<std::shared_mutex> lock(social_embed_cache_mutex_);
+            social_embed_cache_.erase(std::to_string(sub_id) + ":" + event_type);
         }
         return true;
     }

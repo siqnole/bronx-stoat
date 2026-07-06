@@ -12,6 +12,7 @@
 #include "stoatpp/cluster.h"
 #include "stoatpp/bot_module.h"
 #include "stoatpp/utils/ulid.h"
+#include "stoatpp/models/permissions.h"
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 #include <unordered_map>
@@ -89,6 +90,85 @@ static std::string g_last_active_channel;
 static std::mutex g_handling_mutex;
 static std::unordered_set<std::string> g_handling_channels;
 
+bool bot_has_masquerade_permission(stoatpp::cluster& bot, const std::string& channel_id) {
+    auto chan_opt = bot.get_channel(channel_id);
+    if (!chan_opt || !chan_opt->server) return true;
+
+    std::string server_id = *(chan_opt->server);
+    auto server_opt = bot.get_server(server_id);
+    if (!server_opt) return true;
+
+    if (server_opt->owner == bot.current_user().id) {
+        return true;
+    }
+
+    auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
+
+    // 1. Server-level permissions
+    int64_t allowed = 0;
+    if (server_opt->raw.contains("default_permissions")) {
+        const auto& dp = server_opt->raw["default_permissions"];
+        if (dp.is_number()) {
+            allowed |= dp.get<int64_t>();
+        } else if (dp.is_object() && dp.contains("server") && dp["server"].is_number()) {
+            allowed |= dp["server"].get<int64_t>();
+        }
+    }
+    if (bot_member_opt) {
+        for (const auto& role_id : bot_member_opt->roles) {
+            for (const auto& r : server_opt->roles) {
+                if (r.id == role_id) {
+                    allowed |= r.allowed_permissions();
+                }
+            }
+        }
+    }
+
+    // 2. Channel default permissions overrides
+    int64_t ch_allow = 0;
+    int64_t ch_deny = 0;
+    if (chan_opt->default_permissions) {
+        const auto& dp = *(chan_opt->default_permissions);
+        if (dp.is_number()) {
+            allowed = dp.get<int64_t>();
+        } else if (dp.is_object()) {
+            if (dp.contains("a") && dp["a"].is_number()) ch_allow = dp["a"].get<int64_t>();
+            else if (dp.contains("allow") && dp["allow"].is_number()) ch_allow = dp["allow"].get<int64_t>();
+            
+            if (dp.contains("d") && dp["d"].is_number()) ch_deny = dp["d"].get<int64_t>();
+            else if (dp.contains("deny") && dp["deny"].is_number()) ch_deny = dp["deny"].get<int64_t>();
+            
+            allowed = (allowed & ~ch_deny) | ch_allow;
+        }
+    }
+
+    // 3. Channel role overrides
+    if (bot_member_opt && chan_opt->role_permissions && chan_opt->role_permissions->is_object()) {
+        const auto& rp = *(chan_opt->role_permissions);
+        int64_t roles_allow = 0;
+        int64_t roles_deny = 0;
+        for (const auto& role_id : bot_member_opt->roles) {
+            if (rp.contains(role_id) && rp[role_id].is_object()) {
+                const auto& override_obj = rp[role_id];
+                if (override_obj.contains("a") && override_obj["a"].is_number()) {
+                    roles_allow |= override_obj["a"].get<int64_t>();
+                } else if (override_obj.contains("allow") && override_obj["allow"].is_number()) {
+                    roles_allow |= override_obj["allow"].get<int64_t>();
+                }
+                
+                if (override_obj.contains("d") && override_obj["d"].is_number()) {
+                    roles_deny |= override_obj["d"].get<int64_t>();
+                } else if (override_obj.contains("deny") && override_obj["deny"].is_number()) {
+                    roles_deny |= override_obj["deny"].get<int64_t>();
+                }
+            }
+        }
+        allowed = (allowed & ~roles_deny) | roles_allow;
+    }
+
+    return (allowed & stoatpp::permissions::Masquerade) == stoatpp::permissions::Masquerade;
+}
+
 int main(int argc, char* argv[]) {
     load_env();
 
@@ -158,20 +238,56 @@ int main(int argc, char* argv[]) {
         if (!chan_opt || !chan_opt->server) return;
         std::string server_id = *(chan_opt->server);
 
-        auto masq_opt = bronx::g_db->get_masquerade_config(server_id);
-        if (masq_opt) {
+        // Check if the bot actually has the Masquerade permission in this channel.
+        // If not, discard masquerade to prevent a 403 HTTP error when sending messages.
+        if (!bot_has_masquerade_permission(bot, channel_id)) {
+            payload.masquerade = std::nullopt;
+            return;
+        }
+
+        // 1. Check server config — if masquerades are disabled for this server, apply nothing
+        auto server_cfg = bronx::g_db->get_masquerade_config(server_id);
+        if (server_cfg && server_cfg->disabled) {
+            payload.masquerade = std::nullopt;
+            return;
+        }
+
+        // 2. Look up per-user masquerade — the invoker is tracked per-channel
+        std::string invoker_id;
+        {
+            std::lock_guard<std::mutex> lock(g_invoker_mutex);
+            auto it = g_channel_last_invoker.find(channel_id);
+            if (it != g_channel_last_invoker.end()) invoker_id = it->second;
+        }
+
+        if (!invoker_id.empty()) {
+            auto user_masq = bronx::g_db->get_user_masquerade(invoker_id);
+            if (user_masq) {
+                if (!payload.masquerade) {
+                    payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
+                }
+                if (user_masq->name   && !payload.masquerade->name)   payload.masquerade->name   = user_masq->name;
+                if (user_masq->avatar && !payload.masquerade->avatar) payload.masquerade->avatar = user_masq->avatar;
+                if (user_masq->colour && !payload.masquerade->colour) payload.masquerade->colour = user_masq->colour;
+            }
+        }
+
+        // 3. Apply server override on top (field-by-field: server beats user)
+        if (server_cfg) {
             if (!payload.masquerade) {
                 payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
             }
-            if (masq_opt->name && !payload.masquerade->name) {
-                payload.masquerade->name = masq_opt->name;
-            }
-            if (masq_opt->avatar && !payload.masquerade->avatar) {
-                payload.masquerade->avatar = masq_opt->avatar;
-            }
-            if (masq_opt->colour && !payload.masquerade->colour) {
-                payload.masquerade->colour = masq_opt->colour;
-            }
+            if (server_cfg->name)   payload.masquerade->name   = server_cfg->name;
+            if (server_cfg->avatar) payload.masquerade->avatar = server_cfg->avatar;
+            if (server_cfg->colour) payload.masquerade->colour = server_cfg->colour;
+        }
+
+        // 4. If payload.masquerade is still empty (no fields set), clear it to avoid sending empty object
+        if (payload.masquerade &&
+            !payload.masquerade->name &&
+            !payload.masquerade->avatar &&
+            !payload.masquerade->colour) {
+            payload.masquerade = std::nullopt;
         }
     };
 

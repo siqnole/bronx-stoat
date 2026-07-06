@@ -295,6 +295,7 @@ public:
                         "• `" + pfx + "count role <@role> [time]` — role to give on a failed count (e.g. `30m`).\n"
                         "• `" + pfx + "count passive` — toggle passive mode (delete bad msgs silently instead of breaking).\n"
                         "• `" + pfx + "count leaderboard` — see who has counted the most.\n"
+                        "• `" + pfx + "count stats [@user]` — show counting stats for a user.\n"
                         "• `" + pfx + "count config` — show current settings.\n";
 
                     if (cfg_opt) {
@@ -362,6 +363,54 @@ public:
                     embed["description"] = desc;
                     payload.embeds.push_back(embed);
                     bot.send_message(msg.channel_id, payload);
+                    return;
+                }
+
+                // ── stats (no perms needed) ──────────────────────────────────
+                if (sub == "stats" || sub == "stat") {
+                    std::string target_user_id = msg.author.id;
+                    if (args.size() >= 2) {
+                        std::string query = args[1];
+                        helpers::resolve_user(bot, msg.server_id, query, [msg, &bot](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success_resolve) {
+                            if (!success_resolve) {
+                                bot.send_message(msg.channel_id, "⚠️ User not found.");
+                                return;
+                            }
+                            auto stats = g_db->get_counting_stats(msg.server_id, target_user.id);
+                            stoatpp::models::MessagePayload payload;
+                            nlohmann::json embed = nlohmann::json::object();
+                            embed["title"] = target_user.username + "'s Counting Stats";
+                            embed["colour"] = "#6C5CE7";
+                            
+                            std::string desc = "📊 **Stats for** <@" + target_user.id + ">:\n\n";
+                            desc += "• Correct counts: **" + std::to_string(stats.correct_counts) + "**\n";
+                            desc += "• Failed counts: **" + std::to_string(stats.failed_counts) + "**\n";
+                            uint64_t total = stats.correct_counts + stats.failed_counts;
+                            uint64_t accuracy = total > 0 ? (stats.correct_counts * 100) / total : 0;
+                            desc += "• Accuracy: **" + std::to_string(accuracy) + "%**";
+                            
+                            embed["description"] = desc;
+                            payload.embeds.push_back(embed);
+                            bot.send_message(msg.channel_id, payload);
+                        });
+                    } else {
+                        auto stats = g_db->get_counting_stats(msg.server_id, target_user_id);
+                        stoatpp::models::MessagePayload payload;
+                        nlohmann::json embed = nlohmann::json::object();
+                        embed["title"] = "Your Counting Stats";
+                        embed["colour"] = "#6C5CE7";
+                        
+                        std::string desc = "📊 **Stats for** <@" + target_user_id + ">:\n\n";
+                        desc += "• Correct counts: **" + std::to_string(stats.correct_counts) + "**\n";
+                        desc += "• Failed counts: **" + std::to_string(stats.failed_counts) + "**\n";
+                        uint64_t total = stats.correct_counts + stats.failed_counts;
+                        uint64_t accuracy = total > 0 ? (stats.correct_counts * 100) / total : 0;
+                        desc += "• Accuracy: **" + std::to_string(accuracy) + "%**";
+                        
+                        embed["description"] = desc;
+                        payload.embeds.push_back(embed);
+                        bot.send_message(msg.channel_id, payload);
+                    }
                     return;
                 }
 

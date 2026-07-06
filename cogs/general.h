@@ -325,6 +325,12 @@ public:
                                 {"Embed Links", stoatpp::permissions::EmbedLinks},
                                 {"Upload Files", stoatpp::permissions::UploadFiles}
                             }
+                        },
+                        {
+                            "Masquerade",
+                            {
+                                {"Masquerade", stoatpp::permissions::Masquerade}
+                            }
                         }
                     };
 
