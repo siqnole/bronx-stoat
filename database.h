@@ -270,6 +270,18 @@ public:
         std::string embed_json;     // JSON for the embed builder
     };
 
+    // ── Command Aliases ───────────────────────────────────────────────
+    struct ServerCommandAlias {
+        std::string server_id;
+        std::string alias;          // the short-hand the user types
+        std::string target;         // the canonical command it maps to
+    };
+    struct UserCommandAlias {
+        std::string user_id;
+        std::string alias;
+        std::string target;
+    };
+
 private:
     MYSQL* mysql_ = nullptr;
     std::unordered_map<std::string, UserAFK> user_afk_cache_;
@@ -355,6 +367,18 @@ private:
     // sub_id:event_type -> SocialEmbedConfig
     std::unordered_map<std::string, SocialEmbedConfig> social_embed_cache_;
     std::shared_mutex social_embed_cache_mutex_;
+
+    // server_id -> { alias -> target }
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> server_alias_cache_;
+    std::shared_mutex server_alias_cache_mutex_;
+
+    // user_id -> { alias -> target }
+    std::unordered_map<std::string, std::unordered_map<std::string, std::string>> user_alias_cache_;
+    std::shared_mutex user_alias_cache_mutex_;
+
+    // server_id -> user aliases disabled?
+    std::unordered_map<std::string, bool> server_alias_settings_cache_;
+    std::shared_mutex server_alias_settings_cache_mutex_;
 
     // id -> AutoresponderConfig
     std::unordered_map<int, AutoresponderConfig> arsp_cache_;
@@ -1097,6 +1121,31 @@ public:
             "  PRIMARY KEY (sub_id, event_type)"
             ")");
 
+        // Create Table server_command_aliases
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS server_command_aliases ("
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  alias VARCHAR(100) NOT NULL,"
+            "  target VARCHAR(100) NOT NULL,"
+            "  PRIMARY KEY (server_id, alias)"
+            ")");
+
+        // Create Table user_command_aliases
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS user_command_aliases ("
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  alias VARCHAR(100) NOT NULL,"
+            "  target VARCHAR(100) NOT NULL,"
+            "  PRIMARY KEY (user_id, alias)"
+            ")");
+
+        // Create Table server_alias_settings
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS server_alias_settings ("
+            "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  user_aliases_disabled TINYINT(1) NOT NULL DEFAULT 0"
+            ")");
+
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes, default_enabled FROM prefixes";
         if (mysql_query(mysql_, select_query.c_str())) {
@@ -1473,6 +1522,48 @@ public:
                     social_embed_cache_[key] = sec;
                 }
                 mysql_free_result(sec_res);
+            }
+        }
+
+        // Load server_command_aliases
+        if (mysql_query(mysql_, "SELECT server_id,alias,target FROM server_command_aliases") == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> lock(server_alias_cache_mutex_);
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0] && row[1] && row[2])
+                        server_alias_cache_[row[0]][row[1]] = row[2];
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        // Load user_command_aliases
+        if (mysql_query(mysql_, "SELECT user_id,alias,target FROM user_command_aliases") == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> lock(user_alias_cache_mutex_);
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0] && row[1] && row[2])
+                        user_alias_cache_[row[0]][row[1]] = row[2];
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        // Load server_alias_settings
+        if (mysql_query(mysql_, "SELECT server_id,user_aliases_disabled FROM server_alias_settings") == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> lock(server_alias_settings_cache_mutex_);
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0])
+                        server_alias_settings_cache_[row[0]] = row[1] && std::string(row[1]) != "0";
+                }
+                mysql_free_result(res);
             }
         }
 
@@ -4907,6 +4998,114 @@ public:
             social_embed_cache_.erase(std::to_string(sub_id) + ":" + event_type);
         }
         return true;
+    }
+
+
+    // ── Server Command Aliases CRUD ──────────────────────────────────────────
+
+    std::unordered_map<std::string, std::string> get_server_aliases(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(server_alias_cache_mutex_);
+        auto it = server_alias_cache_.find(server_id);
+        return (it != server_alias_cache_.end()) ? it->second : std::unordered_map<std::string,std::string>{};
+    }
+
+    bool set_server_alias(const std::string& server_id, const std::string& alias, const std::string& target) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "INSERT INTO server_command_aliases (server_id,alias,target) VALUES ('"
+            + escape_string(server_id) + "','" + escape_string(alias) + "','" + escape_string(target)
+            + "') ON DUPLICATE KEY UPDATE target='" + escape_string(target) + "'";
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] set_server_alias failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        std::lock_guard<std::shared_mutex> cache_lock(server_alias_cache_mutex_);
+        server_alias_cache_[server_id][alias] = target;
+        return true;
+    }
+
+    bool delete_server_alias(const std::string& server_id, const std::string& alias) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "DELETE FROM server_command_aliases WHERE server_id='" + escape_string(server_id)
+            + "' AND alias='" + escape_string(alias) + "'";
+        if (mysql_query(mysql_, q.c_str())) return false;
+        std::lock_guard<std::shared_mutex> cache_lock(server_alias_cache_mutex_);
+        auto it = server_alias_cache_.find(server_id);
+        if (it != server_alias_cache_.end()) it->second.erase(alias);
+        return true;
+    }
+
+    // ── User Command Aliases CRUD ────────────────────────────────────────────
+
+    std::unordered_map<std::string, std::string> get_user_aliases(const std::string& user_id) {
+        std::shared_lock<std::shared_mutex> lock(user_alias_cache_mutex_);
+        auto it = user_alias_cache_.find(user_id);
+        return (it != user_alias_cache_.end()) ? it->second : std::unordered_map<std::string,std::string>{};
+    }
+
+    bool set_user_alias(const std::string& user_id, const std::string& alias, const std::string& target) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "INSERT INTO user_command_aliases (user_id,alias,target) VALUES ('"
+            + escape_string(user_id) + "','" + escape_string(alias) + "','" + escape_string(target)
+            + "') ON DUPLICATE KEY UPDATE target='" + escape_string(target) + "'";
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] set_user_alias failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+        std::lock_guard<std::shared_mutex> cache_lock(user_alias_cache_mutex_);
+        user_alias_cache_[user_id][alias] = target;
+        return true;
+    }
+
+    bool delete_user_alias(const std::string& user_id, const std::string& alias) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "DELETE FROM user_command_aliases WHERE user_id='" + escape_string(user_id)
+            + "' AND alias='" + escape_string(alias) + "'";
+        if (mysql_query(mysql_, q.c_str())) return false;
+        std::lock_guard<std::shared_mutex> cache_lock(user_alias_cache_mutex_);
+        auto it = user_alias_cache_.find(user_id);
+        if (it != user_alias_cache_.end()) it->second.erase(alias);
+        return true;
+    }
+
+    // ── Server Alias Settings ────────────────────────────────────────────────
+
+    bool get_user_aliases_disabled(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(server_alias_settings_cache_mutex_);
+        auto it = server_alias_settings_cache_.find(server_id);
+        return (it != server_alias_settings_cache_.end()) && it->second;
+    }
+
+    bool set_user_aliases_disabled(const std::string& server_id, bool disabled) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "INSERT INTO server_alias_settings (server_id,user_aliases_disabled) VALUES ('"
+            + escape_string(server_id) + "'," + (disabled ? "1" : "0")
+            + ") ON DUPLICATE KEY UPDATE user_aliases_disabled=" + (disabled ? "1" : "0");
+        if (mysql_query(mysql_, q.c_str())) return false;
+        std::lock_guard<std::shared_mutex> cache_lock(server_alias_settings_cache_mutex_);
+        server_alias_settings_cache_[server_id] = disabled;
+        return true;
+    }
+
+    // ── Alias resolution (used by on_message pre-processor in main.cpp) ──────
+    // Priority: server alias > user alias (unless disabled for this server).
+    std::string resolve_alias(const std::string& server_id, const std::string& user_id, const std::string& cmd) {
+        {
+            std::shared_lock<std::shared_mutex> lock(server_alias_cache_mutex_);
+            auto sit = server_alias_cache_.find(server_id);
+            if (sit != server_alias_cache_.end()) {
+                auto ait = sit->second.find(cmd);
+                if (ait != sit->second.end()) return ait->second;
+            }
+        }
+        if (!get_user_aliases_disabled(server_id)) {
+            std::shared_lock<std::shared_mutex> lock(user_alias_cache_mutex_);
+            auto uit = user_alias_cache_.find(user_id);
+            if (uit != user_alias_cache_.end()) {
+                auto ait = uit->second.find(cmd);
+                if (ait != uit->second.end()) return ait->second;
+            }
+        }
+        return "";
     }
 
 };

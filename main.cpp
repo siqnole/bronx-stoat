@@ -45,6 +45,8 @@
 #include "cogs/rss.h"
 #include "cogs/masquerade.h"
 #include "cogs/tupper.h"
+#include "cogs/social.h"
+#include "cogs/alias.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -368,6 +370,8 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::RSSModule>());
     bot.use(std::make_unique<bronx::cogs::MasqueradeModule>());
     bot.use(std::make_unique<bronx::cogs::TupperModule>());
+    bot.use(std::make_unique<bronx::cogs::SocialModule>());
+    bot.use(std::make_unique<bronx::cogs::AliasModule>());
 
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
@@ -462,6 +466,59 @@ int main(int argc, char* argv[]) {
                     bronx::g_db->fix_bot_flags(id);
                 }
             }).detach();
+        }
+    });
+
+    bot.set_message_preprocessor([](stoatpp::cluster& bot, stoatpp::events::Message& msg) {
+        if (msg.author.bot || msg.content.empty() || !bronx::g_db) return;
+
+        // 1. Resolve message prefix
+        std::vector<std::string> prefixes;
+        std::string bot_id = bot.current_user().id;
+        if (!bot_id.empty()) {
+            prefixes.push_back("<@" + bot_id + "> ");
+            prefixes.push_back("<@" + bot_id + ">");
+        }
+        std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
+        prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
+        
+        if (!msg.server_id.empty()) {
+            std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
+            prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
+        }
+        prefixes.push_back(bot.config().command_prefix);
+
+        std::vector<std::string> unique_prefixes;
+        for (const auto& p : prefixes) {
+            if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) == unique_prefixes.end()) {
+                unique_prefixes.push_back(p);
+            }
+        }
+
+        std::string matched_prefix;
+        for (const auto& p : unique_prefixes) {
+            if (!p.empty() && msg.content.rfind(p, 0) == 0) {
+                matched_prefix = p;
+                break;
+            }
+        }
+
+        if (matched_prefix.empty()) return;
+
+        // 2. Parse command name from content
+        std::string command_part = msg.content.substr(matched_prefix.size());
+        std::stringstream ss(command_part);
+        std::string cmd;
+        ss >> cmd;
+        if (cmd.empty()) return;
+
+        // 3. Resolve alias in database (checking server-level, then user-level)
+        std::string target = bronx::g_db->resolve_alias(msg.server_id, msg.author.id, cmd);
+        if (!target.empty()) {
+            // Keep any trailing arguments/characters intact
+            std::string remainder = command_part.substr(cmd.size());
+            msg.content = matched_prefix + target + remainder;
+            std::cout << "[bronx alias] resolved alias: '" << cmd << "' -> '" << target << "'. rewritten content: '" << msg.content << "'\n";
         }
     });
 
