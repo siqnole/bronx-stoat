@@ -2,6 +2,11 @@
 #include "stoatpp/bot_module.h"
 #include "helpers.h"
 #include <chrono>
+#include <thread>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <algorithm>
 
 namespace bronx::cogs {
 
@@ -66,121 +71,6 @@ public:
                 uptime_str += std::to_string(seconds) + "s";
 
                 bot.send_message(msg.channel_id, "⏱️ **uptime**: launch was " + stoatpp::utils::format_timestamp(launch_unix, "R") + "\n(`" + uptime_str + "`)");
-            },
-            "General"
-        });
-
-        bot.register_command({
-            "reply",
-            {},
-            "reply to your message to test the reply feature.",
-            "",
-            {"[text...]"},
-            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                std::cout << "[bronx command] handling reply...\n";
-                std::string text = "testing replies feature! hello!";
-                if (!args.empty()) {
-                    text = "";
-                    for (size_t i = 0; i < args.size(); ++i) {
-                        text += args[i] + (i + 1 < args.size() ? " " : "");
-                    }
-                }
-                bot.send_reply(msg, text, true);
-            },
-            "General"
-        });
-
-        bot.register_command({
-            "test_typing",
-            {},
-            "test the typing indicator gateway event.",
-            "",
-            {},
-            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                std::cout << "[bronx command] handling test_typing...\n";
-                bot.begin_typing(msg.channel_id);
-                std::thread([&bot, msg]() {
-                    std::this_thread::sleep_for(std::chrono::seconds(2));
-                    bot.end_typing(msg.channel_id);
-                    bot.send_message(msg.channel_id, "typing indicator tested successfully");
-                }).detach();
-            },
-            "General"
-        });
-
-        bot.register_command({
-            "embed",
-            {},
-            "send a formatted test embed.",
-            "",
-            {},
-            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                std::cout << "[bronx command] handling embed...\n";
-                stoatpp::models::MessagePayload payload;
-                payload.content = "here is a rich markdown embed example:";
-                
-                auto cached_author = bot.get_user(msg.author.id);
-                std::string author_name = cached_author ? cached_author->username : msg.author.id;
-
-                std::string desc = "### markdown showcase\n"
-                                   "this is testing **bold**, *italics*, and `inline code`.\n\n"
-                                   "#### code block:\n"
-                                   "```cpp\n"
-                                   "#include <stoatpp.h>\n"
-                                   "int main() {\n"
-                                   "    std::cout << \"hello stoat.chat!\\n\";\n"
-                                   "}\n"
-                                   "```\n"
-                                   "#### lists:\n"
-                                   "1. crockford base32 decoding\n"
-                                   "2. non-blocking rest requests\n\n"
-                                   "#### link:\n"
-                                   "[visit the stoat.chat homepage](https://stoat.chat)\n\n"
-                                   "--- \n"
-                                   "requested by " + author_name;
-
-                auto bot_user = bot.current_user();
-                if (bot_user.avatar) {
-                    desc += "\n\n![bot avatar](" + bot_user.avatar_url(bot.config().cdn_url) + ")";
-                }
-
-                nlohmann::json embed = {
-                    {"title", "rich embed showcase"},
-                    {"description", desc},
-                    {"url", "https://github.com/stoat-chat"},
-                    {"icon_url", msg.author.avatar_url(bot.config().cdn_url)},
-                    {"colour", "#5865f2"}
-                };
-                
-                payload.embeds.push_back(embed);
-                bot.send_message(msg.channel_id, payload);
-            },
-            "General"
-        });
-
-        bot.register_command({
-            "pages",
-            {},
-            "launch a generic paginated helper demonstration.",
-            "",
-            {},
-            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                std::cout << "[bronx command] handling pages...\n";
-                
-                stoatpp::models::MessagePayload payload;
-                payload.content = "--- page 1: introduction ---\nwelcome to the paginated helper guide.\nuse reaction arrows to navigate.\n\n(page 1 of 3)";
-                
-                bot.send_message(msg.channel_id, payload, [&bot, msg](stoatpp::models::Message res, bool success) {
-                    if (success) {
-                        {
-                            std::lock_guard<std::mutex> lock(helpers::g_pages_mutex);
-                            helpers::g_pages[res.id] = {0, 3, msg.author.id, "general"};
-                        }
-                        bot.react_to_message(msg.channel_id, res.id, "⬅");
-                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                        bot.react_to_message(msg.channel_id, res.id, "➡");
-                    }
-                });
             },
             "General"
         });
@@ -457,6 +347,310 @@ public:
                 }
             }
         });
+
+        bot.register_command({
+            "poll",
+            {},
+            "create a poll with options and reactions.",
+            "poll <title> <options...>",
+            {"<title>", "<options...>"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling poll...\n";
+                
+                // Get raw input after the command name
+                std::string input = msg.content;
+                std::string cmd_name = "poll";
+                size_t pos = input.find(cmd_name);
+                if (pos != std::string::npos) {
+                    input = input.substr(pos + cmd_name.length());
+                }
+                
+                size_t start = input.find_first_not_of(" \t\r\n");
+                if (start == std::string::npos) {
+                    bot.send_message(msg.channel_id, "⚠️ Usage: `.poll [title] [option1] [option2] ...`\n"
+                                                     "You can use separators like `|`, `/`, `-`, or newlines. Custom emojis can be added like `:emoji: option`.");
+                    return;
+                }
+                input = input.substr(start);
+                
+                std::string title = "Poll";
+                std::vector<std::string> raw_options;
+                
+                if (input[0] == '"') {
+                    size_t close_quote = input.find('"', 1);
+                    if (close_quote != std::string::npos) {
+                        title = input.substr(1, close_quote - 1);
+                        std::string remaining = input.substr(close_quote + 1);
+                        raw_options = split_poll_segments(remaining);
+                    } else {
+                        auto segments = split_poll_segments(input);
+                        if (!segments.empty()) {
+                            title = segments[0];
+                            raw_options.assign(segments.begin() + 1, segments.end());
+                        }
+                    }
+                } else {
+                    auto segments = split_poll_segments(input);
+                    if (!segments.empty()) {
+                        title = segments[0];
+                        raw_options.assign(segments.begin() + 1, segments.end());
+                    }
+                }
+                
+                if (raw_options.empty()) {
+                    bot.send_message(msg.channel_id, "⚠️ Please specify at least one option. Example: `.poll \"Favorite day?\" Saturday | Sunday`");
+                    return;
+                }
+                
+                if (raw_options.size() > 10) {
+                    bot.send_message(msg.channel_id, "⚠️ A poll can have a maximum of 10 options.");
+                    return;
+                }
+                
+                std::vector<PollOption> parsed_options;
+                for (size_t i = 0; i < raw_options.size(); ++i) {
+                    auto opt = parse_option(raw_options[i], i);
+                    if (!opt.text.empty()) {
+                        parsed_options.push_back(opt);
+                    }
+                }
+                
+                if (parsed_options.empty()) {
+                    bot.send_message(msg.channel_id, "⚠️ No valid options found.");
+                    return;
+                }
+                
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                
+                stoatpp::models::Embed embed;
+                embed.set_colour(0x6C5CE7);
+                embed.set_title("📊 Poll: " + title);
+                
+                std::string desc = "";
+                for (const auto& opt : parsed_options) {
+                    desc += opt.emoji + " " + opt.text + "\n\n";
+                }
+                embed.set_description(desc);
+                
+                auto cached_author = bot.get_user(msg.author.id);
+                std::string author_name = cached_author ? cached_author->username : msg.author.id;
+                embed.set_icon_url(msg.author.avatar_url(bot.config().cdn_url));
+                
+                payload.add_embed(embed);
+                
+                bot.send_message(msg.channel_id, payload, [&bot, msg, parsed_options](stoatpp::models::Message res, bool success) {
+                    if (success) {
+                        std::thread([&bot, msg, res, parsed_options]() {
+                            for (const auto& opt : parsed_options) {
+                                bot.react_to_message(msg.channel_id, res.id, clean_emoji(opt.emoji));
+                                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+                            }
+                        }).detach();
+                    }
+                });
+            },
+            "General"
+        });
+    }
+
+private:
+    static std::string get_first_utf8_char(const std::string& str, size_t& len) {
+        if (str.empty()) { len = 0; return ""; }
+        unsigned char c = str[0];
+        if (c < 0x80) { len = 1; return str.substr(0, 1); }
+        if ((c & 0xE0) == 0xC0) { len = 2; return str.substr(0, 2); }
+        if ((c & 0xF0) == 0xE0) { len = 3; return str.substr(0, 3); }
+        if ((c & 0xF8) == 0xF0) { len = 4; return str.substr(0, 4); }
+        len = 1;
+        return str.substr(0, 1);
+    }
+
+    static uint32_t decode_utf8(const std::string& utf8) {
+        if (utf8.empty()) return 0;
+        unsigned char c1 = utf8[0];
+        if (c1 < 0x80) return c1;
+        if (utf8.size() >= 2 && (c1 & 0xE0) == 0xC0) {
+            return ((c1 & 0x1F) << 6) | (utf8[1] & 0x3F);
+        }
+        if (utf8.size() >= 3 && (c1 & 0xF0) == 0xE0) {
+            return ((c1 & 0x0F) << 12) | ((utf8[1] & 0x3F) << 6) | (utf8[2] & 0x3F);
+        }
+        if (utf8.size() >= 4 && (c1 & 0xF0) == 0xF0) {
+            return ((c1 & 0x07) << 18) | ((utf8[1] & 0x3F) << 12) | ((utf8[2] & 0x3F) << 6) | (utf8[3] & 0x3F);
+        }
+        return 0;
+    }
+
+    static bool is_emoji_codepoint(uint32_t cp) {
+        if (cp >= 0x1F000 && cp <= 0x1FFFF) return true;
+        if (cp >= 0x2600 && cp <= 0x27BF) return true;
+        if (cp >= 0x2300 && cp <= 0x23FF) return true;
+        if (cp >= 0x2B00 && cp <= 0x2BFF) return true;
+        if (cp >= 0x1F1E0 && cp <= 0x1F1FF) return true;
+        return false;
+    }
+
+    struct PollOption {
+        std::string emoji;
+        std::string text;
+    };
+
+    static std::string clean_emoji(const std::string& emoji_arg) {
+        if (emoji_arg.size() >= 28 && emoji_arg.front() == ':' && emoji_arg.back() == ':') {
+            std::string inner = emoji_arg.substr(1, emoji_arg.size() - 2);
+            if (inner.size() == 26 && inner.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
+                return inner;
+            }
+        }
+        return emoji_arg;
+    }
+
+    static std::string clean_option_text(const std::string& text) {
+        if (text.empty()) return "";
+        size_t start = 0;
+        while (start < text.size()) {
+            char c = text[start];
+            if (c == ' ' || c == '\t' || c == '-' || c == '*' || c == '•') {
+                start++;
+            } else if (text.compare(start, 3, "•") == 0) {
+                start += 3;
+            } else {
+                break;
+            }
+        }
+        
+        size_t end = text.size();
+        while (end > start) {
+            char c = text[end - 1];
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+                end--;
+            } else {
+                break;
+            }
+        }
+        
+        if (start >= end) return "";
+        return text.substr(start, end - start);
+    }
+
+    static PollOption parse_option(const std::string& raw_text, size_t default_index) {
+        std::string cleaned = clean_option_text(raw_text);
+        PollOption opt;
+        
+        std::vector<std::string> default_emojis = {"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"};
+        opt.emoji = (default_index < default_emojis.size()) ? default_emojis[default_index] : "❓";
+        opt.text = cleaned;
+        
+        if (cleaned.empty()) return opt;
+        
+        if (cleaned[0] == ':') {
+            size_t next_colon = cleaned.find(':', 1);
+            if (next_colon != std::string::npos && next_colon > 1) {
+                opt.emoji = cleaned.substr(0, next_colon + 1);
+                opt.text = clean_option_text(cleaned.substr(next_colon + 1));
+                return opt;
+            }
+        }
+        
+        size_t utf8_len = 0;
+        std::string first_char = get_first_utf8_char(cleaned, utf8_len);
+        if (utf8_len > 0) {
+            uint32_t cp = decode_utf8(first_char);
+            if (is_emoji_codepoint(cp)) {
+                opt.emoji = first_char;
+                opt.text = clean_option_text(cleaned.substr(utf8_len));
+                return opt;
+            }
+        }
+        
+        return opt;
+    }
+
+    static std::vector<std::string> split_poll_segments(const std::string& input) {
+        std::vector<std::string> segments;
+        std::string current;
+        for (size_t i = 0; i < input.size(); ) {
+            char c = input[i];
+            bool is_sep = false;
+            size_t sep_len = 1;
+            
+            if (c == '\n') {
+                is_sep = true;
+            } else if (c == '|') {
+                is_sep = true;
+            } else if (c == '/') {
+                bool is_url = false;
+                if (i >= 4 && input.substr(i - 4, 4) == "http") is_url = true;
+                if (i >= 5 && input.substr(i - 5, 5) == "https") is_url = true;
+                if (!is_url) {
+                    is_sep = true;
+                }
+            } else if (c == '-') {
+                bool pre_space = (i == 0 || input[i - 1] == ' ' || input[i - 1] == '\t' || input[i - 1] == '\n');
+                bool post_space = (i + 1 == input.size() || input[i + 1] == ' ' || input[i + 1] == '\t' || input[i + 1] == '\n');
+                if (pre_space && post_space) {
+                    is_sep = true;
+                }
+            }
+            
+            if (is_sep) {
+                size_t s = current.find_first_not_of(" \t\r\n");
+                if (s != std::string::npos) {
+                    size_t e = current.find_last_not_of(" \t\r\n");
+                    segments.push_back(current.substr(s, e - s + 1));
+                }
+                current.clear();
+                i += sep_len;
+                continue;
+            }
+            
+            bool is_emoji_split = false;
+            size_t emoji_len = 0;
+            
+            if (c == ':') {
+                size_t next_colon = input.find(':', i + 1);
+                if (next_colon != std::string::npos && next_colon > i + 1) {
+                    emoji_len = next_colon - i + 1;
+                    is_emoji_split = true;
+                }
+            }
+            
+            if (!is_emoji_split) {
+                size_t utf8_len = 0;
+                std::string first_char = get_first_utf8_char(input.substr(i), utf8_len);
+                if (utf8_len > 0) {
+                    uint32_t cp = decode_utf8(first_char);
+                    if (is_emoji_codepoint(cp)) {
+                        emoji_len = utf8_len;
+                        is_emoji_split = true;
+                    }
+                }
+            }
+            
+            if (is_emoji_split && emoji_len > 0) {
+                size_t non_ws = current.find_first_not_of(" \t\r\n");
+                if (non_ws != std::string::npos) {
+                    size_t e = current.find_last_not_of(" \t\r\n");
+                    segments.push_back(current.substr(non_ws, e - non_ws + 1));
+                    current.clear();
+                }
+                
+                current += input.substr(i, emoji_len);
+                i += emoji_len;
+            } else {
+                current += c;
+                i++;
+            }
+        }
+        
+        size_t s = current.find_first_not_of(" \t\r\n");
+        if (s != std::string::npos) {
+            size_t e = current.find_last_not_of(" \t\r\n");
+            segments.push_back(current.substr(s, e - s + 1));
+        }
+        
+        return segments;
     }
 };
 
