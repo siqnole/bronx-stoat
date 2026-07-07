@@ -83,7 +83,58 @@ public:
                     }
 
                     if (!matched_cmd) {
-                        bot.send_message(msg.channel_id, "⚠️ command `" + args[0] + "` not found. type `" + prefix + "help` for the full list.");
+                        // Fall back: check if the arg is a cog/category name
+                        auto all_cmds_cog = bot.get_commands();
+                        std::unordered_map<std::string, std::vector<stoatpp::Command>> commands_by_cat_cog;
+                        std::vector<std::string> categories_cog;
+                        for (const auto& cmd : all_cmds_cog) {
+                            if (!msg.server_id.empty() && g_db) {
+                                std::string cn = cmd.name, mn = cmd.category;
+                                std::transform(cn.begin(), cn.end(), cn.begin(), ::tolower);
+                                std::transform(mn.begin(), mn.end(), mn.begin(), ::tolower);
+                                if (g_db->is_disabled(msg.server_id, cn, mn)) continue;
+                            }
+                            std::string cat = cmd.category.empty() ? "General" : cmd.category;
+                            commands_by_cat_cog[cat].push_back(cmd);
+                        }
+                        for (const auto& pair : commands_by_cat_cog)
+                            categories_cog.push_back(pair.first);
+                        std::sort(categories_cog.begin(), categories_cog.end(), [](const std::string& a, const std::string& b) {
+                            if (a == "General") return true;
+                            if (b == "General") return false;
+                            return a < b;
+                        });
+                        for (auto& pair : commands_by_cat_cog)
+                            std::sort(pair.second.begin(), pair.second.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
+
+                        int cog_idx = -1;
+                        for (size_t i = 0; i < categories_cog.size(); ++i) {
+                            if (to_lower(categories_cog[i]) == target_cmd_name) {
+                                cog_idx = static_cast<int>(i);
+                                break;
+                            }
+                        }
+
+                        if (cog_idx >= 0) {
+                            HelpSession cog_session;
+                            cog_session.current_category_idx = cog_idx;
+                            cog_session.current_page_idx = 0;
+                            cog_session.user_id = msg.author.id;
+                            cog_session.prefix = prefix;
+
+                            auto cog_payload = render_help_page(bot, categories_cog, commands_by_cat_cog, cog_session, prefix);
+                            cog_payload.set_interactions({"⏪", "◀", "🟦", "▶", "⏩"});
+
+                            bot.send_message(msg.channel_id, cog_payload, [this, msg, prefix, cog_idx](stoatpp::models::Message res, bool success) {
+                                if (success) {
+                                    std::lock_guard<std::mutex> lock(help_mutex_);
+                                    help_sessions_[res.id] = {cog_idx, 0, msg.author.id, prefix};
+                                }
+                            });
+                            return;
+                        }
+
+                        bot.send_message(msg.channel_id, "⚠️ command or cog `" + args[0] + "` not found. type `" + prefix + "help` for the full list.");
                         return;
                     }
 
