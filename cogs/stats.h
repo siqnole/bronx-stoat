@@ -35,9 +35,9 @@ public:
         bot.register_command({
             "stats",
             {"serverstats", "telemetry"},
-            "shows server telemetry: overview, top active users, channels, chart, or global top lists.",
-            "stats [overview/top/users/channels/chart] [timeframe]",
-            {"[subcommand]", "[timeframe]"},
+            "shows server/user telemetry: overview, top active users, channels, chart, global top lists, or your own stats.",
+            "stats [overview/top/users/channels/chart/me] [g/global] [timeframe]",
+            {"[subcommand]", "[global/timeframe]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 bool include_bots = false;
                 std::vector<std::string> clean_args;
@@ -51,18 +51,119 @@ public:
                     }
                 }
 
-                if (msg.server_id.empty() && !clean_args.empty() && clean_args[0] != "top" && clean_args[0] != "t") {
-                    bot.send_message(msg.channel_id, "⚠️ Non-global stats commands can only be used inside a server.");
-                    return;
-                }
-
                 if (!g_db) {
                     bot.send_message(msg.channel_id, "database connection is currently unavailable.");
                     return;
                 }
 
-                std::string sub = "overview";
+                bool is_me = false;
+                bool me_global = false;
                 std::string tf_str = "";
+
+                if (!clean_args.empty()) {
+                    std::string first = clean_args[0];
+                    std::transform(first.begin(), first.end(), first.begin(), [](unsigned char c) { return std::tolower(c); });
+                    if (first == "me") {
+                        is_me = true;
+                        if (clean_args.size() > 1) {
+                            std::string second = clean_args[1];
+                            std::transform(second.begin(), second.end(), second.begin(), [](unsigned char c) { return std::tolower(c); });
+                            if (second == "g" || second == "global") {
+                                me_global = true;
+                                if (clean_args.size() > 2) tf_str = clean_args[2];
+                            } else {
+                                tf_str = clean_args[1];
+                            }
+                        }
+                    }
+                }
+
+                if (is_me) {
+                    int days = parse_timeframe(tf_str, 7);
+                    if (me_global) {
+                        auto stats = g_db->get_user_global_stats(msg.author.id, days);
+                        
+                        stoatpp::models::MessagePayload payload;
+                        payload.content = " ";
+                        stoatpp::models::Embed embed;
+                        embed.set_colour(0x5865F2);
+                        embed.set_title("🌐 global stats for " + msg.author.username + " (" + std::to_string(days) + "d)");
+                        
+                        std::string desc;
+                        if (stats.empty()) {
+                            desc = "*No global activity recorded for you in this period.*";
+                        } else {
+                            int rank = 1;
+                            int total_msgs = 0;
+                            int total_cmds = 0;
+                            std::string server_list;
+                            for (const auto& s : stats) {
+                                std::string s_name = "Server " + s.guild_id;
+                                auto s_opt = bot.get_server(s.guild_id);
+                                if (s_opt) s_name = s_opt->name;
+                                server_list += std::to_string(rank++) + ". **" + s_name + "** — " 
+                                    + std::to_string(s.messages) + " msgs, " 
+                                    + std::to_string(s.commands_used) + " cmds\n";
+                                total_msgs += s.messages;
+                                total_cmds += s.commands_used;
+                            }
+                            desc += "**Total Activity:** " + std::to_string(total_msgs) + " messages, " 
+                                + std::to_string(total_cmds) + " commands used\n\n"
+                                + "### 🌐 Breakdown by Server\n" + server_list;
+                        }
+                        embed.set_description(desc);
+                        payload.add_embed(embed);
+                        bot.send_message(msg.channel_id, payload);
+                        return;
+                    } else {
+                        if (msg.server_id.empty()) {
+                            bot.send_message(msg.channel_id, "⚠️ Channel-level stats can only be viewed inside a server.");
+                            return;
+                        }
+                        
+                        auto stats = g_db->get_user_channel_stats(msg.server_id, msg.author.id, days);
+                        
+                        auto srv_opt = bot.get_server(msg.server_id);
+                        std::string srv_name = srv_opt ? srv_opt->name : "this server";
+                        
+                        stoatpp::models::MessagePayload payload;
+                        payload.content = " ";
+                        stoatpp::models::Embed embed;
+                        embed.set_colour(0x5865F2);
+                        embed.set_title("📊 your stats — " + srv_name + " (" + std::to_string(days) + "d)");
+                        
+                        std::string desc;
+                        if (stats.empty()) {
+                            desc = "*No activity recorded for you in this server during this period.*";
+                        } else {
+                            int rank = 1;
+                            int total_msgs = 0;
+                            int total_cmds = 0;
+                            std::string channel_list;
+                            for (const auto& c : stats) {
+                                channel_list += std::to_string(rank++) + ". <#" + c.channel_id + "> — " 
+                                    + std::to_string(c.messages) + " msgs, " 
+                                    + std::to_string(c.commands_used) + " cmds\n";
+                                total_msgs += c.messages;
+                                total_cmds += c.commands_used;
+                            }
+                            desc += "**Total Activity:** " + std::to_string(total_msgs) + " messages, " 
+                                + std::to_string(total_cmds) + " commands used\n\n"
+                                + "### 💬 Breakdown by Channel\n" + channel_list;
+                        }
+                        embed.set_description(desc);
+                        payload.add_embed(embed);
+                        bot.send_message(msg.channel_id, payload);
+                        return;
+                    }
+                }
+
+                if (msg.server_id.empty() && !clean_args.empty() && clean_args[0] != "top" && clean_args[0] != "t") {
+                    bot.send_message(msg.channel_id, "⚠️ Non-global stats commands can only be used inside a server.");
+                    return;
+                }
+
+                std::string sub = "overview";
                 bool global_top = false;
 
                 if (!clean_args.empty()) {

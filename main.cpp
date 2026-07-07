@@ -582,6 +582,11 @@ int main(int argc, char* argv[]) {
             // 2. Channel Telemetry
             bronx::g_db->increment_channel_daily_messages(msg.server_id, msg.channel_id);
 
+            // 3. User Channel Telemetry
+            if (!msg.server_id.empty() && !is_bot) {
+                bronx::g_db->increment_user_channel_messages(msg.server_id, msg.channel_id, msg.author.id);
+            }
+
             // Skip command telemetry tracking for bots
             if (is_bot) return;
 
@@ -635,6 +640,9 @@ int main(int argc, char* argv[]) {
                     if (cmd_exists) {
                         bronx::g_db->increment_command_usage(msg.server_id, normalized_name, msg.channel_id);
                         bronx::g_db->increment_user_daily_commands(msg.server_id, msg.author.id, msg.author.bot);
+                        if (!msg.server_id.empty()) {
+                            bronx::g_db->increment_user_channel_commands(msg.server_id, msg.channel_id, msg.author.id);
+                        }
                     }
                 }
             }

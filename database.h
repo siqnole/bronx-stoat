@@ -583,6 +583,22 @@ public:
             return false;
         }
 
+        // Create Table guild_user_channel_activity_daily
+        std::string create_user_channel_activity = 
+            "CREATE TABLE IF NOT EXISTS guild_user_channel_activity_daily ("
+            "  guild_id VARCHAR(30) NOT NULL,"
+            "  channel_id VARCHAR(30) NOT NULL,"
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  stat_date DATE NOT NULL,"
+            "  messages INT UNSIGNED NOT NULL DEFAULT 0,"
+            "  commands_used INT UNSIGNED NOT NULL DEFAULT 0,"
+            "  PRIMARY KEY (guild_id, channel_id, user_id, stat_date)"
+            ")";
+        if (mysql_query(mysql_, create_user_channel_activity.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'guild_user_channel_activity_daily': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
         // Create Table users for economy
         std::string create_users = 
             "CREATE TABLE IF NOT EXISTS users ("
@@ -2180,6 +2196,97 @@ public:
             + escape_string(channel_id) + "', CURDATE(), 1) "
             "ON DUPLICATE KEY UPDATE messages = messages + 1";
         return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool increment_user_channel_messages(const std::string& guild_id, const std::string& channel_id, const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO guild_user_channel_activity_daily (guild_id, channel_id, user_id, stat_date, messages) VALUES ('"
+            + escape_string(guild_id) + "', '"
+            + escape_string(channel_id) + "', '"
+            + escape_string(user_id) + "', CURDATE(), 1) "
+            "ON DUPLICATE KEY UPDATE messages = messages + 1";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool increment_user_channel_commands(const std::string& guild_id, const std::string& channel_id, const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO guild_user_channel_activity_daily (guild_id, channel_id, user_id, stat_date, commands_used) VALUES ('"
+            + escape_string(guild_id) + "', '"
+            + escape_string(channel_id) + "', '"
+            + escape_string(user_id) + "', CURDATE(), 1) "
+            "ON DUPLICATE KEY UPDATE commands_used = commands_used + 1";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    struct UserChannelActivityEntry {
+        std::string channel_id;
+        int messages = 0;
+        int commands_used = 0;
+    };
+
+    struct UserGuildActivityEntry {
+        std::string guild_id;
+        int messages = 0;
+        int commands_used = 0;
+    };
+
+    std::vector<UserChannelActivityEntry> get_user_channel_stats(const std::string& guild_id, const std::string& user_id, int days) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<UserChannelActivityEntry> entries;
+        if (!mysql_) return entries;
+
+        std::string sql = "SELECT channel_id, SUM(messages), SUM(commands_used) FROM guild_user_channel_activity_daily "
+                          "WHERE guild_id = '" + escape_string(guild_id) + "' "
+                          "AND user_id = '" + escape_string(user_id) + "' "
+                          "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
+                          "GROUP BY channel_id ORDER BY SUM(messages) DESC";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0]) {
+                        UserChannelActivityEntry entry;
+                        entry.channel_id = row[0];
+                        entry.messages = row[1] ? std::stoi(row[1]) : 0;
+                        entry.commands_used = row[2] ? std::stoi(row[2]) : 0;
+                        entries.push_back(entry);
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
+    }
+
+    std::vector<UserGuildActivityEntry> get_user_global_stats(const std::string& user_id, int days) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<UserGuildActivityEntry> entries;
+        if (!mysql_) return entries;
+
+        std::string sql = "SELECT guild_id, SUM(messages), SUM(commands_used) FROM guild_user_activity_daily "
+                          "WHERE user_id = '" + escape_string(user_id) + "' "
+                          "AND stat_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
+                          "GROUP BY guild_id ORDER BY SUM(messages) DESC";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0]) {
+                        UserGuildActivityEntry entry;
+                        entry.guild_id = row[0];
+                        entry.messages = row[1] ? std::stoi(row[1]) : 0;
+                        entry.commands_used = row[2] ? std::stoi(row[2]) : 0;
+                        entries.push_back(entry);
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
     }
 
     // Corrects historical rows for a known-bot user that were stored with is_bot=FALSE.
