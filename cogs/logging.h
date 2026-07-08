@@ -485,7 +485,8 @@ public:
                                                  "• `" + pfx + "log message <event> <text...>` - Customize log message body.\n"
                                                  "• `" + pfx + "log edit <event> <key:val...>` - Customize embed fields.\n"
                                                  "• `" + pfx + "log json <event> <raw_json>` - Directly import embed JSON.\n\n"
-                                                 "**Valid Event Types:**\n"
+                                                 );
+                bot.send_message(msg.channel_id, "**Valid Event Types:**\n"
                                                  "- `delete` / `message_delete` (Placeholders: `{author}`, `{username}`, `{channel}`, `{content}`)\n"
                                                  "- `edit` / `message_edit` (Placeholders: `{author}`, `{username}`, `{channel}`, `{before}`, `{after}`)\n"
                                                  "- `join` / `member_join` (Placeholders: `{user}`, `{username}`, `{membercount}`)\n"
