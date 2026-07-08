@@ -69,7 +69,7 @@ public:
             }
 
             if (targets.empty()) {
-                bot.send_reply(msg, "no valid custom emojis found to steal.", true);
+                bot.send_reply(msg, "no valid custom emojis found to clone.", true);
                 return;
             }
 
@@ -77,7 +77,7 @@ public:
             auto render_payload = [](const std::vector<TargetEmoji>& tgts, int current, int total) {
                 stoatpp::models::MessagePayload payload;
                 nlohmann::json embed = nlohmann::json::object();
-                embed["title"] = "emoji stealer progress";
+                embed["title"] = "emoji cloner progress";
                 
                 int success_count = 0;
                 int failed_count = 0;
@@ -227,8 +227,8 @@ public:
 
         bot.register_command({
             "emoji",
-            {"steal"},
-            "steal custom emojis from other servers and add them to this server.",
+            {"steal", "clone"},
+            "clone custom emojis from other servers and add them to this server.",
             "",
             {"<emoji1>", "[emoji2]..."},
             callback,
