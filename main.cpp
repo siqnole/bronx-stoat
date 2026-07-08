@@ -47,6 +47,7 @@
 #include "cogs/tupper.h"
 #include "cogs/social.h"
 #include "cogs/alias.h"
+#include "cogs/filter.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -372,6 +373,7 @@ int main(int argc, char* argv[]) {
     bot.use(std::make_unique<bronx::cogs::TupperModule>());
     bot.use(std::make_unique<bronx::cogs::SocialModule>());
     bot.use(std::make_unique<bronx::cogs::AliasModule>());
+    bot.use(std::make_unique<bronx::cogs::FilterModule>());
 
 
     bot.on_ready([&bot](const stoatpp::events::Ready& e) {
@@ -525,6 +527,8 @@ int main(int argc, char* argv[]) {
     bot.on_message([&bot](const stoatpp::events::Message& msg) {
         std::cout << "[bronx event] message in channel " << msg.channel_id
                   << " by " << msg.author.username << ": " << msg.content << "\n";
+
+        bronx::cogs::FilterModule::scan_message(bot, msg);
 
         // Tupperbox proxying check
         if (!msg.author.bot && !msg.content.empty() && msg.content[0] != '\\' && bronx::g_db) {

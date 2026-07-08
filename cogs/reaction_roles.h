@@ -27,13 +27,19 @@ inline std::unordered_map<std::string, PendingScan> g_pending_scans;
 inline std::mutex g_pending_scans_mutex;
 
 inline std::string clean_emoji(const std::string& emoji_arg) {
-    if (emoji_arg.size() >= 28 && emoji_arg.front() == ':' && emoji_arg.back() == ':') {
-        std::string inner = emoji_arg.substr(1, emoji_arg.size() - 2);
+    std::string cleaned = emoji_arg;
+    std::string pua = "\xee\x83\xa6";
+    size_t pos;
+    while ((pos = cleaned.find(pua)) != std::string::npos) {
+        cleaned.erase(pos, pua.length());
+    }
+    if (cleaned.size() >= 28 && cleaned.front() == ':' && cleaned.back() == ':') {
+        std::string inner = cleaned.substr(1, cleaned.size() - 2);
         if (inner.size() == 26 && inner.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
             return inner;
         }
     }
-    return emoji_arg;
+    return cleaned;
 }
 
 inline std::string display_emoji(const std::string& raw_emoji) {

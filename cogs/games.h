@@ -14,6 +14,7 @@
 #include <future>
 #include <thread>
 #include <cctype>
+#include <atomic>
 
 namespace bronx::cogs {
 
@@ -78,6 +79,21 @@ private:
     std::unordered_map<std::string, TeaGame> active_tea_games_; // channel_id -> game
     std::mutex tea_mutex_;
 
+    struct ConwayGame {
+        std::string channel_id;
+        std::string message_id;
+        int width = 5;
+        int height = 5;
+        std::vector<std::vector<bool>> grid;
+        bool playing = false;
+        int generation = 0;
+    };
+
+    std::unordered_map<std::string, ConwayGame> active_conway_games_; // message_id -> game
+    std::mutex conway_mutex_;
+    std::thread conway_thread_;
+    std::atomic<bool> conway_running_{true};
+
     std::vector<WordEntry> word_salad_list_ = {
         {"programming", "technology"}, {"developer", "technology"}, {"computer", "technology"},
         {"elephant", "animals"}, {"kangaroo", "animals"}, {"crocodile", "animals"},
@@ -134,6 +150,10 @@ public:
     }
 
     ~GamesModule() {
+        conway_running_ = false;
+        if (conway_thread_.joinable()) {
+            conway_thread_.join();
+        }
         if (instance == this) {
             instance = nullptr;
         }
@@ -424,6 +444,10 @@ public:
     }
 
     void register_handlers(stoatpp::cluster& bot) override {
+        conway_thread_ = std::thread([this, &bot]() {
+            run_conway_loop(bot);
+        });
+
         // reaction duel listener
         bot.on_message_react([this, &bot](const stoatpp::events::MessageReact& e) {
             if (e.user_id == bot.current_user().id) return;
@@ -524,6 +548,18 @@ public:
                     }
                 }
             }
+        });
+
+        // Conway react listener
+        bot.on_message_react([this, &bot](const stoatpp::events::MessageReact& e) {
+            if (e.user_id == bot.current_user().id) return;
+            handle_conway_interaction(bot, e.id, e.emoji_id);
+        });
+
+        // Conway unreact listener
+        bot.on_message_unreact([this, &bot](const stoatpp::events::MessageUnreact& e) {
+            if (e.user_id == bot.current_user().id) return;
+            handle_conway_interaction(bot, e.id, e.emoji_id);
         });
 
         // roulette command
@@ -802,6 +838,77 @@ public:
             },
             "Games"
         });
+
+        // conway command
+        bot.register_command({
+            "conway",
+            {"life", "gameoflife"},
+            "starts a conway game of life simulation.",
+            "conway [widthxheight]",
+            {"[size]"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                int width = 5;
+                int height = 5;
+                if (!args.empty()) {
+                    std::string arg = args[0];
+                    size_t x_pos = arg.find_first_of("xX");
+                    if (x_pos != std::string::npos) {
+                        try {
+                            width = std::stoi(arg.substr(0, x_pos));
+                            height = std::stoi(arg.substr(x_pos + 1));
+                        } catch (...) {
+                            width = 5;
+                            height = 5;
+                        }
+                    } else {
+                        try {
+                            width = std::stoi(arg);
+                            height = width;
+                        } catch (...) {
+                            width = 5;
+                            height = 5;
+                        }
+                    }
+                }
+                
+                if (width < 3) width = 3;
+                if (width > 15) width = 15;
+                if (height < 3) height = 3;
+                if (height > 15) height = 15;
+                
+                ConwayGame game;
+                game.channel_id = msg.channel_id;
+                game.width = width;
+                game.height = height;
+                game.grid.assign(height, std::vector<bool>(width, false));
+                game.playing = false;
+                game.generation = 0;
+                
+                randomize_conway_game(game);
+                
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                stoatpp::models::Embed embed;
+                embed.set_colour(0xF1C40F);
+                embed.set_title("🦠 Conway's Game of Life (" + std::to_string(width) + "x" + std::to_string(height) + ")");
+                
+                std::string grid_str = render_conway_grid(game);
+                embed.set_description(grid_str + "\n\n**Generation:** 0\n**Status:** Paused ⏸️");
+                payload.add_embed(embed);
+                
+                std::vector<std::string> reactions = {"⏯️", "⏭️", "🔄", "⏹️"};
+                payload.set_interactions(reactions, false);
+                
+                bot.send_message(msg.channel_id, payload, [this, game](stoatpp::models::Message res, bool success) mutable {
+                    if (success) {
+                        game.message_id = res.id;
+                        std::lock_guard<std::mutex> lock(conway_mutex_);
+                        active_conway_games_[res.id] = game;
+                    }
+                });
+            },
+            "Games"
+        });
     }
 
     void run_roulette_spin(stoatpp::cluster& bot, const std::string& channel_id) {
@@ -1039,6 +1146,161 @@ public:
             win_str += "\nCongratulations! You won 200 coins.";
             bot.send_message(channel_id, win_str);
         }
+    }
+
+private:
+    void handle_conway_interaction(stoatpp::cluster& bot, const std::string& message_id, const std::string& emoji) {
+        ConwayGame game;
+        bool found = false;
+        bool should_update = false;
+        bool should_delete = false;
+        
+        {
+            std::lock_guard<std::mutex> lock(conway_mutex_);
+            auto it = active_conway_games_.find(message_id);
+            if (it != active_conway_games_.end()) {
+                found = true;
+                if (emoji == "⏯️") {
+                    it->second.playing = !it->second.playing;
+                    should_update = true;
+                } else if (emoji == "⏭️") {
+                    step_conway_game(it->second);
+                    should_update = true;
+                } else if (emoji == "🔄") {
+                    randomize_conway_game(it->second);
+                    it->second.generation = 0;
+                    should_update = true;
+                } else if (emoji == "⏹️") {
+                    should_delete = true;
+                }
+                game = it->second;
+            }
+        }
+        
+        if (found) {
+            if (should_delete) {
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                stoatpp::models::Embed embed;
+                embed.set_colour(0xFF5555);
+                embed.set_title("🦠 Conway's Game of Life — Ended");
+                
+                std::string grid_str = render_conway_grid(game);
+                embed.set_description(grid_str + "\n\n**Generation:** " + std::to_string(game.generation) + "\n**Status:** Stopped 🛑");
+                payload.add_embed(embed);
+                payload.set_interactions({}, false);
+                
+                bot.edit_message(game.channel_id, message_id, payload);
+                
+                std::lock_guard<std::mutex> lock(conway_mutex_);
+                active_conway_games_.erase(message_id);
+            } else if (should_update) {
+                update_conway_message(bot, game);
+            }
+        }
+    }
+
+    void update_conway_message(stoatpp::cluster& bot, const ConwayGame& game) {
+        stoatpp::models::MessagePayload payload;
+        payload.content = " ";
+        stoatpp::models::Embed embed;
+        embed.set_colour(game.playing ? 0x2ECC71 : 0xF1C40F);
+        embed.set_title("🦠 Conway's Game of Life (" + std::to_string(game.width) + "x" + std::to_string(game.height) + ")");
+        
+        std::string grid_str = render_conway_grid(game);
+        std::string status_str = game.playing ? "Playing ⏯️" : "Paused ⏸️";
+        embed.set_description(grid_str + "\n\n**Generation:** " + std::to_string(game.generation) + "\n**Status:** " + status_str);
+        payload.add_embed(embed);
+        
+        std::vector<std::string> reactions = {"⏯️", "⏭️", "🔄", "⏹️"};
+        payload.set_interactions(reactions, false);
+        
+        bot.edit_message(game.channel_id, game.message_id, payload, [this, msg_id = game.message_id](stoatpp::models::Message res, bool success) {
+            if (!success) {
+                std::lock_guard<std::mutex> lock(conway_mutex_);
+                active_conway_games_.erase(msg_id);
+            }
+        });
+    }
+
+    void run_conway_loop(stoatpp::cluster& bot) {
+        while (conway_running_) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+            if (!conway_running_) break;
+            
+            std::vector<ConwayGame> games_to_update;
+            {
+                std::lock_guard<std::mutex> lock(conway_mutex_);
+                for (auto& [msg_id, game] : active_conway_games_) {
+                    if (game.playing) {
+                        step_conway_game(game);
+                        games_to_update.push_back(game);
+                    }
+                }
+            }
+            for (const auto& game : games_to_update) {
+                update_conway_message(bot, game);
+            }
+        }
+    }
+
+    static void step_conway_game(ConwayGame& game) {
+        std::vector<std::vector<bool>> next_grid = game.grid;
+        for (int y = 0; y < game.height; ++y) {
+            for (int x = 0; x < game.width; ++x) {
+                int alive_neighbors = 0;
+                for (int dy = -1; dy <= 1; ++dy) {
+                    for (int dx = -1; dx <= 1; ++dx) {
+                        if (dx == 0 && dy == 0) continue;
+                        int ny = y + dy;
+                        int nx = x + dx;
+                        
+                        if (ny < 0) ny = game.height - 1;
+                        else if (ny >= game.height) ny = 0;
+                        if (nx < 0) nx = game.width - 1;
+                        else if (nx >= game.width) nx = 0;
+                        
+                        if (game.grid[ny][nx]) {
+                            alive_neighbors++;
+                        }
+                    }
+                }
+                
+                if (game.grid[y][x]) {
+                    if (alive_neighbors < 2 || alive_neighbors > 3) {
+                        next_grid[y][x] = false;
+                    }
+                } else {
+                    if (alive_neighbors == 3) {
+                        next_grid[y][x] = true;
+                    }
+                }
+            }
+        }
+        game.grid = next_grid;
+        game.generation++;
+    }
+
+    static void randomize_conway_game(ConwayGame& game) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, 1);
+        for (int y = 0; y < game.height; ++y) {
+            for (int x = 0; x < game.width; ++x) {
+                game.grid[y][x] = (dis(gen) == 1);
+            }
+        }
+    }
+
+    static std::string render_conway_grid(const ConwayGame& game) {
+        std::string out = "";
+        for (int y = 0; y < game.height; ++y) {
+            for (int x = 0; x < game.width; ++x) {
+                out += game.grid[y][x] ? "🟩" : "⬛";
+            }
+            out += "\n";
+        }
+        return out;
     }
 };
 

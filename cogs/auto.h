@@ -168,7 +168,8 @@ static void send_auto_response(stoatpp::cluster& bot,
         }
         if (!ar.content.empty()) payload.content = ar.content;
         nlohmann::json embed = nlohmann::json::object();
-        for (const char* key : {"title", "description", "color", "colour", "image"}) {
+        // Iterate text-only fields (image is handled separately via Autumn upload below)
+        for (const char* key : {"title", "description", "color", "colour"}) {
             if (emb_json.contains(key) && emb_json[key].is_string()) {
                 std::string val = emb_json[key].get<std::string>();
                 // unescape \n
@@ -179,14 +180,19 @@ static void send_auto_response(stoatpp::cluster& bot,
                 }
                 std::string k = key;
                 if (k == "color") k = "colour";
-                if (k == "image") {
-                    std::string desc = embed.contains("description") ? embed["description"].get<std::string>() : "";
-                    if (!desc.empty()) desc += "\n";
-                    desc += "![](" + unescaped + ")";
-                    embed["description"] = desc;
-                } else {
-                    embed[k] = unescaped;
+                embed[k] = unescaped;
+            }
+        }
+        // Handle image: upload to Autumn and set as native 'media' field
+        // instead of appending markdown to description (which causes 422 PayloadTooLarge).
+        if (emb_json.contains("image") && emb_json["image"].is_string()) {
+            std::string img_url = emb_json["image"].get<std::string>();
+            if (!img_url.empty()) {
+                std::string media_id = bot.rest().upload_from_url(img_url);
+                if (!media_id.empty()) {
+                    embed["media"] = media_id;
                 }
+                // If upload failed, silently skip image rather than embedding broken markdown
             }
         }
         if (!embed.empty()) payload.embeds.push_back(embed);

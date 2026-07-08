@@ -13,6 +13,14 @@ namespace bronx::cogs {
 class GeneralModule : public stoatpp::bot_module {
 public:
     void register_handlers(stoatpp::cluster& bot) override {
+        bot.on_message_react([this, &bot](const stoatpp::events::MessageReact& e) {
+            handle_poll_reaction(bot, e.channel_id, e.id);
+        });
+
+        bot.on_message_unreact([this, &bot](const stoatpp::events::MessageUnreact& e) {
+            handle_poll_reaction(bot, e.channel_id, e.id);
+        });
+
         bot.register_command({
             "ping",
             {},
@@ -267,7 +275,7 @@ public:
 
         bot.register_command({
             "support",
-            {"bug", "feedback", "invite"},
+            {"bug", "feedback", "invite", "website", "report"},
             "show support server, website, docs, source code, and invite links.",
             "",
             {},
@@ -428,8 +436,10 @@ public:
                 embed.set_title("📊 Poll: " + title);
                 
                 std::string desc = "";
+                std::vector<std::string> reactions;
                 for (const auto& opt : parsed_options) {
                     desc += opt.emoji + " " + opt.text + "\n\n";
+                    reactions.push_back(clean_emoji(opt.emoji));
                 }
                 embed.set_description(desc);
                 
@@ -438,23 +448,136 @@ public:
                 embed.set_icon_url(msg.author.avatar_url(bot.config().cdn_url));
                 
                 payload.add_embed(embed);
+                payload.set_interactions(reactions, false);
                 
-                bot.send_message(msg.channel_id, payload, [&bot, msg, parsed_options](stoatpp::models::Message res, bool success) {
-                    if (success) {
-                        std::thread([&bot, msg, res, parsed_options]() {
-                            for (const auto& opt : parsed_options) {
-                                bot.react_to_message(msg.channel_id, res.id, clean_emoji(opt.emoji));
-                                std::this_thread::sleep_for(std::chrono::milliseconds(150));
-                            }
-                        }).detach();
-                    }
-                });
+                bot.send_message(msg.channel_id, payload);
             },
             "General"
         });
     }
 
 private:
+    void handle_poll_reaction(stoatpp::cluster& bot, const std::string& channel_id, const std::string& message_id) {
+        // Fetch the message from Revolt to get the current reaction lists
+        auto res = bot.rest().get_message(channel_id, message_id);
+        if (!res.success()) return;
+        
+        auto msg = stoatpp::models::Message::from_json(res.body);
+        
+        // 1. Verify message author is the bot itself
+        if (msg.author != bot.current_user().id) return;
+        
+        // 2. Verify there is at least one embed
+        if (!msg.embeds.is_array() || msg.embeds.empty()) return;
+        
+        auto embed_json = msg.embeds[0];
+        if (!embed_json.contains("title") || !embed_json["title"].is_string()) return;
+        
+        std::string title = embed_json["title"].get<std::string>();
+        // Verify title starts with 📊 Poll:
+        if (title.rfind("📊 Poll: ", 0) != 0) return;
+        
+        if (!embed_json.contains("description") || !embed_json["description"].is_string()) return;
+        std::string embed_desc = embed_json["description"].get<std::string>();
+        
+        // 3. Parse options from the embed description
+        std::vector<PollOption> parsed_options;
+        std::stringstream ss(embed_desc);
+        std::string line;
+        while (std::getline(ss, line)) {
+            size_t start = line.find_first_not_of(" \t\r\n");
+            if (start == std::string::npos) continue;
+            line = line.substr(start);
+            size_t end = line.find_last_not_of(" \t\r\n");
+            line = line.substr(0, end + 1);
+            
+            if (line.empty() || line.front() == '[') continue;
+            
+            size_t space_pos = line.find(' ');
+            if (space_pos != std::string::npos) {
+                PollOption opt;
+                opt.emoji = line.substr(0, space_pos);
+                opt.text = line.substr(space_pos + 1);
+                parsed_options.push_back(opt);
+            }
+        }
+        
+        if (parsed_options.empty()) return;
+        
+        // 4. Count reactions
+        nlohmann::json raw_reactions = nlohmann::json::object();
+        if (msg.raw.contains("reactions") && msg.raw["reactions"].is_object()) {
+            raw_reactions = msg.raw["reactions"];
+        }
+        
+        int total_votes = 0;
+        std::vector<int> option_votes;
+        for (const auto& opt : parsed_options) {
+            int votes = 0;
+            std::string emoji_key = clean_emoji(opt.emoji);
+            if (raw_reactions.contains(emoji_key) && raw_reactions[emoji_key].is_array()) {
+                for (const auto& u : raw_reactions[emoji_key]) {
+                    if (u.is_string() && u.get<std::string>() != bot.current_user().id) {
+                        votes++;
+                    }
+                }
+            }
+            option_votes.push_back(votes);
+            total_votes += votes;
+        }
+        
+        // 5. Generate updated description
+        std::string desc = "";
+        for (size_t i = 0; i < parsed_options.size(); ++i) {
+            const auto& opt = parsed_options[i];
+            int votes = option_votes[i];
+            
+            desc += opt.emoji + " " + opt.text + "\n";
+            if (total_votes > 0) {
+                int percentage = (votes * 100) / total_votes;
+                int filled = percentage / 10;
+                std::string bar = "[";
+                for (int b = 0; b < 10; ++b) {
+                    if (b < filled) bar += "█";
+                    else bar += "░";
+                }
+                bar += "] " + std::to_string(votes) + " vote" + (votes == 1 ? "" : "s") + " (" + std::to_string(percentage) + "%)";
+                desc += bar + "\n";
+            }
+            desc += "\n";
+        }
+        
+        // Trim trailing newlines
+        while (!desc.empty() && (desc.back() == '\n' || desc.back() == '\r')) {
+            desc.pop_back();
+        }
+        
+        // 6. Build the new embed
+        stoatpp::models::Embed updated_embed;
+        updated_embed.set_title(title);
+        updated_embed.set_description(desc);
+        if (embed_json.contains("colour") && embed_json["colour"].is_string()) {
+            updated_embed.set_colour(embed_json["colour"].get<std::string>());
+        } else {
+            updated_embed.set_colour(0x6C5CE7);
+        }
+        if (embed_json.contains("icon_url") && embed_json["icon_url"].is_string()) {
+            updated_embed.set_icon_url(embed_json["icon_url"].get<std::string>());
+        }
+        
+        stoatpp::models::MessagePayload payload;
+        payload.content = " ";
+        payload.add_embed(updated_embed);
+        
+        std::vector<std::string> reactions;
+        for (const auto& opt : parsed_options) {
+            reactions.push_back(clean_emoji(opt.emoji));
+        }
+        payload.set_interactions(reactions, false);
+        
+        bot.edit_message(channel_id, message_id, payload);
+    }
+
     static std::string get_first_utf8_char(const std::string& str, size_t& len) {
         if (str.empty()) { len = 0; return ""; }
         unsigned char c = str[0];
@@ -497,13 +620,19 @@ private:
     };
 
     static std::string clean_emoji(const std::string& emoji_arg) {
-        if (emoji_arg.size() >= 28 && emoji_arg.front() == ':' && emoji_arg.back() == ':') {
-            std::string inner = emoji_arg.substr(1, emoji_arg.size() - 2);
+        std::string cleaned = emoji_arg;
+        std::string pua = "\xee\x83\xa6";
+        size_t pos;
+        while ((pos = cleaned.find(pua)) != std::string::npos) {
+            cleaned.erase(pos, pua.length());
+        }
+        if (cleaned.size() >= 28 && cleaned.front() == ':' && cleaned.back() == ':') {
+            std::string inner = cleaned.substr(1, cleaned.size() - 2);
             if (inner.size() == 26 && inner.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
                 return inner;
             }
         }
-        return emoji_arg;
+        return cleaned;
     }
 
     static std::string clean_option_text(const std::string& text) {
@@ -511,7 +640,7 @@ private:
         size_t start = 0;
         while (start < text.size()) {
             char c = text[start];
-            if (c == ' ' || c == '\t' || c == '-' || c == '*' || c == '•') {
+            if (c == ' ' || c == '\t' || c == '-' || c == '*') {
                 start++;
             } else if (text.compare(start, 3, "•") == 0) {
                 start += 3;
@@ -538,7 +667,9 @@ private:
         std::string cleaned = clean_option_text(raw_text);
         PollOption opt;
         
-        std::vector<std::string> default_emojis = {"1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣"};
+        std::vector<std::string> default_emojis = {
+            "1⃣", "2⃣", "3⃣", "4⃣", "5⃣", "6⃣", "7⃣", "8⃣", "9⃣", "🔟"
+        };
         opt.emoji = (default_index < default_emojis.size()) ? default_emojis[default_index] : "❓";
         opt.text = cleaned;
         

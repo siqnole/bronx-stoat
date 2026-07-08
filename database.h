@@ -159,6 +159,25 @@ public:
         AutoScopeFilter filter;
     };
 
+    // ── Word Filter ───────────────────────────────────────────────────────────
+    struct WordFilterGroup {
+        int id = 0;
+        std::string server_id;
+        std::string name;          // group label
+        std::vector<std::string> patterns; // words or regex patterns
+        bool server_wide = true;   // if true, active in all channels by default
+        // channels where the group is explicitly enabled (overrides server_wide=false)
+        std::vector<std::string> enabled_channels;
+        // channels where the group is explicitly disabled (overrides server_wide=true)
+        std::vector<std::string> disabled_channels;
+    };
+
+    struct WordFilterWhitelist {
+        std::string server_id;
+        // entries: plain words, '#'+channel_id, '%'+role_id
+        std::vector<std::string> entries;
+    };
+
     struct RecurringMessage {
         int id = 0;
         std::string server_id;
@@ -1160,6 +1179,26 @@ public:
             "CREATE TABLE IF NOT EXISTS server_alias_settings ("
             "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
             "  user_aliases_disabled TINYINT(1) NOT NULL DEFAULT 0"
+            ")");
+
+        // ── Word Filter tables ──────────────────────────────────────────────
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS word_filter_groups ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  name VARCHAR(100) NOT NULL,"
+            "  patterns JSON NOT NULL DEFAULT ('[]'),"
+            "  server_wide TINYINT(1) NOT NULL DEFAULT 1,"
+            "  enabled_channels JSON NOT NULL DEFAULT ('[]'),"
+            "  disabled_channels JSON NOT NULL DEFAULT ('[]'),"
+            "  UNIQUE KEY uq_filter_group (server_id, name),"
+            "  INDEX idx_filter_server (server_id)"
+            ")");
+
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS word_filter_whitelist ("
+            "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  entries JSON NOT NULL DEFAULT ('[]')"
             ")");
 
         // Load existing prefixes into cache
@@ -5213,6 +5252,175 @@ public:
             }
         }
         return "";
+    }
+
+    // ── Word Filter CRUD ──────────────────────────────────────────────────────
+
+    static std::vector<std::string> parse_json_str_arr(const char* raw) {
+        if (!raw) return {};
+        try {
+            auto j = nlohmann::json::parse(raw);
+            if (!j.is_array()) return {};
+            std::vector<std::string> out;
+            for (const auto& e : j) if (e.is_string()) out.push_back(e.get<std::string>());
+            return out;
+        } catch (...) { return {}; }
+    }
+
+    bool filter_create_group(const std::string& server_id, const std::string& name) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "INSERT IGNORE INTO word_filter_groups "
+            "(server_id, name, patterns, server_wide, enabled_channels, disabled_channels) VALUES ('"
+            + escape_string(server_id) + "','" + escape_string(name) + "','[]',1,'[]','[]')";
+        return mysql_query(mysql_, q.c_str()) == 0;
+    }
+
+    bool filter_delete_group(const std::string& server_id, const std::string& name) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "DELETE FROM word_filter_groups WHERE server_id='"
+            + escape_string(server_id) + "' AND name='" + escape_string(name) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0 && mysql_affected_rows(mysql_) > 0;
+    }
+
+    std::vector<WordFilterGroup> filter_list_groups(const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "SELECT id, name, patterns, server_wide, enabled_channels, disabled_channels "
+                        "FROM word_filter_groups WHERE server_id='" + escape_string(server_id) + "'";
+        std::vector<WordFilterGroup> out;
+        if (mysql_query(mysql_, q.c_str())) return out;
+        MYSQL_RES* res = mysql_store_result(mysql_);
+        if (!res) return out;
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+            WordFilterGroup g;
+            g.id        = row[0] ? std::atoi(row[0]) : 0;
+            g.server_id = server_id;
+            g.name      = row[1] ? row[1] : "";
+            g.patterns  = parse_json_str_arr(row[2]);
+            g.server_wide = row[3] && std::string(row[3]) != "0";
+            g.enabled_channels  = parse_json_str_arr(row[4]);
+            g.disabled_channels = parse_json_str_arr(row[5]);
+            out.push_back(std::move(g));
+        }
+        mysql_free_result(res);
+        return out;
+    }
+
+    std::optional<WordFilterGroup> filter_get_group(const std::string& server_id, const std::string& name) {
+        auto groups = filter_list_groups(server_id);
+        for (auto& g : groups) if (g.name == name) return g;
+        return std::nullopt;
+    }
+
+    bool filter_add_pattern(const std::string& server_id, const std::string& name, const std::string& pattern) {
+        auto grp = filter_get_group(server_id, name);
+        if (!grp) return false;
+        auto& pats = grp->patterns;
+        if (std::find(pats.begin(), pats.end(), pattern) != pats.end()) return true;
+        pats.push_back(pattern);
+        nlohmann::json j = pats;
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "UPDATE word_filter_groups SET patterns='" + escape_string(j.dump())
+            + "' WHERE server_id='" + escape_string(server_id)
+            + "' AND name='" + escape_string(name) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0;
+    }
+
+    bool filter_remove_pattern(const std::string& server_id, const std::string& name, const std::string& pattern) {
+        auto grp = filter_get_group(server_id, name);
+        if (!grp) return false;
+        auto& pats = grp->patterns;
+        auto it = std::find(pats.begin(), pats.end(), pattern);
+        if (it == pats.end()) return false;
+        pats.erase(it);
+        nlohmann::json j = pats;
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "UPDATE word_filter_groups SET patterns='" + escape_string(j.dump())
+            + "' WHERE server_id='" + escape_string(server_id)
+            + "' AND name='" + escape_string(name) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0;
+    }
+
+    // Toggle group server-wide (channel_id empty) or for a specific channel.
+    bool filter_toggle(const std::string& server_id, const std::string& name,
+                       const std::string& channel_id, bool enable) {
+        auto grp = filter_get_group(server_id, name);
+        if (!grp) return false;
+        if (channel_id.empty()) {
+            grp->server_wide = enable;
+            grp->enabled_channels.clear();
+            grp->disabled_channels.clear();
+        } else {
+            if (enable) {
+                auto& en = grp->enabled_channels;
+                if (std::find(en.begin(), en.end(), channel_id) == en.end()) en.push_back(channel_id);
+                auto& dis = grp->disabled_channels;
+                dis.erase(std::remove(dis.begin(), dis.end(), channel_id), dis.end());
+            } else {
+                auto& dis = grp->disabled_channels;
+                if (std::find(dis.begin(), dis.end(), channel_id) == dis.end()) dis.push_back(channel_id);
+                auto& en = grp->enabled_channels;
+                en.erase(std::remove(en.begin(), en.end(), channel_id), en.end());
+            }
+        }
+        nlohmann::json jen  = grp->enabled_channels;
+        nlohmann::json jdis = grp->disabled_channels;
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "UPDATE word_filter_groups SET server_wide="
+            + std::string(grp->server_wide ? "1" : "0")
+            + ", enabled_channels='"  + escape_string(jen.dump())
+            + "', disabled_channels='" + escape_string(jdis.dump())
+            + "' WHERE server_id='" + escape_string(server_id)
+            + "' AND name='" + escape_string(name) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0;
+    }
+
+    static bool filter_group_active_in(const WordFilterGroup& g, const std::string& channel_id) {
+        if (std::find(g.disabled_channels.begin(), g.disabled_channels.end(), channel_id)
+                != g.disabled_channels.end()) return false;
+        if (std::find(g.enabled_channels.begin(), g.enabled_channels.end(), channel_id)
+                != g.enabled_channels.end()) return true;
+        return g.server_wide;
+    }
+
+    WordFilterWhitelist filter_get_whitelist(const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        WordFilterWhitelist wl;
+        wl.server_id = server_id;
+        std::string q = "SELECT entries FROM word_filter_whitelist WHERE server_id='"
+            + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, q.c_str())) return wl;
+        MYSQL_RES* res = mysql_store_result(mysql_);
+        if (!res) return wl;
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) wl.entries = parse_json_str_arr(row[0]);
+        mysql_free_result(res);
+        return wl;
+    }
+
+    bool filter_whitelist_add(const std::string& server_id, const std::string& entry) {
+        auto wl = filter_get_whitelist(server_id);
+        if (std::find(wl.entries.begin(), wl.entries.end(), entry) != wl.entries.end()) return true;
+        wl.entries.push_back(entry);
+        nlohmann::json j = wl.entries;
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "INSERT INTO word_filter_whitelist (server_id, entries) VALUES ('"
+            + escape_string(server_id) + "','" + escape_string(j.dump())
+            + "') ON DUPLICATE KEY UPDATE entries='" + escape_string(j.dump()) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0;
+    }
+
+    bool filter_whitelist_remove(const std::string& server_id, const std::string& entry) {
+        auto wl = filter_get_whitelist(server_id);
+        auto it = std::find(wl.entries.begin(), wl.entries.end(), entry);
+        if (it == wl.entries.end()) return false;
+        wl.entries.erase(it);
+        nlohmann::json j = wl.entries;
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "INSERT INTO word_filter_whitelist (server_id, entries) VALUES ('"
+            + escape_string(server_id) + "','" + escape_string(j.dump())
+            + "') ON DUPLICATE KEY UPDATE entries='" + escape_string(j.dump()) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0;
     }
 
 };
