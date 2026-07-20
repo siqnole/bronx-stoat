@@ -283,6 +283,371 @@ public:
         });
 
         bot.register_command({
+            "warn",
+            {},
+            "warn a member from the server.",
+            "",
+            {"<@user|id>", "[reason]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling warn...\n";
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "usage: `!warn <@user|id> [reason]`");
+                    return;
+                }
+
+                std::string query = args[0];
+                std::string reason = args.size() > 1 ? args[1] : "no reason provided";
+
+                helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
+                    if (!success) {
+                        bot.send_message(msg.channel_id, "could not resolve target user for warn.");
+                        return;
+                    }
+
+                    bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, reason, target_user](stoatpp::models::Member exec_member, bool exec_ok) {
+                        if (!exec_ok) {
+                            bot.send_message(msg.channel_id, "failed to verify executor member settings.");
+                            return;
+                        }
+
+                        if (!helpers::check_hierarchy(bot, msg.server_id, exec_member, target_member)) {
+                            bot.send_message(msg.channel_id, "hierarchy error: you cannot moderate this user.");
+                            return;
+                        }
+
+                        std::unordered_map<std::string, std::string> tokens = {
+                            {"{user}", "<@" + target_user.id + ">"},
+                            {"{username}", target_user.username},
+                            {"{reason}", reason},
+                            {"{moderator}", "<@" + msg.author.id + ">"},
+                            {"{modname}", msg.author.username}
+                        };
+                        send_action_response(bot, msg.server_id, msg.channel_id, "warn", tokens, "successfully warned **" + target_user.username + "**.");
+                        log_moderation_action(bot, msg.server_id, "Warn", msg.author.id, target_user.id, reason);
+                    });
+                });
+            },
+            "Moderation",
+            stoatpp::permissions::KickMembers
+        });
+
+        bot.register_command({
+            "jail",
+            {},
+            "jail a member or manage jail configuration.",
+            "",
+            {"<@user|id/setup/role/channel>", "[args...]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling jail...\n";
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, 
+                        "⚖️ **Jail System Commands:**\n"
+                        "• `.jail setup` — Automatically configure jail role and jail channel overrides.\n"
+                        "• `.jail role <@role|role_id>` — Manually set jail role.\n"
+                        "• `.jail channel <#channel|channel_id>` — Manually set jail channel.\n"
+                        "• `.jail <@user|id> [duration] [reason]` — Jail a member.");
+                    return;
+                }
+
+                std::string cmd_arg = args[0];
+                if (cmd_arg == "setup") {
+                    std::thread([&bot, msg]() {
+                        bot.send_message(msg.channel_id, "⚙️ Setting up jail role and channel...");
+                        
+                        // 1. Create role
+                        auto role_res = bot.rest().create_role(msg.server_id, "Jailed");
+                        if (!role_res.success()) {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to create Jailed role: " + std::to_string(role_res.status_code) + " — " + role_res.error_message());
+                            return;
+                        }
+                        
+                        std::string jail_role_id = "";
+                        if (role_res.body.contains("id") && role_res.body["id"].is_string()) {
+                            jail_role_id = role_res.body["id"].get<std::string>();
+                        } else if (role_res.body.contains("role") && role_res.body["role"].is_object() && role_res.body["role"].contains("id") && role_res.body["role"]["id"].is_string()) {
+                            jail_role_id = role_res.body["role"]["id"].get<std::string>();
+                        }
+
+                        if (jail_role_id.empty()) {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to parse Jailed role ID.");
+                            return;
+                        }
+
+                        // 2. Create channel
+                        auto chan_res = bot.rest().create_channel(msg.server_id, "Text", "jail");
+                        if (!chan_res.success()) {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to create jail channel: " + std::to_string(chan_res.status_code) + " — " + chan_res.error_message());
+                            return;
+                        }
+
+                        std::string jail_channel_id = chan_res.body["_id"].get<std::string>();
+
+                        // 3. Set overrides
+                        auto srv_chans_res = bot.rest().get_server_channels(msg.server_id);
+                        if (srv_chans_res.success() && srv_chans_res.body.is_array()) {
+                            for (const auto& ch_json : srv_chans_res.body) {
+                                auto c = stoatpp::models::Channel::from_json(ch_json);
+                                if (c.channel_type == "TextChannel" || c.channel_type == "VoiceChannel") {
+                                    if (c.id == jail_channel_id) {
+                                        bot.rest().set_channel_permission(c.id, jail_role_id, 
+                                            stoatpp::permissions::ViewChannel | stoatpp::permissions::SendMessages | stoatpp::permissions::ReadMessageHistory, 0);
+                                    } else {
+                                        bot.rest().set_channel_permission(c.id, jail_role_id, 0, stoatpp::permissions::ViewChannel);
+                                    }
+                                }
+                            }
+                        }
+
+                        // 4. Save config
+                        Database::JailConfig cfg;
+                        cfg.server_id = msg.server_id;
+                        cfg.jail_role_id = jail_role_id;
+                        cfg.jail_channel_id = jail_channel_id;
+                        g_db->save_jail_config(cfg);
+
+                        // Clear server cache so new role is fetched
+                        auto fresh_res = bot.rest().get_server(msg.server_id);
+                        if (fresh_res.success()) {
+                            bot.cache_server(stoatpp::models::Server::from_json(fresh_res.body));
+                        }
+
+                        bot.send_message(msg.channel_id, "✅ Setup complete! Created Jailed role and <#" + jail_channel_id + "> channel with proper overrides.");
+                    }).detach();
+                    return;
+                }
+
+                if (cmd_arg == "role") {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `.jail role <@role|role_id>`");
+                        return;
+                    }
+                    std::string role_query = args[1];
+                    if (role_query.rfind("<%", 0) == 0 && role_query.back() == '>') {
+                        role_query = role_query.substr(2, role_query.size() - 3);
+                    } else if (role_query.rfind("<@&", 0) == 0 && role_query.back() == '>') {
+                        role_query = role_query.substr(3, role_query.size() - 4);
+                    }
+
+                    auto server_opt = bot.get_server(msg.server_id);
+                    if (!server_opt) {
+                        bot.send_message(msg.channel_id, "failed to retrieve server settings.");
+                        return;
+                    }
+
+                    std::string matched_role_id = "";
+                    for (const auto& r : server_opt->roles) {
+                        if (r.id == role_query || r.name == role_query) {
+                            matched_role_id = r.id;
+                            break;
+                        }
+                    }
+
+                    if (matched_role_id.empty()) {
+                        bot.send_message(msg.channel_id, "⚠️ Role not found on this server.");
+                        return;
+                    }
+
+                    auto cfg = g_db->get_jail_config(msg.server_id).value_or(Database::JailConfig{msg.server_id, "", ""});
+                    cfg.jail_role_id = matched_role_id;
+                    g_db->save_jail_config(cfg);
+                    bot.send_message(msg.channel_id, "✅ Jail role set to **" + role_query + "**.");
+                    return;
+                }
+
+                if (cmd_arg == "channel") {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `.jail channel <#channel|channel_id>`");
+                        return;
+                    }
+                    std::string chan_query = args[1];
+                    if (chan_query.rfind("<#", 0) == 0 && chan_query.back() == '>') {
+                        chan_query = chan_query.substr(2, chan_query.size() - 3);
+                    }
+
+                    auto cfg = g_db->get_jail_config(msg.server_id).value_or(Database::JailConfig{msg.server_id, "", ""});
+                    cfg.jail_channel_id = chan_query;
+                    g_db->save_jail_config(cfg);
+                    bot.send_message(msg.channel_id, "✅ Jail channel set to <#" + chan_query + ">.");
+                    return;
+                }
+
+                // Jailing member
+                auto jail_cfg_opt = g_db->get_jail_config(msg.server_id);
+                if (!jail_cfg_opt || jail_cfg_opt->jail_role_id.empty() || jail_cfg_opt->jail_channel_id.empty()) {
+                    bot.send_message(msg.channel_id, "⚠️ Jail environment is not set up on this server. Run `!jail setup` first.");
+                    return;
+                }
+
+                std::string target_query = cmd_arg;
+                uint64_t duration = 0;
+                std::string reason = "no reason provided";
+                bool is_timed = false;
+
+                if (args.size() > 1) {
+                    uint64_t d = helpers::parse_duration(args[1]);
+                    if (d > 0) {
+                        duration = d;
+                        is_timed = true;
+                        if (args.size() > 2) {
+                            reason = "";
+                            for (size_t i = 2; i < args.size(); ++i) {
+                                reason += args[i] + (i + 1 < args.size() ? " " : "");
+                            }
+                        }
+                    } else {
+                        reason = "";
+                        for (size_t i = 1; i < args.size(); ++i) {
+                            reason += args[i] + (i + 1 < args.size() ? " " : "");
+                        }
+                    }
+                }
+
+                helpers::resolve_user(bot, msg.server_id, target_query, [&bot, msg, reason, duration, is_timed, jail_cfg_opt](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
+                    if (!success) {
+                        bot.send_message(msg.channel_id, "could not resolve target user.");
+                        return;
+                    }
+
+                    bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, reason, duration, is_timed, jail_cfg_opt, target_user](stoatpp::models::Member exec_member, bool exec_ok) {
+                        if (!exec_ok) {
+                            bot.send_message(msg.channel_id, "failed to verify executor member settings.");
+                            return;
+                        }
+
+                        if (!helpers::check_hierarchy(bot, msg.server_id, exec_member, target_member)) {
+                            bot.send_message(msg.channel_id, "hierarchy error: you cannot moderate this user.");
+                            return;
+                        }
+
+                        auto existing_jail = g_db->get_active_jail(msg.server_id, target_user.id);
+                        if (existing_jail) {
+                            bot.send_message(msg.channel_id, "user is already jailed.");
+                            return;
+                        }
+
+                        // Save original roles as comma-separated string
+                        std::string original_roles_str = "";
+                        for (size_t i = 0; i < target_member.roles.size(); ++i) {
+                            original_roles_str += target_member.roles[i] + (i + 1 < target_member.roles.size() ? "," : "");
+                        }
+
+                        std::thread([&bot, msg, target_user, jail_cfg_opt, original_roles_str, duration, is_timed, reason]() {
+                            nlohmann::json edit_fields;
+                            edit_fields["roles"] = { jail_cfg_opt->jail_role_id };
+                            auto edit_res = bot.rest().edit_member(msg.server_id, target_user.id, edit_fields);
+                            if (!edit_res.success()) {
+                                bot.send_message(msg.channel_id, "failed to restrict user roles: " + edit_res.error_message());
+                                return;
+                            }
+
+                            auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                            auto expires_unix = is_timed ? (now_unix + duration) : 0;
+
+                            Database::ActiveJail jail;
+                            jail.server_id = msg.server_id;
+                            jail.user_id = target_user.id;
+                            jail.roles = original_roles_str;
+                            jail.jailed_at = now_unix;
+                            jail.expires_at = expires_unix;
+                            g_db->add_active_jail(jail);
+
+                            std::string duration_str = is_timed ? (std::to_string(duration) + " seconds") : "indefinitely";
+                            std::string duration_msg = is_timed ? ("for " + std::to_string(duration) + " seconds") : "indefinitely";
+
+                            std::unordered_map<std::string, std::string> tokens = {
+                                {"{user}", "<@" + target_user.id + ">"},
+                                {"{username}", target_user.username},
+                                {"{reason}", reason},
+                                {"{duration}", duration_str},
+                                {"{duration_msg}", duration_msg},
+                                {"{moderator}", "<@" + msg.author.id + ">"},
+                                {"{modname}", msg.author.username}
+                            };
+
+                            // Send customized jail message to jail channel
+                            std::string default_jail_msg = "<@" + target_user.id + "> you have been jailed for " + reason + ", " + duration_msg + ". The staff will speak to you soon.";
+                            send_action_response(bot, msg.server_id, jail_cfg_opt->jail_channel_id, "jail", tokens, default_jail_msg);
+
+                            // Send customized invoke confirmation to command channel
+                            send_action_response(bot, msg.server_id, msg.channel_id, "jail_invoke", tokens, "successfully jailed **" + target_user.username + "**.");
+
+                            // Log mod log
+                            log_moderation_action(bot, msg.server_id, "Jail", msg.author.id, target_user.id, reason, "Duration: " + duration_str);
+                        }).detach();
+                    });
+                });
+            },
+            "Moderation",
+            stoatpp::permissions::KickMembers
+        });
+
+        bot.register_command({
+            "unjail",
+            {},
+            "unjail a member, restoring their original roles.",
+            "",
+            {"<@user|id>", "[reason]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling unjail...\n";
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "usage: `!unjail <@user|id> [reason]`");
+                    return;
+                }
+
+                std::string target_query = args[0];
+                std::string reason = args.size() > 1 ? args[1] : "no reason provided";
+
+                helpers::resolve_user(bot, msg.server_id, target_query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
+                    if (!success) {
+                        bot.send_message(msg.channel_id, "could not resolve target user.");
+                        return;
+                    }
+
+                    auto active_jail_opt = g_db->get_active_jail(msg.server_id, target_user.id);
+                    if (!active_jail_opt) {
+                        bot.send_message(msg.channel_id, "user is not jailed.");
+                        return;
+                    }
+
+                    std::thread([&bot, msg, target_user, active_jail_opt, reason]() {
+                        // 1. Restore original roles
+                        std::vector<std::string> roles_to_restore;
+                        std::stringstream ss(active_jail_opt->roles);
+                        std::string r_id;
+                        while (std::getline(ss, r_id, ',')) {
+                            if (!r_id.empty()) roles_to_restore.push_back(r_id);
+                        }
+
+                        nlohmann::json edit_fields;
+                        edit_fields["roles"] = roles_to_restore;
+                        auto edit_res = bot.rest().edit_member(msg.server_id, target_user.id, edit_fields);
+                        if (!edit_res.success()) {
+                            bot.send_message(msg.channel_id, "failed to restore user roles: " + edit_res.error_message());
+                            return;
+                        }
+
+                        // 2. Remove active jail record
+                        g_db->remove_active_jail(msg.server_id, target_user.id);
+
+                        // 3. Send unjail customized response
+                        std::unordered_map<std::string, std::string> tokens = {
+                            {"{user}", "<@" + target_user.id + ">"},
+                            {"{username}", target_user.username},
+                            {"{moderator}", "<@" + msg.author.id + ">"},
+                            {"{modname}", msg.author.username}
+                        };
+                        send_action_response(bot, msg.server_id, msg.channel_id, "unjail", tokens, "successfully unjailed **" + target_user.username + "**.");
+
+                        // 4. Log to modlogs
+                        log_moderation_action(bot, msg.server_id, "Unjail", msg.author.id, target_user.id, reason);
+                    }).detach();
+                });
+            },
+            "Moderation",
+            stoatpp::permissions::KickMembers
+        });
+
+        bot.register_command({
             "purge",
             {},
             "bulk delete messages in the channel.",
@@ -587,7 +952,11 @@ public:
                         "• **Ban (`ban`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
                         "• **Kick (`kick`):** `{user}`, `{username}`, `{moderator}`, `{modname}`\n"
                         "• **Timeout (`timeout`):** `{user}`, `{username}`, `{duration}`, `{expires}`, `{moderator}`, `{modname}`\n"
-                        "• **Purge (`purge`):** `{amount}`, `{moderator}`, `{modname}`\n\n"
+                        "• **Purge (`purge`):** `{amount}`, `{moderator}`, `{modname}`\n"
+                        "• **Warn (`warn`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
+                        "• **Jail (`jail`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{moderator}`, `{modname}`\n"
+                        "• **Jail Invoke (`jail_invoke`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{moderator}`, `{modname}`\n"
+                        "• **Unjail (`unjail`):** `{user}`, `{username}`, `{moderator}`, `{modname}`\n\n"
                         "**Examples:**\n"
                         "• `" + pfx + "message ban {user} was sent into the stratosphere! Reason: {reason}`\n"
                         "• `" + pfx + "message edit ban title:🔨 Banned! color:#ff0000 description:{user} was banned by {moderator}`"
@@ -608,11 +977,16 @@ public:
                     if (act == "kicks") return "kick";
                     if (act == "timeouts" || act == "mute") return "timeout";
                     if (act == "purges" || act == "clear") return "purge";
+                    if (act == "warns") return "warn";
+                    if (act == "jails") return "jail";
+                    if (act == "unjails") return "unjail";
+                    if (act == "jail_invokes") return "jail_invoke";
                     return act;
                 };
 
                 auto is_valid_action = [](const std::string& act) {
-                    return act == "ban" || act == "kick" || act == "timeout" || act == "purge";
+                    return act == "ban" || act == "kick" || act == "timeout" || act == "purge" ||
+                           act == "warn" || act == "jail" || act == "unjail" || act == "jail_invoke";
                 };
 
                 if (sub == "list") {
@@ -820,8 +1194,8 @@ public:
         bot.register_command({
             "modlogs",
             {"ml"},
-            "view moderation history for a user. use 'actions' to see what actions they've invoked on others.",
-            "modlogs <@user|id> [actions]",
+            "view or manage moderation history for a user.",
+            "modlogs <@user|id/remove> [actions/id]",
             {"<@user|id>", "[actions]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (msg.server_id.empty()) {
@@ -834,13 +1208,34 @@ public:
                 }
                 if (args.empty()) {
                     bot.send_message(msg.channel_id,
-                        "**modlogs** — view moderation history\n"
+                        "**modlogs** — view/manage moderation history\n"
                         "`.modlogs <@user|id>` — history of actions taken against a user\n"
-                        "`.modlogs <@user|id> actions` — actions a user has invoked on others");
+                        "`.modlogs <@user|id> actions` — actions a user has invoked on others\n"
+                        "`.modlogs remove <id>` — remove a modlog entry");
                     return;
                 }
 
                 std::string query = args[0];
+                if (query == "remove" || query == "delete" || query == "rm") {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `.modlogs remove <id>`");
+                        return;
+                    }
+                    int id = 0;
+                    try {
+                        id = std::stoi(args[1]);
+                    } catch (...) {
+                        bot.send_message(msg.channel_id, "invalid entry ID.");
+                        return;
+                    }
+                    if (g_db->delete_moderation_action(msg.server_id, id)) {
+                        bot.send_message(msg.channel_id, "✅ successfully removed modlog entry `#" + std::to_string(id) + "`.");
+                    } else {
+                        bot.send_message(msg.channel_id, "failed to remove modlog entry.");
+                    }
+                    return;
+                }
+
                 bool show_actions = args.size() > 1 && (args[1] == "actions" || args[1] == "action" || args[1] == "a");
 
                 helpers::resolve_user(bot, msg.server_id, query,
@@ -866,6 +1261,8 @@ public:
                             if (a == "Timeout") return "🔇";
                             if (a == "Warn")    return "⚠️";
                             if (a == "Unban")   return "✅";
+                            if (a == "Jail")    return "⛓️";
+                            if (a == "Unjail")  return "🔓";
                             return "🛡️";
                         };
 
@@ -980,6 +1377,39 @@ public:
             "Moderation",
             stoatpp::permissions::ManageChannels
         });
+
+        // Background thread to check for expired jails
+        std::thread([&bot]() {
+            while (true) {
+                if (g_db) {
+                    auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+                    auto expired_jails = g_db->get_expired_jails(now_unix);
+                    for (const auto& j : expired_jails) {
+                        // Unjail target user
+                        auto s_opt = bot.get_server(j.server_id);
+                        if (s_opt) {
+                            auto j_cfg_opt = g_db->get_jail_config(j.server_id);
+                            
+                            // Restore roles
+                            std::vector<std::string> roles_to_restore;
+                            std::stringstream ss(j.roles);
+                            std::string r_id;
+                            while (std::getline(ss, r_id, ',')) {
+                                if (!r_id.empty()) roles_to_restore.push_back(r_id);
+                            }
+                            nlohmann::json fields;
+                            fields["roles"] = roles_to_restore;
+                            bot.rest().edit_member(j.server_id, j.user_id, fields);
+                        }
+                        g_db->remove_active_jail(j.server_id, j.user_id);
+                        
+                        // Log unjail to moderation logs
+                        log_moderation_action(bot, j.server_id, "Unjail", bot.current_user().id, j.user_id, "Jail duration expired");
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::seconds(10));
+            }
+        }).detach();
 
     }
 };

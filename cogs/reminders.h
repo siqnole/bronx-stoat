@@ -1,51 +1,12 @@
 #pragma once
 #include "stoatpp/bot_module.h"
+#include "helpers.h"
 #include "../database.h"
 #include <chrono>
 #include <thread>
 #include <cctype>
 
 namespace bronx::cogs {
-
-inline uint64_t parse_duration(const std::string& input) {
-    uint64_t total_seconds = 0;
-    std::string current_num = "";
-    for (size_t i = 0; i < input.size(); ++i) {
-        char c = input[i];
-        if (std::isdigit(c)) {
-            current_num += c;
-        } else {
-            if (current_num.empty()) continue;
-            
-            std::string unit = "";
-            while (i < input.size() && std::isalpha(input[i])) {
-                unit += std::tolower(input[i]);
-                i++;
-            }
-            i--; 
-            
-            uint64_t val = 0;
-            try { val = std::stoull(current_num); } catch (...) { return 0; }
-            
-            if (unit == "s" || unit == "sec" || unit == "seconds") total_seconds += val;
-            else if (unit == "m" || unit == "min" || unit == "minutes") total_seconds += val * 60;
-            else if (unit == "h" || unit == "hr" || unit == "hours") total_seconds += val * 3600;
-            else if (unit == "d" || unit == "day" || unit == "days") total_seconds += val * 86400;
-            else if (unit == "w" || unit == "wk" || unit == "weeks") total_seconds += val * 604800;
-            else if (unit == "mo" || unit == "month" || unit == "months") total_seconds += val * 2592000;
-            else if (unit == "y" || unit == "yr" || unit == "years") total_seconds += val * 31536000;
-            else return 0;
-            
-            current_num = "";
-        }
-    }
-    
-    if (total_seconds == 0 && !current_num.empty()) {
-        try { return std::stoull(current_num) * 60; } catch (...) { return 0; }
-    }
-    
-    return total_seconds;
-}
 
 class RemindersModule : public stoatpp::bot_module {
 public:
@@ -89,7 +50,7 @@ public:
                 }
 
                 std::string time_str = args[0];
-                uint64_t duration_sec = parse_duration(time_str);
+                uint64_t duration_sec = helpers::parse_duration(time_str);
 
                 if (duration_sec == 0) {
                     bot.send_message(msg.channel_id, "invalid time format. examples: `10m`, `1h30m`, `2d`, `1y`");

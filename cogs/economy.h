@@ -361,27 +361,78 @@ public:
             "leaderboard",
             {"lb", "rich"},
             "shows the richest users in the server.",
-            "leaderboard",
-            {},
+            "leaderboard [server/global]",
+            {"[scope]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (!g_db) return;
 
-                auto top = g_db->get_top_economy_users(10);
+                bool is_global = (!args.empty() && (args[0] == "global" || args[0] == "all" || args[0] == "g"));
+
+                std::vector<Database::TopEcoEntry> top_entries;
+
+                if (is_global || msg.server_id.empty()) {
+                    top_entries = g_db->get_top_economy_users(10);
+                } else {
+                    // Fetch candidate top economy users
+                    auto candidate_top = g_db->get_top_economy_users(250);
+
+                    // Fetch server members list
+                    std::unordered_set<std::string> server_member_ids;
+                    auto res = bot.rest().get_server_members(msg.server_id);
+                    if (res.success()) {
+                        nlohmann::json members_arr;
+                        if (res.body.is_array()) {
+                            members_arr = res.body;
+                        } else if (res.body.is_object() && res.body.contains("members") && res.body["members"].is_array()) {
+                            members_arr = res.body["members"];
+                        }
+                        for (const auto& item : members_arr) {
+                            auto m = stoatpp::models::Member::from_json(item);
+                            if (!m.id.empty()) {
+                                server_member_ids.insert(m.id);
+                            }
+                        }
+                    }
+
+                    for (const auto& entry : candidate_top) {
+                        if (top_entries.size() >= 10) break;
+
+                        bool is_in_server = false;
+                        if (!server_member_ids.empty()) {
+                            is_in_server = (server_member_ids.count(entry.user_id) > 0);
+                        } else {
+                            auto mem_opt = bot.get_member(msg.server_id, entry.user_id);
+                            if (mem_opt) {
+                                is_in_server = true;
+                            } else {
+                                auto r_mem = bot.rest().get_server_member(msg.server_id, entry.user_id);
+                                is_in_server = r_mem.success();
+                            }
+                        }
+
+                        if (is_in_server) {
+                            top_entries.push_back(entry);
+                        }
+                    }
+                }
 
                 stoatpp::models::MessagePayload payload;
                 payload.content = " ";
                 stoatpp::models::Embed embed;
                 embed.set_colour(0x5865F2);
-                embed.set_title("bronx economy — leaderboard");
+                embed.set_title(is_global ? "bronx economy — global leaderboard" : "bronx economy — server leaderboard");
 
                 std::string desc;
-                if (top.empty()) {
-                    desc = "no user balance records found.";
+                if (top_entries.empty()) {
+                    desc = "no user balance records found for this server.";
                 } else {
                     int rank = 1;
-                    for (const auto& u : top) {
+                    for (const auto& u : top_entries) {
                         desc += std::to_string(rank) + ". <@" + u.user_id + "> — **" + std::to_string(u.networth) + "** coins\n";
                         rank++;
+                    }
+                    if (!is_global) {
+                        desc += "\n*Tip: Use `.lb global` to view global rankings.*";
                     }
                 }
                 embed.set_description(desc);
@@ -391,6 +442,7 @@ public:
             },
             "Economy"
         });
+
 
         // 9. coinflip command
         bot.register_command({

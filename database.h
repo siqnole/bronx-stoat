@@ -10,6 +10,9 @@
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 #include <algorithm>
+#include <functional>
+#include <cmath>
+
 
 namespace bronx {
 
@@ -102,6 +105,24 @@ public:
         std::optional<std::string> colour;
         std::optional<std::string> name;
         bool disabled = false;
+        bool disable_user = false;
+        bool disable_user_name = false;
+        bool disable_user_avatar = false;
+        bool disable_user_colour = false;
+    };
+
+    struct JailConfig {
+        std::string server_id;
+        std::string jail_role_id;
+        std::string jail_channel_id;
+    };
+
+    struct ActiveJail {
+        std::string server_id;
+        std::string user_id;
+        std::string roles; // comma-separated roles
+        uint64_t jailed_at = 0;
+        uint64_t expires_at = 0; // 0 if indefinite
     };
 
     struct UserMasquerade {
@@ -124,6 +145,46 @@ public:
         std::string message_id;
         std::string user_id;
         std::string tupper_name;
+    };
+
+    struct GuildLevelingConfig {
+        std::string server_id;
+        bool enabled = false;
+        bool reward_coins = true;
+        int coins_per_message = 1;
+        int min_xp_per_message = 15;
+        int max_xp_per_message = 25;
+        int min_message_chars = 5;
+        int xp_cooldown_seconds = 60;
+        std::optional<std::string> announcement_channel;
+        bool announce_levelup = true;
+        std::string announcement_message = "{name} reached **Level {level}**!";
+        bool sticky_roles = true;
+    };
+
+    struct LevelRole {
+        int id = 0;
+        std::string server_id;
+        uint32_t level = 1;
+        std::string role_id;
+        std::string role_name;
+        bool remove_previous = false;
+    };
+
+    struct UserXP {
+        std::string user_id;
+        std::string server_id = "0";
+        uint64_t total_xp = 0;
+        uint32_t level = 1;
+        std::string last_message_xp;
+    };
+
+    struct XPBlacklistEntry {
+        int id = 0;
+        std::string server_id;
+        std::string target_type; // "channel", "role", "user"
+        std::string target_id;
+        std::string added_by;
     };
 
 
@@ -435,6 +496,17 @@ private:
     std::unordered_map<std::string, std::vector<Tupper>> tupper_cache_;
     std::shared_mutex tupper_cache_mutex_;
 
+    // Leveling caches
+    std::unordered_map<std::string, GuildLevelingConfig> leveling_config_cache_;
+    std::shared_mutex leveling_config_cache_mutex_;
+
+    std::unordered_map<std::string, std::vector<LevelRole>> level_roles_cache_;
+    std::shared_mutex level_roles_cache_mutex_;
+
+    std::unordered_map<std::string, std::vector<XPBlacklistEntry>> xp_blacklist_cache_;
+    std::shared_mutex xp_blacklist_cache_mutex_;
+
+
     std::string escape_string(const std::string& input) {
         if (!mysql_) return "";
         std::vector<char> buffer(input.size() * 2 + 1);
@@ -444,6 +516,9 @@ private:
 
 public:
     Database() = default;
+
+    std::function<void(const std::string&, int64_t, int64_t)> on_balance_update = nullptr;
+    std::function<void(const UserAFK&)> on_afk_save = nullptr;
     
     ~Database() {
         if (mysql_) {
@@ -798,6 +873,33 @@ public:
             return false;
         }
 
+        // Create Table jail_configs
+        std::string create_jail_configs = 
+            "CREATE TABLE IF NOT EXISTS jail_configs ("
+            "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  jail_role_id VARCHAR(30) DEFAULT NULL,"
+            "  jail_channel_id VARCHAR(30) DEFAULT NULL"
+            ")";
+        if (mysql_query(mysql_, create_jail_configs.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'jail_configs': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table active_jails
+        std::string create_active_jails = 
+            "CREATE TABLE IF NOT EXISTS active_jails ("
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  roles TEXT NOT NULL,"
+            "  jailed_at BIGINT UNSIGNED NOT NULL,"
+            "  expires_at BIGINT UNSIGNED NOT NULL,"
+            "  PRIMARY KEY (server_id, user_id)"
+            ")";
+        if (mysql_query(mysql_, create_active_jails.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'active_jails': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
         // Create Table masquerade_configs
         std::string create_masq = 
             "CREATE TABLE IF NOT EXISTS masquerade_configs ("
@@ -805,14 +907,22 @@ public:
             "  avatar VARCHAR(256) DEFAULT NULL,"
             "  colour VARCHAR(128) DEFAULT NULL,"
             "  name VARCHAR(32) DEFAULT NULL,"
-            "  disabled TINYINT(1) NOT NULL DEFAULT 0"
+            "  disabled TINYINT(1) NOT NULL DEFAULT 0,"
+            "  disable_user TINYINT(1) NOT NULL DEFAULT 0,"
+            "  disable_user_name TINYINT(1) NOT NULL DEFAULT 0,"
+            "  disable_user_avatar TINYINT(1) NOT NULL DEFAULT 0,"
+            "  disable_user_colour TINYINT(1) NOT NULL DEFAULT 0"
             ")";
         if (mysql_query(mysql_, create_masq.c_str())) {
             std::cerr << "[bronx db] failed to create table 'masquerade_configs': " << mysql_error(mysql_) << "\n";
             return false;
         }
-        // Migration: add disabled column if it doesn't exist yet
+        // Migration: add columns if they don't exist yet
         mysql_query(mysql_, "ALTER TABLE masquerade_configs ADD COLUMN IF NOT EXISTS disabled TINYINT(1) NOT NULL DEFAULT 0");
+        mysql_query(mysql_, "ALTER TABLE masquerade_configs ADD COLUMN IF NOT EXISTS disable_user TINYINT(1) NOT NULL DEFAULT 0");
+        mysql_query(mysql_, "ALTER TABLE masquerade_configs ADD COLUMN IF NOT EXISTS disable_user_name TINYINT(1) NOT NULL DEFAULT 0");
+        mysql_query(mysql_, "ALTER TABLE masquerade_configs ADD COLUMN IF NOT EXISTS disable_user_avatar TINYINT(1) NOT NULL DEFAULT 0");
+        mysql_query(mysql_, "ALTER TABLE masquerade_configs ADD COLUMN IF NOT EXISTS disable_user_colour TINYINT(1) NOT NULL DEFAULT 0");
 
         // Create Table user_masquerades
         std::string create_user_masq =
@@ -854,6 +964,79 @@ public:
             std::cerr << "[bronx db] failed to create table 'tupper_proxies': " << mysql_error(mysql_) << "\n";
             return false;
         }
+
+        // Create Table guild_leveling_config
+        std::string create_glc = 
+            "CREATE TABLE IF NOT EXISTS guild_leveling_config ("
+            "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  enabled TINYINT(1) NOT NULL DEFAULT 0,"
+            "  reward_coins TINYINT(1) NOT NULL DEFAULT 1,"
+            "  coins_per_message INT NOT NULL DEFAULT 1,"
+            "  min_xp_per_message INT NOT NULL DEFAULT 15,"
+            "  max_xp_per_message INT NOT NULL DEFAULT 25,"
+            "  min_message_chars INT NOT NULL DEFAULT 5,"
+            "  xp_cooldown_seconds INT NOT NULL DEFAULT 60,"
+            "  announcement_channel VARCHAR(30) DEFAULT NULL,"
+            "  announce_levelup TINYINT(1) NOT NULL DEFAULT 1,"
+            "  level_up_message VARCHAR(500) NOT NULL DEFAULT '{name} reached **Level {level}**!',"
+            "  sticky_roles TINYINT(1) NOT NULL DEFAULT 1,"
+            "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+            ")";
+        if (mysql_query(mysql_, create_glc.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'guild_leveling_config': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table guild_level_roles
+        std::string create_glr = 
+            "CREATE TABLE IF NOT EXISTS guild_level_roles ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  level INT UNSIGNED NOT NULL,"
+            "  role_id VARCHAR(30) NOT NULL,"
+            "  role_name VARCHAR(100) NOT NULL,"
+            "  remove_previous TINYINT(1) NOT NULL DEFAULT 0,"
+            "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  UNIQUE KEY uq_server_level (server_id, level)"
+            ")";
+        if (mysql_query(mysql_, create_glr.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'guild_level_roles': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table guild_xp_blacklist
+        std::string create_gxb = 
+            "CREATE TABLE IF NOT EXISTS guild_xp_blacklist ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  target_type VARCHAR(10) NOT NULL,"
+            "  target_id VARCHAR(30) NOT NULL,"
+            "  added_by VARCHAR(30) NOT NULL,"
+            "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  UNIQUE KEY uq_server_target (server_id, target_type, target_id)"
+            ")";
+        if (mysql_query(mysql_, create_gxb.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'guild_xp_blacklist': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table user_xp
+        std::string create_uxp = 
+            "CREATE TABLE IF NOT EXISTS user_xp ("
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  server_id VARCHAR(30) NOT NULL DEFAULT '0',"
+            "  total_xp BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+            "  level INT UNSIGNED NOT NULL DEFAULT 1,"
+            "  last_message_xp TIMESTAMP NULL DEFAULT NULL,"
+            "  PRIMARY KEY (user_id, server_id),"
+            "  INDEX idx_server_xp (server_id, total_xp DESC)"
+            ")";
+        if (mysql_query(mysql_, create_uxp.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'user_xp': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
 
         // Create Table antiraid_configs
         std::string create_ar = 
@@ -1071,6 +1254,21 @@ public:
                 return false;
             }
 
+            // Create Table account_links
+            std::string create_account_links = 
+                "CREATE TABLE IF NOT EXISTS account_links ("
+                "  stoat_id VARCHAR(30) DEFAULT NULL,"
+                "  fluxer_id VARCHAR(30) DEFAULT NULL,"
+                "  discord_id VARCHAR(30) DEFAULT NULL,"
+                "  UNIQUE KEY (stoat_id),"
+                "  UNIQUE KEY (fluxer_id),"
+                "  UNIQUE KEY (discord_id)"
+                ")";
+            if (mysql_query(mysql_, create_account_links.c_str())) {
+                std::cerr << "[bronx db] failed to create table 'account_links': " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+
 
             // Load counting configs into cache
             {
@@ -1200,6 +1398,94 @@ public:
             "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
             "  entries JSON NOT NULL DEFAULT ('[]')"
             ")");
+
+        // Create Fishing Economy Tables
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS user_fishing ("
+            "  user_id VARCHAR(64) PRIMARY KEY,"
+            "  rod_id VARCHAR(64) NOT NULL DEFAULT 'wooden_rod',"
+            "  bait_id VARCHAR(64) NOT NULL DEFAULT 'worm',"
+            "  fish_prestige INT NOT NULL DEFAULT 0,"
+            "  prestige_tokens INT NOT NULL DEFAULT 0,"
+            "  total_catches INT NOT NULL DEFAULT 0,"
+            "  total_weight DOUBLE NOT NULL DEFAULT 0.0,"
+            "  total_earned BIGINT NOT NULL DEFAULT 0,"
+            "  rarest_catch_name VARCHAR(128) NOT NULL DEFAULT 'None',"
+            "  rarest_catch_odds DOUBLE NOT NULL DEFAULT 1.0,"
+            "  rod_luck_level INT NOT NULL DEFAULT 0,"
+            "  rod_cd_level INT NOT NULL DEFAULT 0,"
+            "  rod_double_level INT NOT NULL DEFAULT 0,"
+            "  rod_rare_level INT NOT NULL DEFAULT 0,"
+            "  active_rod_effect VARCHAR(64) NOT NULL DEFAULT 'none',"
+            "  last_fish_time TIMESTAMP NULL DEFAULT NULL,"
+            "  temp_luck_boost DOUBLE NOT NULL DEFAULT 1.0,"
+            "  temp_luck_casts INT NOT NULL DEFAULT 0"
+            ")");
+
+        mysql_query(mysql_, "ALTER TABLE user_fishing ADD COLUMN IF NOT EXISTS event_tokens INT NOT NULL DEFAULT 0");
+        mysql_query(mysql_, "ALTER TABLE user_fishing ADD COLUMN IF NOT EXISTS active_pet_id VARCHAR(64) NOT NULL DEFAULT 'none'");
+        mysql_query(mysql_, "ALTER TABLE user_fishing ADD COLUMN IF NOT EXISTS perm_luck DOUBLE NOT NULL DEFAULT 0.0");
+        mysql_query(mysql_, "ALTER TABLE user_fishing ADD COLUMN IF NOT EXISTS perm_val_mult DOUBLE NOT NULL DEFAULT 1.0");
+        mysql_query(mysql_, "ALTER TABLE user_fishing ADD COLUMN IF NOT EXISTS perm_wt_mult DOUBLE NOT NULL DEFAULT 1.0");
+        mysql_query(mysql_, "ALTER TABLE user_fishing ADD COLUMN IF NOT EXISTS perm_cd_reduction INT NOT NULL DEFAULT 0");
+
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS user_pets ("
+            "  user_id VARCHAR(64) NOT NULL,"
+            "  pet_id VARCHAR(64) NOT NULL,"
+            "  acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  PRIMARY KEY (user_id, pet_id)"
+            ")");
+
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS global_fish_bosses ("
+            "  boss_type VARCHAR(32) PRIMARY KEY,"
+            "  boss_name VARCHAR(128) NOT NULL,"
+            "  season_theme VARCHAR(32) NOT NULL,"
+            "  current_hp BIGINT NOT NULL,"
+            "  max_hp BIGINT NOT NULL,"
+            "  req_type VARCHAR(64) NOT NULL,"
+            "  req_progress BIGINT NOT NULL DEFAULT 0,"
+            "  req_target BIGINT NOT NULL DEFAULT 1000"
+            ")");
+
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS user_boss_contributions ("
+            "  user_id VARCHAR(64) NOT NULL,"
+            "  boss_type VARCHAR(32) NOT NULL,"
+            "  contribution_amount BIGINT NOT NULL DEFAULT 0,"
+            "  PRIMARY KEY (user_id, boss_type)"
+            ")");
+
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS user_fish_inventory ("
+            "  id INT AUTO_INCREMENT PRIMARY KEY,"
+            "  user_id VARCHAR(64) NOT NULL,"
+            "  fish_id VARCHAR(64) NOT NULL,"
+            "  fish_name VARCHAR(128) NOT NULL,"
+            "  rarity VARCHAR(32) NOT NULL,"
+            "  odds_percent DOUBLE NOT NULL,"
+            "  weight DOUBLE NOT NULL,"
+            "  value BIGINT NOT NULL,"
+            "  caught_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  INDEX idx_fish_inv_user (user_id)"
+            ")");
+
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS user_fish_baits ("
+            "  user_id VARCHAR(64) NOT NULL,"
+            "  bait_id VARCHAR(64) NOT NULL,"
+            "  quantity INT NOT NULL DEFAULT 0,"
+            "  PRIMARY KEY (user_id, bait_id)"
+            ")");
+
+        mysql_query(mysql_,
+            "CREATE TABLE IF NOT EXISTS user_unlocked_rods ("
+            "  user_id VARCHAR(64) NOT NULL,"
+            "  rod_id VARCHAR(64) NOT NULL,"
+            "  PRIMARY KEY (user_id, rod_id)"
+            ")");
+
 
         // Load existing prefixes into cache
         std::string select_query = "SELECT target_type, target_id, prefixes, default_enabled FROM prefixes";
@@ -1803,7 +2089,7 @@ public:
         }
 
         // Load masquerade_configs
-        std::string select_masq = "SELECT server_id, avatar, colour, name, disabled FROM masquerade_configs";
+        std::string select_masq = "SELECT server_id, avatar, colour, name, disabled, disable_user, disable_user_name, disable_user_avatar, disable_user_colour FROM masquerade_configs";
         if (mysql_query(mysql_, select_masq.c_str()) == 0) {
             MYSQL_RES* masq_res = mysql_store_result(mysql_);
             if (masq_res) {
@@ -1817,6 +2103,10 @@ public:
                     if (row[2]) cfg.colour = row[2];
                     if (row[3]) cfg.name = row[3];
                     cfg.disabled = row[4] && std::string(row[4]) == "1";
+                    cfg.disable_user = row[5] && std::string(row[5]) == "1";
+                    cfg.disable_user_name = row[6] && std::string(row[6]) == "1";
+                    cfg.disable_user_avatar = row[7] && std::string(row[7]) == "1";
+                    cfg.disable_user_colour = row[8] && std::string(row[8]) == "1";
                     masquerade_cache_[s_id] = cfg;
                 }
                 mysql_free_result(masq_res);
@@ -1864,9 +2154,82 @@ public:
             }
         }
 
+        // Load guild_leveling_config
+        std::string select_glc_sql = "SELECT server_id, enabled, reward_coins, coins_per_message, min_xp_per_message, max_xp_per_message, min_message_chars, xp_cooldown_seconds, announcement_channel, announce_levelup, level_up_message, sticky_roles FROM guild_leveling_config";
+        if (mysql_query(mysql_, select_glc_sql.c_str()) == 0) {
+            MYSQL_RES* glc_res = mysql_store_result(mysql_);
+            if (glc_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> glc_lock(leveling_config_cache_mutex_);
+                while ((row = mysql_fetch_row(glc_res))) {
+                    std::string s_id = row[0] ? row[0] : "";
+                    GuildLevelingConfig cfg;
+                    cfg.server_id = s_id;
+                    cfg.enabled = row[1] && std::string(row[1]) == "1";
+                    cfg.reward_coins = row[2] && std::string(row[2]) == "1";
+                    cfg.coins_per_message = row[3] ? std::stoi(row[3]) : 1;
+                    cfg.min_xp_per_message = row[4] ? std::stoi(row[4]) : 15;
+                    cfg.max_xp_per_message = row[5] ? std::stoi(row[5]) : 25;
+                    cfg.min_message_chars = row[6] ? std::stoi(row[6]) : 5;
+                    cfg.xp_cooldown_seconds = row[7] ? std::stoi(row[7]) : 60;
+                    if (row[8]) cfg.announcement_channel = row[8];
+                    cfg.announce_levelup = row[9] && std::string(row[9]) == "1";
+                    cfg.announcement_message = row[10] ? row[10] : "";
+                    cfg.sticky_roles = row[11] && std::string(row[11]) == "1";
+                    leveling_config_cache_[s_id] = cfg;
+                }
+                mysql_free_result(glc_res);
+            }
+        }
+
+        // Load guild_level_roles
+        std::string select_glr_sql = "SELECT id, server_id, level, role_id, role_name, remove_previous FROM guild_level_roles";
+        if (mysql_query(mysql_, select_glr_sql.c_str()) == 0) {
+            MYSQL_RES* glr_res = mysql_store_result(mysql_);
+            if (glr_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> glr_lock(level_roles_cache_mutex_);
+                while ((row = mysql_fetch_row(glr_res))) {
+                    LevelRole r;
+                    r.id = row[0] ? std::stoi(row[0]) : 0;
+                    r.server_id = row[1] ? row[1] : "";
+                    r.level = row[2] ? std::stoul(row[2]) : 1;
+                    r.role_id = row[3] ? row[3] : "";
+                    r.role_name = row[4] ? row[4] : "";
+                    r.remove_previous = row[5] && std::string(row[5]) == "1";
+                    level_roles_cache_[r.server_id].push_back(r);
+                }
+                mysql_free_result(glr_res);
+            }
+        }
+
+        // Load guild_xp_blacklist
+        std::string select_gxb_sql = "SELECT id, server_id, target_type, target_id, added_by FROM guild_xp_blacklist";
+        if (mysql_query(mysql_, select_gxb_sql.c_str()) == 0) {
+            MYSQL_RES* gxb_res = mysql_store_result(mysql_);
+            if (gxb_res) {
+                MYSQL_ROW row;
+                std::lock_guard<std::shared_mutex> gxb_lock(xp_blacklist_cache_mutex_);
+                while ((row = mysql_fetch_row(gxb_res))) {
+                    XPBlacklistEntry entry;
+                    entry.id = row[0] ? std::stoi(row[0]) : 0;
+                    entry.server_id = row[1] ? row[1] : "";
+                    entry.target_type = row[2] ? row[2] : "";
+                    entry.target_id = row[3] ? row[3] : "";
+                    entry.added_by = row[4] ? row[4] : "";
+                    xp_blacklist_cache_[entry.server_id].push_back(entry);
+                }
+                mysql_free_result(gxb_res);
+            }
+        }
+
         std::cout << "[bronx db] database successfully initialized.\n"
                   << "           loaded " << masquerade_cache_.size() << " masquerade configurations.\n"
                   << "           loaded " << tupper_cache_.size() << " user tupper profiles.\n"
+                  << "           loaded " << leveling_config_cache_.size() << " leveling configurations.\n"
+                  << "           loaded " << level_roles_cache_.size() << " level role rewards servers.\n"
+                  << "           loaded " << xp_blacklist_cache_.size() << " server blacklist mappings.\n"
+
 
                   << "           loaded " << cache_.size() << " prefix configurations.\n"
                   << "           loaded " << rr_cache_.size() << " reaction role messages.\n"
@@ -2678,12 +3041,19 @@ public:
 
     bool update_balances(const std::string& user_id, int64_t wallet_delta, int64_t bank_delta) {
         ensure_economy_user(user_id);
-        std::lock_guard<std::mutex> lock(db_mutex_);
-        if (!mysql_) return false;
-        std::string sql = "UPDATE users SET wallet = wallet + " + std::to_string(wallet_delta) + 
-                          ", bank = bank + " + std::to_string(bank_delta) + 
-                          " WHERE user_id = '" + escape_string(user_id) + "'";
-        return mysql_query(mysql_, sql.c_str()) == 0;
+        bool success = false;
+        {
+            std::lock_guard<std::mutex> lock(db_mutex_);
+            if (!mysql_) return false;
+            std::string sql = "UPDATE users SET wallet = wallet + " + std::to_string(wallet_delta) + 
+                              ", bank = bank + " + std::to_string(bank_delta) + 
+                              " WHERE user_id = '" + escape_string(user_id) + "'";
+            success = (mysql_query(mysql_, sql.c_str()) == 0);
+        }
+        if (success && on_balance_update) {
+            on_balance_update(user_id, wallet_delta, bank_delta);
+        }
+        return success;
     }
 
     bool prestige_user(const std::string& user_id, int64_t new_bank_limit) {
@@ -2764,6 +3134,545 @@ public:
         return entries;
     }
 
+    // ── Fishing Economy Database System ─────────────────────────────────────
+    struct FishingUser {
+        std::string user_id;
+        std::string rod_id = "wooden_rod";
+        std::string bait_id = "worm";
+        int fish_prestige = 0;
+        int prestige_tokens = 0;
+        int total_catches = 0;
+        double total_weight = 0.0;
+        int64_t total_earned = 0;
+        std::string rarest_catch_name = "None";
+        double rarest_catch_odds = 1.0;
+        int rod_luck_level = 0;
+        int rod_cd_level = 0;
+        int rod_double_level = 0;
+        int rod_rare_level = 0;
+        std::string active_rod_effect = "none";
+        std::string last_fish_time;
+        double temp_luck_boost = 1.0;
+        int temp_luck_casts = 0;
+        int event_tokens = 0;
+        std::string active_pet_id = "none";
+        double perm_luck = 0.0;
+        double perm_val_mult = 1.0;
+        double perm_wt_mult = 1.0;
+        int perm_cd_reduction = 0;
+    };
+
+    struct FishBossState {
+        std::string boss_type; // "daily", "monthly", "seasonal"
+        std::string boss_name;
+        std::string season_theme; // "Summer", "Fall", "Winter", "Spring"
+        int64_t current_hp = 100000;
+        int64_t max_hp = 100000;
+        std::string req_type = "catches"; // "catches", "sell_value", "total_weight"
+        int64_t req_progress = 0;
+        int64_t req_target = 5000;
+    };
+
+    struct CaughtFish {
+        int id = 0;
+        std::string user_id;
+        std::string fish_id;
+        std::string fish_name;
+        std::string rarity;
+        double odds_percent = 0.0;
+        double weight = 0.0;
+        int64_t value = 0;
+        std::string caught_at;
+    };
+
+    struct FishBaitEntry {
+        std::string bait_id;
+        int quantity = 0;
+    };
+
+    bool ensure_fishing_user(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string esc_uid = escape_string(user_id);
+        std::string sql = "INSERT IGNORE INTO user_fishing (user_id) VALUES ('" + esc_uid + "')";
+        mysql_query(mysql_, sql.c_str());
+
+        std::string sql_rod = "INSERT IGNORE INTO user_unlocked_rods (user_id, rod_id) VALUES ('" + esc_uid + "', 'wooden_rod')";
+        mysql_query(mysql_, sql_rod.c_str());
+
+        std::string sql_worm = "INSERT IGNORE INTO user_fish_baits (user_id, bait_id, quantity) VALUES ('" + esc_uid + "', 'worm', 10)";
+        mysql_query(mysql_, sql_worm.c_str());
+        return true;
+    }
+
+    std::optional<FishingUser> get_fishing_user(const std::string& user_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return std::nullopt;
+
+        std::string sql = "SELECT rod_id, bait_id, fish_prestige, prestige_tokens, total_catches, total_weight, total_earned, rarest_catch_name, rarest_catch_odds, rod_luck_level, rod_cd_level, rod_double_level, rod_rare_level, active_rod_effect, IFNULL(last_fish_time, ''), temp_luck_boost, temp_luck_casts, IFNULL(event_tokens, 0), IFNULL(active_pet_id, 'none'), IFNULL(perm_luck, 0.0), IFNULL(perm_val_mult, 1.0), IFNULL(perm_wt_mult, 1.0), IFNULL(perm_cd_reduction, 0) FROM user_fishing WHERE user_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    FishingUser u;
+                    u.user_id = user_id;
+                    u.rod_id = row[0] ? row[0] : "wooden_rod";
+                    u.bait_id = row[1] ? row[1] : "worm";
+                    u.fish_prestige = row[2] ? std::stoi(row[2]) : 0;
+                    u.prestige_tokens = row[3] ? std::stoi(row[3]) : 0;
+                    u.total_catches = row[4] ? std::stoi(row[4]) : 0;
+                    u.total_weight = row[5] ? std::stod(row[5]) : 0.0;
+                    u.total_earned = row[6] ? std::stoll(row[6]) : 0;
+                    u.rarest_catch_name = row[7] ? row[7] : "None";
+                    u.rarest_catch_odds = row[8] ? std::stod(row[8]) : 1.0;
+                    u.rod_luck_level = row[9] ? std::stoi(row[9]) : 0;
+                    u.rod_cd_level = row[10] ? std::stoi(row[10]) : 0;
+                    u.rod_double_level = row[11] ? std::stoi(row[11]) : 0;
+                    u.rod_rare_level = row[12] ? std::stoi(row[12]) : 0;
+                    u.active_rod_effect = row[13] ? row[13] : "none";
+                    u.last_fish_time = row[14] ? row[14] : "";
+                    u.temp_luck_boost = row[15] ? std::stod(row[15]) : 1.0;
+                    u.temp_luck_casts = row[16] ? std::stoi(row[16]) : 0;
+                    u.event_tokens = row[17] ? std::stoi(row[17]) : 0;
+                    u.active_pet_id = row[18] ? row[18] : "none";
+                    u.perm_luck = row[19] ? std::stod(row[19]) : 0.0;
+                    u.perm_val_mult = row[20] ? std::stod(row[20]) : 1.0;
+                    u.perm_wt_mult = row[21] ? std::stod(row[21]) : 1.0;
+                    u.perm_cd_reduction = row[22] ? std::stoi(row[22]) : 0;
+                    mysql_free_result(res);
+                    return u;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool update_fishing_user(const FishingUser& u) {
+        ensure_fishing_user(u.user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+
+        std::string sql = "UPDATE user_fishing SET "
+                          "rod_id = '" + escape_string(u.rod_id) + "', "
+                          "bait_id = '" + escape_string(u.bait_id) + "', "
+                          "fish_prestige = " + std::to_string(u.fish_prestige) + ", "
+                          "prestige_tokens = " + std::to_string(u.prestige_tokens) + ", "
+                          "total_catches = " + std::to_string(u.total_catches) + ", "
+                          "total_weight = " + std::to_string(u.total_weight) + ", "
+                          "total_earned = " + std::to_string(u.total_earned) + ", "
+                          "rarest_catch_name = '" + escape_string(u.rarest_catch_name) + "', "
+                          "rarest_catch_odds = " + std::to_string(u.rarest_catch_odds) + ", "
+                          "rod_luck_level = " + std::to_string(u.rod_luck_level) + ", "
+                          "rod_cd_level = " + std::to_string(u.rod_cd_level) + ", "
+                          "rod_double_level = " + std::to_string(u.rod_double_level) + ", "
+                          "rod_rare_level = " + std::to_string(u.rod_rare_level) + ", "
+                          "active_rod_effect = '" + escape_string(u.active_rod_effect) + "', "
+                          "temp_luck_boost = " + std::to_string(u.temp_luck_boost) + ", "
+                          "temp_luck_casts = " + std::to_string(u.temp_luck_casts) + ", "
+                          "event_tokens = " + std::to_string(u.event_tokens) + ", "
+                          "active_pet_id = '" + escape_string(u.active_pet_id) + "', "
+                          "perm_luck = " + std::to_string(u.perm_luck) + ", "
+                          "perm_val_mult = " + std::to_string(u.perm_val_mult) + ", "
+                          "perm_wt_mult = " + std::to_string(u.perm_wt_mult) + ", "
+                          "perm_cd_reduction = " + std::to_string(u.perm_cd_reduction) + " "
+                          "WHERE user_id = '" + escape_string(u.user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool add_user_pet(const std::string& user_id, const std::string& pet_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT IGNORE INTO user_pets (user_id, pet_id) VALUES ('" + escape_string(user_id) + "', '" + escape_string(pet_id) + "')";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    std::vector<std::string> get_user_pets(const std::string& user_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<std::string> pets;
+        if (!mysql_) return pets;
+        std::string sql = "SELECT pet_id FROM user_pets WHERE user_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0]) pets.push_back(row[0]);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return pets;
+    }
+
+    bool has_user_pet(const std::string& user_id, const std::string& pet_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "SELECT 1 FROM user_pets WHERE user_id = '" + escape_string(user_id) + "' AND pet_id = '" + escape_string(pet_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                bool found = (mysql_num_rows(res) > 0);
+                mysql_free_result(res);
+                return found;
+            }
+        }
+        return false;
+    }
+
+    std::optional<FishBossState> get_global_boss(const std::string& boss_type) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return std::nullopt;
+        std::string sql = "SELECT boss_type, boss_name, season_theme, current_hp, max_hp, req_type, req_progress, req_target FROM global_fish_bosses WHERE boss_type = '" + escape_string(boss_type) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    FishBossState b;
+                    b.boss_type = row[0] ? row[0] : boss_type;
+                    b.boss_name = row[1] ? row[1] : "";
+                    b.season_theme = row[2] ? row[2] : "Summer";
+                    b.current_hp = row[3] ? std::stoll(row[3]) : 100000;
+                    b.max_hp = row[4] ? std::stoll(row[4]) : 100000;
+                    b.req_type = row[5] ? row[5] : "catches";
+                    b.req_progress = row[6] ? std::stoll(row[6]) : 0;
+                    b.req_target = row[7] ? std::stoll(row[7]) : 1000;
+                    mysql_free_result(res);
+                    return b;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool save_global_boss(const FishBossState& b) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO global_fish_bosses (boss_type, boss_name, season_theme, current_hp, max_hp, req_type, req_progress, req_target) VALUES ('"
+                          + escape_string(b.boss_type) + "', '"
+                          + escape_string(b.boss_name) + "', '"
+                          + escape_string(b.season_theme) + "', "
+                          + std::to_string(b.current_hp) + ", "
+                          + std::to_string(b.max_hp) + ", '"
+                          + escape_string(b.req_type) + "', "
+                          + std::to_string(b.req_progress) + ", "
+                          + std::to_string(b.req_target) + ") "
+                          "ON DUPLICATE KEY UPDATE "
+                          "boss_name = '" + escape_string(b.boss_name) + "', "
+                          "season_theme = '" + escape_string(b.season_theme) + "', "
+                          "current_hp = " + std::to_string(b.current_hp) + ", "
+                          "max_hp = " + std::to_string(b.max_hp) + ", "
+                          "req_type = '" + escape_string(b.req_type) + "', "
+                          "req_progress = " + std::to_string(b.req_progress) + ", "
+                          "req_target = " + std::to_string(b.req_target);
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool add_user_boss_contribution(const std::string& user_id, const std::string& boss_type, int64_t amount) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO user_boss_contributions (user_id, boss_type, contribution_amount) VALUES ('"
+                          + escape_string(user_id) + "', '"
+                          + escape_string(boss_type) + "', "
+                          + std::to_string(amount) + ") "
+                          "ON DUPLICATE KEY UPDATE contribution_amount = contribution_amount + " + std::to_string(amount);
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    int64_t get_user_boss_contribution(const std::string& user_id, const std::string& boss_type) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return 0;
+        std::string sql = "SELECT contribution_amount FROM user_boss_contributions WHERE user_id = '" + escape_string(user_id) + "' AND boss_type = '" + escape_string(boss_type) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row && row[0]) {
+                    int64_t val = std::stoll(row[0]);
+                    mysql_free_result(res);
+                    return val;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return 0;
+    }
+
+    bool update_last_fish_time(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "UPDATE user_fishing SET last_fish_time = CURRENT_TIMESTAMP WHERE user_id = '" + escape_string(user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    int get_fish_cooldown_remaining(const std::string& user_id, int cooldown_seconds) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return 0;
+        std::string sql = "SELECT GREATEST(0, CAST(" + std::to_string(cooldown_seconds) + " AS SIGNED) - TIMESTAMPDIFF(SECOND, last_fish_time, CURRENT_TIMESTAMP)) FROM user_fishing WHERE user_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row && row[0]) {
+                    int remaining = std::stoi(row[0]);
+                    mysql_free_result(res);
+                    return remaining;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return 0;
+    }
+
+    bool add_fish_to_inventory(const std::string& user_id, const std::string& fish_id, const std::string& fish_name, const std::string& rarity, double odds_percent, double weight, int64_t value) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO user_fish_inventory (user_id, fish_id, fish_name, rarity, odds_percent, weight, value) VALUES ('"
+                          + escape_string(user_id) + "', '"
+                          + escape_string(fish_id) + "', '"
+                          + escape_string(fish_name) + "', '"
+                          + escape_string(rarity) + "', "
+                          + std::to_string(odds_percent) + ", "
+                          + std::to_string(weight) + ", "
+                          + std::to_string(value) + ")";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    std::vector<CaughtFish> get_user_fish_inventory(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<CaughtFish> list;
+        if (!mysql_) return list;
+        std::string sql = "SELECT id, fish_id, fish_name, rarity, odds_percent, weight, value, IFNULL(caught_at, '') FROM user_fish_inventory WHERE user_id = '" + escape_string(user_id) + "' ORDER BY value DESC";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    CaughtFish cf;
+                    cf.id = std::stoi(row[0]);
+                    cf.user_id = user_id;
+                    cf.fish_id = row[1] ? row[1] : "";
+                    cf.fish_name = row[2] ? row[2] : "";
+                    cf.rarity = row[3] ? row[3] : "";
+                    cf.odds_percent = row[4] ? std::stod(row[4]) : 0.0;
+                    cf.weight = row[5] ? std::stod(row[5]) : 0.0;
+                    cf.value = row[6] ? std::stoll(row[6]) : 0;
+                    cf.caught_at = row[7] ? row[7] : "";
+                    list.push_back(cf);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return list;
+    }
+
+    std::pair<int, int64_t> sell_all_user_fish(const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return {0, 0};
+
+        int count = 0;
+        int64_t total_val = 0;
+        std::string esc_uid = escape_string(user_id);
+        std::string sql_select = "SELECT COUNT(*), IFNULL(SUM(value), 0) FROM user_fish_inventory WHERE user_id = '" + esc_uid + "'";
+        if (mysql_query(mysql_, sql_select.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    count = row[0] ? std::stoi(row[0]) : 0;
+                    total_val = row[1] ? std::stoll(row[1]) : 0;
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        if (count > 0) {
+            std::string sql_del = "DELETE FROM user_fish_inventory WHERE user_id = '" + esc_uid + "'";
+            mysql_query(mysql_, sql_del.c_str());
+            std::string sql_add_coins = "UPDATE users SET wallet = wallet + " + std::to_string(total_val) + " WHERE user_id = '" + esc_uid + "'";
+            mysql_query(mysql_, sql_add_coins.c_str());
+            std::string sql_track_earned = "UPDATE user_fishing SET total_earned = total_earned + " + std::to_string(total_val) + " WHERE user_id = '" + esc_uid + "'";
+            mysql_query(mysql_, sql_track_earned.c_str());
+        }
+        return {count, total_val};
+    }
+
+    std::pair<int, int64_t> sell_user_fish_by_rarity(const std::string& user_id, const std::string& rarity) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return {0, 0};
+
+        int count = 0;
+        int64_t total_val = 0;
+        std::string esc_uid = escape_string(user_id);
+        std::string esc_rarity = escape_string(rarity);
+
+        std::string sql_select = "SELECT COUNT(*), IFNULL(SUM(value), 0) FROM user_fish_inventory WHERE user_id = '" + esc_uid + "' AND LOWER(rarity) = LOWER('" + esc_rarity + "')";
+        if (mysql_query(mysql_, sql_select.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    count = row[0] ? std::stoi(row[0]) : 0;
+                    total_val = row[1] ? std::stoll(row[1]) : 0;
+                }
+                mysql_free_result(res);
+            }
+        }
+
+        if (count > 0) {
+            std::string sql_del = "DELETE FROM user_fish_inventory WHERE user_id = '" + esc_uid + "' AND LOWER(rarity) = LOWER('" + esc_rarity + "')";
+            mysql_query(mysql_, sql_del.c_str());
+            std::string sql_add_coins = "UPDATE users SET wallet = wallet + " + std::to_string(total_val) + " WHERE user_id = '" + esc_uid + "'";
+            mysql_query(mysql_, sql_add_coins.c_str());
+            std::string sql_track_earned = "UPDATE user_fishing SET total_earned = total_earned + " + std::to_string(total_val) + " WHERE user_id = '" + esc_uid + "'";
+            mysql_query(mysql_, sql_track_earned.c_str());
+        }
+        return {count, total_val};
+    }
+
+    int get_bait_count(const std::string& user_id, const std::string& bait_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return 0;
+        std::string sql = "SELECT quantity FROM user_fish_baits WHERE user_id = '" + escape_string(user_id) + "' AND bait_id = '" + escape_string(bait_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row && row[0]) {
+                    int qty = std::stoi(row[0]);
+                    mysql_free_result(res);
+                    return qty;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return 0;
+    }
+
+    bool add_bait(const std::string& user_id, const std::string& bait_id, int quantity) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO user_fish_baits (user_id, bait_id, quantity) VALUES ('"
+                          + escape_string(user_id) + "', '"
+                          + escape_string(bait_id) + "', "
+                          + std::to_string(quantity) + ") ON DUPLICATE KEY UPDATE quantity = quantity + " + std::to_string(quantity);
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool consume_bait(const std::string& user_id, const std::string& bait_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "UPDATE user_fish_baits SET quantity = GREATEST(0, quantity - 1) WHERE user_id = '" + escape_string(user_id) + "' AND bait_id = '" + escape_string(bait_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    std::vector<FishBaitEntry> get_user_baits(const std::string& user_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<FishBaitEntry> list;
+        if (!mysql_) return list;
+        std::string sql = "SELECT bait_id, quantity FROM user_fish_baits WHERE user_id = '" + escape_string(user_id) + "' AND quantity > 0";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0] && row[1]) {
+                        list.push_back({row[0], std::stoi(row[1])});
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return list;
+    }
+
+    bool unlock_rod(const std::string& user_id, const std::string& rod_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT IGNORE INTO user_unlocked_rods (user_id, rod_id) VALUES ('" + escape_string(user_id) + "', '" + escape_string(rod_id) + "')";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    std::vector<std::string> get_unlocked_rods(const std::string& user_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<std::string> list;
+        if (!mysql_) return list;
+        std::string sql = "SELECT rod_id FROM user_unlocked_rods WHERE user_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0]) list.push_back(row[0]);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return list;
+    }
+
+    bool has_unlocked_rod(const std::string& user_id, const std::string& rod_id) {
+        ensure_fishing_user(user_id);
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "SELECT 1 FROM user_unlocked_rods WHERE user_id = '" + escape_string(user_id) + "' AND rod_id = '" + escape_string(rod_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                bool found = (mysql_num_rows(res) > 0);
+                mysql_free_result(res);
+                return found;
+            }
+        }
+        return false;
+    }
+
+    std::vector<FishingUser> get_top_fishers_by_odds(int limit = 10) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<FishingUser> list;
+        if (!mysql_) return list;
+        std::string sql = "SELECT user_id, rod_id, bait_id, fish_prestige, prestige_tokens, total_catches, total_weight, total_earned, rarest_catch_name, rarest_catch_odds FROM user_fishing WHERE rarest_catch_name != 'None' ORDER BY rarest_catch_odds ASC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    FishingUser u;
+                    u.user_id = row[0] ? row[0] : "";
+                    u.rod_id = row[1] ? row[1] : "";
+                    u.bait_id = row[2] ? row[2] : "";
+                    u.fish_prestige = row[3] ? std::stoi(row[3]) : 0;
+                    u.prestige_tokens = row[4] ? std::stoi(row[4]) : 0;
+                    u.total_catches = row[5] ? std::stoi(row[5]) : 0;
+                    u.total_weight = row[6] ? std::stod(row[6]) : 0.0;
+                    u.total_earned = row[7] ? std::stoll(row[7]) : 0;
+                    u.rarest_catch_name = row[8] ? row[8] : "None";
+                    u.rarest_catch_odds = row[9] ? std::stod(row[9]) : 1.0;
+                    list.push_back(u);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return list;
+    }
+
+
     std::optional<MasqueradeConfig> get_masquerade_config(const std::string& server_id) {
         std::shared_lock<std::shared_mutex> lock(masquerade_cache_mutex_);
         auto it = masquerade_cache_.find(server_id);
@@ -2781,11 +3690,15 @@ public:
         std::string val_colour = cfg.colour ? "'" + escape_string(*cfg.colour) + "'" : "NULL";
         std::string val_name = cfg.name ? "'" + escape_string(*cfg.name) + "'" : "NULL";
         std::string val_disabled = cfg.disabled ? "1" : "0";
+        std::string val_disable_user = cfg.disable_user ? "1" : "0";
+        std::string val_disable_user_name = cfg.disable_user_name ? "1" : "0";
+        std::string val_disable_user_avatar = cfg.disable_user_avatar ? "1" : "0";
+        std::string val_disable_user_colour = cfg.disable_user_colour ? "1" : "0";
 
         std::string query = 
-            "INSERT INTO masquerade_configs (server_id, avatar, colour, name, disabled) "
-            "VALUES ('" + esc_server_id + "', " + val_avatar + ", " + val_colour + ", " + val_name + ", " + val_disabled + ") "
-            "ON DUPLICATE KEY UPDATE avatar = " + val_avatar + ", colour = " + val_colour + ", name = " + val_name + ", disabled = " + val_disabled;
+            "INSERT INTO masquerade_configs (server_id, avatar, colour, name, disabled, disable_user, disable_user_name, disable_user_avatar, disable_user_colour) "
+            "VALUES ('" + esc_server_id + "', " + val_avatar + ", " + val_colour + ", " + val_name + ", " + val_disabled + ", " + val_disable_user + ", " + val_disable_user_name + ", " + val_disable_user_avatar + ", " + val_disable_user_colour + ") "
+            "ON DUPLICATE KEY UPDATE avatar = " + val_avatar + ", colour = " + val_colour + ", name = " + val_name + ", disabled = " + val_disabled + ", disable_user = " + val_disable_user + ", disable_user_name = " + val_disable_user_name + ", disable_user_avatar = " + val_disable_user_avatar + ", disable_user_colour = " + val_disable_user_colour;
 
         if (mysql_query(mysql_, query.c_str())) {
             std::cerr << "[bronx db] failed to save masquerade_config: " << mysql_error(mysql_) << "\n";
@@ -3727,6 +4640,107 @@ public:
         return res;
     }
 
+    std::optional<JailConfig> get_jail_config(const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return std::nullopt;
+        std::string sql = "SELECT server_id, COALESCE(jail_role_id,''), COALESCE(jail_channel_id,'') FROM jail_configs WHERE server_id = '" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    JailConfig cfg;
+                    cfg.server_id = row[0] ? row[0] : "";
+                    cfg.jail_role_id = row[1] ? row[1] : "";
+                    cfg.jail_channel_id = row[2] ? row[2] : "";
+                    mysql_free_result(res);
+                    return cfg;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool save_jail_config(const JailConfig& cfg) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO jail_configs (server_id, jail_role_id, jail_channel_id) VALUES ('"
+            + escape_string(cfg.server_id) + "', '"
+            + escape_string(cfg.jail_role_id) + "', '"
+            + escape_string(cfg.jail_channel_id) + "') "
+            "ON DUPLICATE KEY UPDATE jail_role_id = '" + escape_string(cfg.jail_role_id) + "', jail_channel_id = '" + escape_string(cfg.jail_channel_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    std::optional<ActiveJail> get_active_jail(const std::string& server_id, const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return std::nullopt;
+        std::string sql = "SELECT server_id, user_id, roles, jailed_at, expires_at FROM active_jails WHERE server_id = '" + escape_string(server_id) + "' AND user_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    ActiveJail j;
+                    j.server_id = row[0] ? row[0] : "";
+                    j.user_id = row[1] ? row[1] : "";
+                    j.roles = row[2] ? row[2] : "";
+                    j.jailed_at = row[3] ? std::stoull(row[3]) : 0;
+                    j.expires_at = row[4] ? std::stoull(row[4]) : 0;
+                    mysql_free_result(res);
+                    return j;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool add_active_jail(const ActiveJail& jail) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO active_jails (server_id, user_id, roles, jailed_at, expires_at) VALUES ('"
+            + escape_string(jail.server_id) + "', '"
+            + escape_string(jail.user_id) + "', '"
+            + escape_string(jail.roles) + "', "
+            + std::to_string(jail.jailed_at) + ", "
+            + std::to_string(jail.expires_at) + ") "
+            "ON DUPLICATE KEY UPDATE roles = '" + escape_string(jail.roles) + "', jailed_at = " + std::to_string(jail.jailed_at) + ", expires_at = " + std::to_string(jail.expires_at);
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool remove_active_jail(const std::string& server_id, const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "DELETE FROM active_jails WHERE server_id = '" + escape_string(server_id) + "' AND user_id = '" + escape_string(user_id) + "'";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    std::vector<ActiveJail> get_expired_jails(uint64_t now_unix) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<ActiveJail> entries;
+        if (!mysql_) return entries;
+        std::string sql = "SELECT server_id, user_id, roles, jailed_at, expires_at FROM active_jails WHERE expires_at > 0 AND expires_at <= " + std::to_string(now_unix);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    ActiveJail j;
+                    j.server_id = row[0] ? row[0] : "";
+                    j.user_id = row[1] ? row[1] : "";
+                    j.roles = row[2] ? row[2] : "";
+                    j.jailed_at = row[3] ? std::stoull(row[3]) : 0;
+                    j.expires_at = row[4] ? std::stoull(row[4]) : 0;
+                    entries.push_back(j);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
+    }
+
     // ── Moderation logs ───────────────────────────────────────────────────────
 
     struct ModLogEntry {
@@ -3752,6 +4766,13 @@ public:
             + escape_string(target_id) + "', '"
             + escape_string(reason) + "', '"
             + escape_string(extra_details) + "')";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool delete_moderation_action(const std::string& server_id, int id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "DELETE FROM moderation_logs WHERE server_id = '" + escape_string(server_id) + "' AND id = " + std::to_string(id);
         return mysql_query(mysql_, sql.c_str()) == 0;
     }
 
@@ -4775,33 +5796,42 @@ public:
     }
 
     bool save_user_afk(const UserAFK& afk) {
-        std::lock_guard<std::mutex> db_lock(db_mutex_);
-        std::string esc_user_id = escape_string(afk.user_id);
-        std::string esc_tmpl = escape_string(afk.custom_template);
-        std::string esc_reason = escape_string(afk.reason);
-        int is_afk_val = afk.is_afk ? 1 : 0;
-        std::string esc_preset = escape_string(afk.active_preset);
+        bool success = false;
+        {
+            std::lock_guard<std::mutex> db_lock(db_mutex_);
+            std::string esc_user_id = escape_string(afk.user_id);
+            std::string esc_tmpl = escape_string(afk.custom_template);
+            std::string esc_reason = escape_string(afk.reason);
+            int is_afk_val = afk.is_afk ? 1 : 0;
+            std::string esc_preset = escape_string(afk.active_preset);
 
-        std::string query = 
-            "INSERT INTO user_afk (user_id, custom_template, is_afk, reason, since, active_preset) "
-            "VALUES ('" + esc_user_id + "', '" + esc_tmpl + "', " + std::to_string(is_afk_val) + ", '" + esc_reason + "', " + std::to_string(afk.since) + ", '" + esc_preset + "') "
-            "ON DUPLICATE KEY UPDATE "
-            "custom_template = '" + esc_tmpl + "', "
-            "is_afk = " + std::to_string(is_afk_val) + ", "
-            "reason = '" + esc_reason + "', "
-            "since = " + std::to_string(afk.since) + ", "
-            "active_preset = '" + esc_preset + "'";
-            
-        if (mysql_query(mysql_, query.c_str())) {
-            std::cerr << "[bronx db] failed to save user afk: " << mysql_error(mysql_) << "\n";
-            return false;
+            std::string query = 
+                "INSERT INTO user_afk (user_id, custom_template, is_afk, reason, since, active_preset) "
+                "VALUES ('" + esc_user_id + "', '" + esc_tmpl + "', " + std::to_string(is_afk_val) + ", '" + esc_reason + "', " + std::to_string(afk.since) + ", '" + esc_preset + "') "
+                "ON DUPLICATE KEY UPDATE "
+                "custom_template = '" + esc_tmpl + "', "
+                "is_afk = " + std::to_string(is_afk_val) + ", "
+                "reason = '" + esc_reason + "', "
+                "since = " + std::to_string(afk.since) + ", "
+                "active_preset = '" + esc_preset + "'";
+                
+            if (mysql_query(mysql_, query.c_str())) {
+                std::cerr << "[bronx db] failed to save user afk: " << mysql_error(mysql_) << "\n";
+                return false;
+            }
+            success = true;
         }
         
-        {
-            std::lock_guard<std::shared_mutex> lock(user_afk_cache_mutex_);
-            user_afk_cache_[afk.user_id] = afk;
+        if (success) {
+            {
+                std::lock_guard<std::shared_mutex> lock(user_afk_cache_mutex_);
+                user_afk_cache_[afk.user_id] = afk;
+            }
+            if (on_afk_save) {
+                on_afk_save(afk);
+            }
         }
-        return true;
+        return success;
     }
 
     std::string get_user_afk_preset(const std::string& user_id, const std::string& preset_name) {
@@ -4973,6 +6003,49 @@ public:
             roblox_links_cache_.erase(user_id);
         }
         return true;
+    }
+
+    struct AccountLink {
+        std::string stoat_id;
+        std::string fluxer_id;
+        std::string discord_id;
+    };
+
+    bool save_account_link(const std::string& stoat_id, const std::string& fluxer_id, const std::string& discord_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        
+        std::string val_stoat = stoat_id.empty() ? "NULL" : "'" + escape_string(stoat_id) + "'";
+        std::string val_fluxer = fluxer_id.empty() ? "NULL" : "'" + escape_string(fluxer_id) + "'";
+        std::string val_discord = discord_id.empty() ? "NULL" : "'" + escape_string(discord_id) + "'";
+
+        std::string query = "REPLACE INTO account_links (stoat_id, fluxer_id, discord_id) VALUES (" +
+                            val_stoat + ", " + val_fluxer + ", " + val_discord + ")";
+        return mysql_query(mysql_, query.c_str()) == 0;
+    }
+
+    std::optional<AccountLink> get_account_link(const std::string& platform, const std::string& user_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return std::nullopt;
+
+        std::string query = "SELECT stoat_id, fluxer_id, discord_id FROM account_links WHERE " +
+                            platform + "_id = '" + escape_string(user_id) + "'";
+        if (mysql_query(mysql_, query.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    AccountLink link;
+                    link.stoat_id = row[0] ? row[0] : "";
+                    link.fluxer_id = row[1] ? row[1] : "";
+                    link.discord_id = row[2] ? row[2] : "";
+                    mysql_free_result(res);
+                    return link;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return std::nullopt;
     }
 
     // ── Social Subscriptions CRUD ────────────────────────────────────────────
@@ -5422,6 +6495,347 @@ public:
             + "') ON DUPLICATE KEY UPDATE entries='" + escape_string(j.dump()) + "'";
         return mysql_query(mysql_, q.c_str()) == 0;
     }
+
+
+
+    // ── Leveling Calculations ────────────────────────────────────────────────
+
+    static uint32_t calculate_level_from_xp(uint64_t xp) {
+        if (xp == 0) return 1;
+        uint32_t level = 1;
+        while (calculate_xp_for_level(level + 1) <= xp) {
+            level++;
+            if (level > 10000) break; // Safety cap
+        }
+        return level;
+    }
+
+    static uint64_t calculate_xp_for_level(uint32_t level) {
+        if (level <= 1) return 0;
+        return static_cast<uint64_t>(100.0 * std::pow(level - 1, 1.5));
+    }
+
+    static uint64_t calculate_xp_for_next_level(uint32_t current_level) {
+        return calculate_xp_for_level(current_level + 1);
+    }
+
+    // ── Server Leveling Config CRUD ──────────────────────────────────────────
+
+    std::optional<GuildLevelingConfig> get_guild_leveling_config(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(leveling_config_cache_mutex_);
+        auto it = leveling_config_cache_.find(server_id);
+        if (it != leveling_config_cache_.end()) {
+            return it->second;
+        }
+        return std::nullopt;
+    }
+
+    bool create_guild_leveling_config(const std::string& server_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "INSERT IGNORE INTO guild_leveling_config (server_id) VALUES ('" + escape_string(server_id) + "')";
+        if (mysql_query(mysql_, q.c_str())) return false;
+        
+        // Reload it into cache
+        GuildLevelingConfig cfg;
+        cfg.server_id = server_id;
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(leveling_config_cache_mutex_);
+            leveling_config_cache_[server_id] = cfg;
+        }
+        return true;
+    }
+
+    bool update_guild_leveling_config(const GuildLevelingConfig& cfg) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_server_id = escape_string(cfg.server_id);
+        std::string val_enabled = cfg.enabled ? "1" : "0";
+        std::string val_reward_coins = cfg.reward_coins ? "1" : "0";
+        std::string val_coins = std::to_string(cfg.coins_per_message);
+        std::string val_min_xp = std::to_string(cfg.min_xp_per_message);
+        std::string val_max_xp = std::to_string(cfg.max_xp_per_message);
+        std::string val_min_chars = std::to_string(cfg.min_message_chars);
+        std::string val_cooldown = std::to_string(cfg.xp_cooldown_seconds);
+        std::string val_channel = cfg.announcement_channel ? "'" + escape_string(*cfg.announcement_channel) + "'" : "NULL";
+        std::string val_announce = cfg.announce_levelup ? "1" : "0";
+        std::string val_message = "'" + escape_string(cfg.announcement_message) + "'";
+        std::string val_sticky = cfg.sticky_roles ? "1" : "0";
+
+        std::string q = "INSERT INTO guild_leveling_config (server_id, enabled, reward_coins, coins_per_message, min_xp_per_message, max_xp_per_message, min_message_chars, xp_cooldown_seconds, announcement_channel, announce_levelup, level_up_message, sticky_roles) "
+                        "VALUES ('" + esc_server_id + "', " + val_enabled + ", " + val_reward_coins + ", " + val_coins + ", " + val_min_xp + ", " + val_max_xp + ", " + val_min_chars + ", " + val_cooldown + ", " + val_channel + ", " + val_announce + ", " + val_message + ", " + val_sticky + ") "
+                        "ON DUPLICATE KEY UPDATE enabled=" + val_enabled + ", reward_coins=" + val_reward_coins + ", coins_per_message=" + val_coins + ", min_xp_per_message=" + val_min_xp + ", max_xp_per_message=" + val_max_xp + ", min_message_chars=" + val_min_chars + ", xp_cooldown_seconds=" + val_cooldown + ", announcement_channel=" + val_channel + ", announce_levelup=" + val_announce + ", level_up_message=" + val_message + ", sticky_roles=" + val_sticky;
+
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] update_guild_leveling_config failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(leveling_config_cache_mutex_);
+            leveling_config_cache_[cfg.server_id] = cfg;
+        }
+        return true;
+    }
+
+    void invalidate_guild_leveling_config_cache(const std::string& server_id) {
+        std::lock_guard<std::shared_mutex> cache_lock(leveling_config_cache_mutex_);
+        leveling_config_cache_.erase(server_id);
+    }
+
+    // ── Level Roles CRUD ─────────────────────────────────────────────────────
+
+    std::vector<LevelRole> get_level_roles(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(level_roles_cache_mutex_);
+        auto it = level_roles_cache_.find(server_id);
+        if (it != level_roles_cache_.end()) return it->second;
+        return {};
+    }
+
+    std::optional<LevelRole> get_level_role_at_level(const std::string& server_id, uint32_t level) {
+        std::shared_lock<std::shared_mutex> lock(level_roles_cache_mutex_);
+        auto it = level_roles_cache_.find(server_id);
+        if (it != level_roles_cache_.end()) {
+            for (const auto& r : it->second) {
+                if (r.level == level) return r;
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool create_level_role(const LevelRole& role) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_server_id = escape_string(role.server_id);
+        std::string val_level = std::to_string(role.level);
+        std::string esc_role_id = escape_string(role.role_id);
+        std::string esc_role_name = escape_string(role.role_name);
+        std::string val_remove = role.remove_previous ? "1" : "0";
+
+        std::string q = "INSERT INTO guild_level_roles (server_id, level, role_id, role_name, remove_previous) "
+                        "VALUES ('" + esc_server_id + "', " + val_level + ", '" + esc_role_id + "', '" + esc_role_name + "', " + val_remove + ") "
+                        "ON DUPLICATE KEY UPDATE role_id = '" + esc_role_id + "', role_name = '" + esc_role_name + "', remove_previous = " + val_remove;
+        
+        if (mysql_query(mysql_, q.c_str())) {
+            std::cerr << "[bronx db] create_level_role failed: " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Update Cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(level_roles_cache_mutex_);
+            auto& list = level_roles_cache_[role.server_id];
+            auto it = std::find_if(list.begin(), list.end(), [&](const LevelRole& r) { return r.level == role.level; });
+            if (it != list.end()) {
+                *it = role;
+            } else {
+                list.push_back(role);
+            }
+            // Keep sorted by level
+            std::sort(list.begin(), list.end(), [](const LevelRole& a, const LevelRole& b) { return a.level < b.level; });
+        }
+        return true;
+    }
+
+    bool delete_level_role(const std::string& server_id, uint32_t level) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "DELETE FROM guild_level_roles WHERE server_id = '" + escape_string(server_id) + "' AND level = " + std::to_string(level);
+        if (mysql_query(mysql_, q.c_str())) return false;
+
+        // Update Cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(level_roles_cache_mutex_);
+            auto& list = level_roles_cache_[server_id];
+            list.erase(std::remove_if(list.begin(), list.end(), [&](const LevelRole& r) { return r.level == level; }), list.end());
+        }
+        return true;
+    }
+
+    // ── XP Blacklist CRUD ────────────────────────────────────────────────────
+
+    std::vector<XPBlacklistEntry> get_xp_blacklist(const std::string& server_id) {
+        std::shared_lock<std::shared_mutex> lock(xp_blacklist_cache_mutex_);
+        auto it = xp_blacklist_cache_.find(server_id);
+        if (it != xp_blacklist_cache_.end()) return it->second;
+        return {};
+    }
+
+    bool add_xp_blacklist(const XPBlacklistEntry& entry) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string esc_server_id = escape_string(entry.server_id);
+        std::string esc_target_type = escape_string(entry.target_type);
+        std::string esc_target_id = escape_string(entry.target_id);
+        std::string esc_added_by = escape_string(entry.added_by);
+
+        std::string q = "INSERT IGNORE INTO guild_xp_blacklist (server_id, target_type, target_id, added_by) "
+                        "VALUES ('" + esc_server_id + "', '" + esc_target_type + "', '" + esc_target_id + "', '" + esc_added_by + "')";
+        if (mysql_query(mysql_, q.c_str())) return false;
+
+        // Update Cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(xp_blacklist_cache_mutex_);
+            auto& list = xp_blacklist_cache_[entry.server_id];
+            auto it = std::find_if(list.begin(), list.end(), [&](const XPBlacklistEntry& e) {
+                return e.target_type == entry.target_type && e.target_id == entry.target_id;
+            });
+            if (it == list.end()) {
+                list.push_back(entry);
+            }
+        }
+        return true;
+    }
+
+    bool remove_xp_blacklist(const std::string& server_id, const std::string& target_type, const std::string& target_id) {
+        std::lock_guard<std::mutex> db_lock(db_mutex_);
+        std::string q = "DELETE FROM guild_xp_blacklist WHERE server_id = '" + escape_string(server_id) + "' AND target_type = '" + escape_string(target_type) + "' AND target_id = '" + escape_string(target_id) + "'";
+        if (mysql_query(mysql_, q.c_str())) return false;
+
+        // Update Cache
+        {
+            std::lock_guard<std::shared_mutex> cache_lock(xp_blacklist_cache_mutex_);
+            auto& list = xp_blacklist_cache_[server_id];
+            list.erase(std::remove_if(list.begin(), list.end(), [&](const XPBlacklistEntry& e) {
+                return e.target_type == target_type && e.target_id == target_id;
+            }), list.end());
+        }
+        return true;
+    }
+
+    bool is_xp_blocked(const std::string& server_id, const std::string& channel_id, const std::string& user_id, const std::vector<std::string>& role_ids) {
+        std::shared_lock<std::shared_mutex> lock(xp_blacklist_cache_mutex_);
+        auto it = xp_blacklist_cache_.find(server_id);
+        if (it == xp_blacklist_cache_.end()) return false;
+
+        for (const auto& entry : it->second) {
+            if (entry.target_type == "user" && entry.target_id == user_id) return true;
+            if (entry.target_type == "channel" && entry.target_id == channel_id) return true;
+            if (entry.target_type == "role") {
+                for (const auto& rid : role_ids) {
+                    if (entry.target_id == rid) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    // ── XP operations ────────────────────────────────────────────────────────
+
+    std::optional<UserXP> get_user_xp(const std::string& user_id, const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return std::nullopt;
+
+        std::string q = "SELECT user_id, server_id, total_xp, level, IFNULL(last_message_xp, '') FROM user_xp WHERE user_id = '" + escape_string(user_id) + "' AND server_id = '" + escape_string(server_id) + "'";
+        if (mysql_query(mysql_, q.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    UserXP xp;
+                    xp.user_id = row[0] ? row[0] : "";
+                    xp.server_id = row[1] ? row[1] : "";
+                    xp.total_xp = row[2] ? std::stoull(row[2]) : 0;
+                    xp.level = row[3] ? std::stoul(row[3]) : 1;
+                    xp.last_message_xp = row[4];
+                    mysql_free_result(res);
+                    return xp;
+                }
+                mysql_free_result(res);
+            }
+        }
+        return std::nullopt;
+    }
+
+    bool add_xp(const std::string& user_id, uint64_t xp_amount, uint32_t& new_level, bool& leveled_up, const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+
+        leveled_up = false;
+        std::string esc_uid = escape_string(user_id);
+        std::string esc_sid = escape_string(server_id);
+        std::string val_xp = std::to_string(xp_amount);
+
+        // Upsert the XP row
+        std::string q = "INSERT INTO user_xp (user_id, server_id, total_xp, level, last_message_xp) "
+                        "VALUES ('" + esc_uid + "', '" + esc_sid + "', " + val_xp + ", 1, NOW()) "
+                        "ON DUPLICATE KEY UPDATE total_xp = total_xp + " + val_xp + ", last_message_xp = NOW()";
+        if (mysql_query(mysql_, q.c_str())) return false;
+
+        // Fetch new total_xp to calculate if level changed
+        std::string q_fetch = "SELECT total_xp, level FROM user_xp WHERE user_id = '" + esc_uid + "' AND server_id = '" + esc_sid + "'";
+        if (mysql_query(mysql_, q_fetch.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    uint64_t total_xp = row[0] ? std::stoull(row[0]) : 0;
+                    uint32_t old_level = row[1] ? std::stoul(row[1]) : 1;
+                    new_level = calculate_level_from_xp(total_xp);
+                    if (new_level > old_level) {
+                        leveled_up = true;
+                        std::string q_upd = "UPDATE user_xp SET level = " + std::to_string(new_level) + " WHERE user_id = '" + esc_uid + "' AND server_id = '" + esc_sid + "'";
+                        mysql_query(mysql_, q_upd.c_str());
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return true;
+    }
+
+    bool reset_guild_xp(const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "DELETE FROM user_xp WHERE server_id = '" + escape_string(server_id) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0;
+    }
+
+    bool reset_user_guild_xp(const std::string& user_id, const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::string q = "DELETE FROM user_xp WHERE user_id = '" + escape_string(user_id) + "' AND server_id = '" + escape_string(server_id) + "'";
+        return mysql_query(mysql_, q.c_str()) == 0;
+    }
+
+    std::vector<UserXP> get_server_xp_leaderboard(const std::string& server_id, int limit) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<UserXP> leaderboard;
+        if (!mysql_) return leaderboard;
+
+        std::string q = "SELECT user_id, total_xp, level FROM user_xp WHERE server_id = '" + escape_string(server_id) + "' ORDER BY total_xp DESC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, q.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    UserXP xp;
+                    xp.user_id = row[0] ? row[0] : "";
+                    xp.server_id = server_id;
+                    xp.total_xp = row[1] ? std::stoull(row[1]) : 0;
+                    xp.level = row[2] ? std::stoul(row[2]) : 1;
+                    leaderboard.push_back(xp);
+                }
+                mysql_free_result(res);
+            }
+        }
+        return leaderboard;
+    }
+
+    int get_user_server_xp_rank(const std::string& user_id, const std::string& server_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return 0;
+
+        std::string q = "SELECT COUNT(*) FROM user_xp WHERE server_id = '" + escape_string(server_id) + "' AND total_xp > (SELECT IFNULL(total_xp, 0) FROM user_xp WHERE user_id = '" + escape_string(user_id) + "' AND server_id = '" + escape_string(server_id) + "')";
+        if (mysql_query(mysql_, q.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row = mysql_fetch_row(res);
+                if (row) {
+                    int count = row[0] ? std::stoi(row[0]) : 0;
+                    mysql_free_result(res);
+                    return count + 1; // 1-indexed rank
+                }
+                mysql_free_result(res);
+            }
+        }
+        return 0;
+    }
+
 
 };
 

@@ -1,88 +1,96 @@
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <vector>
-#include <map>
-#include <mutex>
-#include <thread>
+#include "stoatpp/bot_module.h"
+#include "stoatpp/cluster.h"
+#include "stoatpp/models/permissions.h"
+#include "stoatpp/utils/ulid.h"
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
-#include <algorithm>
-#include <sstream>
-#include "stoatpp/cluster.h"
-#include "stoatpp/bot_module.h"
-#include "stoatpp/utils/ulid.h"
-#include "stoatpp/models/permissions.h"
-#include <nlohmann/json.hpp>
-#include <unordered_set>
-#include <unordered_map>
 #include <ctime>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <mutex>
+#include <nlohmann/json.hpp>
+#include <sstream>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 // Include our Cogs
-#include "cogs/general.h"
-#include "cogs/moderation.h"
-#include "cogs/roles.h"
-#include "cogs/users.h"
-#include "cogs/prefix.h"
-#include "cogs/reaction_roles.h"
-#include "cogs/emoji.h"
-#include "cogs/help.h"
-#include "cogs/stats.h"
-#include "cogs/economy.h"
-#include "cogs/blackjack.h"
-#include "cogs/games.h"
-#include "cogs/welcome_leave.h"
-#include "cogs/logging.h"
-#include "cogs/command_config.h"
-#include "cogs/media.h"
-#include "cogs/reminders.h"
+#include "cogs/afk.h"
+#include "cogs/alias.h"
 #include "cogs/antiraid.h"
 #include "cogs/auto.h"
-#include "cogs/tickets.h"
+#include "cogs/blackjack.h"
+#include "cogs/bridge.h"
+#include "cogs/command_config.h"
 #include "cogs/counting.h"
-#include "cogs/afk.h"
-#include "cogs/roblox.h"
-#include "cogs/rss.h"
-#include "cogs/masquerade.h"
-#include "cogs/tupper.h"
-#include "cogs/social.h"
-#include "cogs/alias.h"
+#include "cogs/economy.h"
+#include "cogs/emoji.h"
 #include "cogs/filter.h"
-
+#include "cogs/fishing.h"
+#include "cogs/games.h"
+#include "cogs/general.h"
+#include "cogs/help.h"
+#include "cogs/leveling.h"
+#include "cogs/logging.h"
+#include "cogs/masquerade.h"
+#include "cogs/media.h"
+#include "cogs/moderation.h"
+#include "cogs/prefix.h"
+#include "cogs/reaction_roles.h"
+#include "cogs/reminders.h"
+#include "cogs/roblox.h"
+#include "cogs/roles.h"
+#include "cogs/rss.h"
+#include "cogs/social.h"
+#include "cogs/stats.h"
+#include "cogs/tickets.h"
+#include "cogs/tupper.h"
+#include "cogs/users.h"
+#include "cogs/welcome_leave.h"
 
 // Simple self-contained helper to load environment variables from a .env file
-void load_env(const std::string& filepath = ".env") {
-    std::ifstream file(filepath);
-    std::string path_used = filepath;
-    if (!file.is_open()) {
-        path_used = "../" + filepath;
-        file.open(path_used);
+void load_env(const std::string &filepath = ".env") {
+  std::ifstream file(filepath);
+  std::string path_used = filepath;
+  if (!file.is_open()) {
+    path_used = "../" + filepath;
+    file.open(path_used);
+  }
+  if (!file.is_open()) {
+    std::cout << "[bronx env] warning: could not open " << filepath
+              << " or parent directory file. falling back to system "
+                 "environment variables.\n";
+    return;
+  }
+  std::string line;
+  while (std::getline(file, line)) {
+    if (line.empty() || line[0] == '#')
+      continue;
+    auto pos = line.find('=');
+    if (pos == std::string::npos)
+      continue;
+
+    std::string key = line.substr(0, pos);
+    std::string value = line.substr(pos + 1);
+
+    key.erase(0, key.find_first_not_of(" \t\r\n"));
+    key.erase(key.find_last_not_of(" \t\r\n") + 1);
+    value.erase(0, value.find_first_not_of(" \t\r\n"));
+    value.erase(value.find_last_not_of(" \t\r\n") + 1);
+
+    if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+      value = value.substr(1, value.size() - 2);
     }
-    if (!file.is_open()) {
-        std::cout << "[bronx env] warning: could not open " << filepath << " or parent directory file. falling back to system environment variables.\n";
-        return;
-    }
-    std::string line;
-    while (std::getline(file, line)) {
-        if (line.empty() || line[0] == '#') continue;
-        auto pos = line.find('=');
-        if (pos == std::string::npos) continue;
 
-        std::string key = line.substr(0, pos);
-        std::string value = line.substr(pos + 1);
-
-        key.erase(0, key.find_first_not_of(" \t\r\n"));
-        key.erase(key.find_last_not_of(" \t\r\n") + 1);
-        value.erase(0, value.find_first_not_of(" \t\r\n"));
-        value.erase(value.find_last_not_of(" \t\r\n") + 1);
-
-        if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
-            value = value.substr(1, value.size() - 2);
-        }
-
-        setenv(key.c_str(), value.c_str(), 1);
-    }
-    std::cout << "[bronx env] successfully loaded variables from " << path_used << "\n";
+    setenv(key.c_str(), value.c_str(), 1);
+  }
+  std::cout << "[bronx env] successfully loaded variables from " << path_used
+            << "\n";
 }
 
 static std::mutex g_invoker_mutex;
@@ -93,949 +101,1320 @@ static std::string g_last_active_channel;
 static std::mutex g_handling_mutex;
 static std::unordered_set<std::string> g_handling_channels;
 
-bool bot_has_masquerade_permission(stoatpp::cluster& bot, const std::string& channel_id) {
-    auto chan_opt = bot.get_channel(channel_id);
-    if (!chan_opt || !chan_opt->server) return true;
+// Toggleable verbose logging — when false, only command/error logs are shown.
+// Set via --verbose / -v CLI flag. Can also be toggled at runtime.
+static std::atomic<bool> g_verbose_logging{false};
 
-    std::string server_id = *(chan_opt->server);
-    auto server_opt = bot.get_server(server_id);
-    if (!server_opt) return true;
+bool bot_has_masquerade_permission(stoatpp::cluster &bot,
+                                   const std::string &channel_id) {
+  auto chan_opt = bot.get_channel(channel_id);
+  if (!chan_opt || !chan_opt->server)
+    return true;
 
-    if (server_opt->owner == bot.current_user().id) {
-        return true;
+  std::string server_id = *(chan_opt->server);
+  auto server_opt = bot.get_server(server_id);
+  if (!server_opt)
+    return true;
+
+  if (server_opt->owner == bot.current_user().id) {
+    return true;
+  }
+
+  auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
+
+  // 1. Server-level permissions
+  int64_t allowed = 0;
+  if (server_opt->raw.contains("default_permissions")) {
+    const auto &dp = server_opt->raw["default_permissions"];
+    if (dp.is_number()) {
+      allowed |= dp.get<int64_t>();
+    } else if (dp.is_object() && dp.contains("server") &&
+               dp["server"].is_number()) {
+      allowed |= dp["server"].get<int64_t>();
     }
-
-    auto bot_member_opt = bot.get_member(server_id, bot.current_user().id);
-
-    // 1. Server-level permissions
-    int64_t allowed = 0;
-    if (server_opt->raw.contains("default_permissions")) {
-        const auto& dp = server_opt->raw["default_permissions"];
-        if (dp.is_number()) {
-            allowed |= dp.get<int64_t>();
-        } else if (dp.is_object() && dp.contains("server") && dp["server"].is_number()) {
-            allowed |= dp["server"].get<int64_t>();
+  }
+  if (bot_member_opt) {
+    for (const auto &role_id : bot_member_opt->roles) {
+      for (const auto &r : server_opt->roles) {
+        if (r.id == role_id) {
+          allowed |= r.allowed_permissions();
         }
+      }
     }
-    if (bot_member_opt) {
-        for (const auto& role_id : bot_member_opt->roles) {
-            for (const auto& r : server_opt->roles) {
-                if (r.id == role_id) {
-                    allowed |= r.allowed_permissions();
-                }
-            }
-        }
-    }
+  }
 
-    // 2. Channel default permissions overrides
-    int64_t ch_allow = 0;
-    int64_t ch_deny = 0;
-    if (chan_opt->default_permissions) {
-        const auto& dp = *(chan_opt->default_permissions);
-        if (dp.is_number()) {
-            allowed = dp.get<int64_t>();
-        } else if (dp.is_object()) {
-            if (dp.contains("a") && dp["a"].is_number()) ch_allow = dp["a"].get<int64_t>();
-            else if (dp.contains("allow") && dp["allow"].is_number()) ch_allow = dp["allow"].get<int64_t>();
-            
-            if (dp.contains("d") && dp["d"].is_number()) ch_deny = dp["d"].get<int64_t>();
-            else if (dp.contains("deny") && dp["deny"].is_number()) ch_deny = dp["deny"].get<int64_t>();
-            
-            allowed = (allowed & ~ch_deny) | ch_allow;
-        }
-    }
+  // 2. Channel default permissions overrides
+  int64_t ch_allow = 0;
+  int64_t ch_deny = 0;
+  if (chan_opt->default_permissions) {
+    const auto &dp = *(chan_opt->default_permissions);
+    if (dp.is_number()) {
+      allowed = dp.get<int64_t>();
+    } else if (dp.is_object()) {
+      if (dp.contains("a") && dp["a"].is_number())
+        ch_allow = dp["a"].get<int64_t>();
+      else if (dp.contains("allow") && dp["allow"].is_number())
+        ch_allow = dp["allow"].get<int64_t>();
 
-    // 3. Channel role overrides
-    if (bot_member_opt && chan_opt->role_permissions && chan_opt->role_permissions->is_object()) {
-        const auto& rp = *(chan_opt->role_permissions);
-        int64_t roles_allow = 0;
-        int64_t roles_deny = 0;
-        for (const auto& role_id : bot_member_opt->roles) {
-            if (rp.contains(role_id) && rp[role_id].is_object()) {
-                const auto& override_obj = rp[role_id];
-                if (override_obj.contains("a") && override_obj["a"].is_number()) {
-                    roles_allow |= override_obj["a"].get<int64_t>();
-                } else if (override_obj.contains("allow") && override_obj["allow"].is_number()) {
-                    roles_allow |= override_obj["allow"].get<int64_t>();
-                }
-                
-                if (override_obj.contains("d") && override_obj["d"].is_number()) {
-                    roles_deny |= override_obj["d"].get<int64_t>();
-                } else if (override_obj.contains("deny") && override_obj["deny"].is_number()) {
-                    roles_deny |= override_obj["deny"].get<int64_t>();
-                }
-            }
-        }
-        allowed = (allowed & ~roles_deny) | roles_allow;
-    }
+      if (dp.contains("d") && dp["d"].is_number())
+        ch_deny = dp["d"].get<int64_t>();
+      else if (dp.contains("deny") && dp["deny"].is_number())
+        ch_deny = dp["deny"].get<int64_t>();
 
-    return (allowed & stoatpp::permissions::Masquerade) == stoatpp::permissions::Masquerade;
+      allowed = (allowed & ~ch_deny) | ch_allow;
+    }
+  }
+
+  // 3. Channel role overrides
+  if (bot_member_opt && chan_opt->role_permissions &&
+      chan_opt->role_permissions->is_object()) {
+    const auto &rp = *(chan_opt->role_permissions);
+    int64_t roles_allow = 0;
+    int64_t roles_deny = 0;
+    for (const auto &role_id : bot_member_opt->roles) {
+      if (rp.contains(role_id) && rp[role_id].is_object()) {
+        const auto &override_obj = rp[role_id];
+        if (override_obj.contains("a") && override_obj["a"].is_number()) {
+          roles_allow |= override_obj["a"].get<int64_t>();
+        } else if (override_obj.contains("allow") &&
+                   override_obj["allow"].is_number()) {
+          roles_allow |= override_obj["allow"].get<int64_t>();
+        }
+
+        if (override_obj.contains("d") && override_obj["d"].is_number()) {
+          roles_deny |= override_obj["d"].get<int64_t>();
+        } else if (override_obj.contains("deny") &&
+                   override_obj["deny"].is_number()) {
+          roles_deny |= override_obj["deny"].get<int64_t>();
+        }
+      }
+    }
+    allowed = (allowed & ~roles_deny) | roles_allow;
+  }
+
+  return (allowed & stoatpp::permissions::Masquerade) ==
+         stoatpp::permissions::Masquerade;
 }
 
-int main(int argc, char* argv[]) {
-    load_env();
+int main(int argc, char *argv[]) {
+  load_env();
 
-    bool verbose = false;
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-        if (arg == "--verbose" || arg == "-v") {
-            verbose = true;
+  bool verbose = false;
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--verbose" || arg == "-v") {
+      verbose = true;
+    }
+  }
+  g_verbose_logging.store(verbose);
+
+  const char *token_env = std::getenv("BOT_TOKEN");
+  std::string token = token_env ? token_env : "";
+  if (token.empty() || token == "token") {
+    std::cerr << "[bronx error] bot_token is empty or not set. please update "
+                 "your .env file.\n";
+    return 1;
+  }
+
+  // DB configuration
+  const char *db_host_env = std::getenv("DB_HOST");
+  std::string db_host = db_host_env ? db_host_env : "127.0.0.1";
+
+  const char *db_user_env = std::getenv("DB_USER");
+  std::string db_user = db_user_env ? db_user_env : "root";
+
+  const char *db_pass_env = std::getenv("DB_PASSWORD");
+  std::string db_pass = db_pass_env ? db_pass_env : "";
+
+  const char *db_name_env = std::getenv("DB_DATABASE");
+  std::string db_name = db_name_env ? db_name_env : "bronx";
+
+  int db_port = 3306;
+  if (const char *db_port_env = std::getenv("DB_PORT")) {
+    try {
+      db_port = std::stoi(db_port_env);
+    } catch (...) {
+    }
+  }
+
+  std::cout << "[bronx db] connecting to MariaDB on " << db_host << ":"
+            << db_port << "...\n";
+  bronx::g_db = std::make_shared<bronx::Database>();
+  if (!bronx::g_db->init(db_host, db_user, db_pass, db_name, db_port)) {
+    std::cerr
+        << "[bronx error] failed to initialize database connection. exiting.\n";
+    return 1;
+  }
+
+  stoatpp::ClientConfig cfg;
+  cfg.log_level = verbose ? stoatpp::LogLevel::TRACE : stoatpp::LogLevel::INFO;
+  cfg.enable_default_help = false;
+  cfg.dispatch_commands_on_edit = true;
+  cfg.case_insensitive_commands = true;
+  cfg.ws_ping_interval_ms = 7000;
+
+  cfg.command_prefix = ".";
+  if (const char *pfx = std::getenv("COMMAND_PREFIX")) {
+    cfg.command_prefix = pfx;
+  }
+
+  if (const char *api_url = std::getenv("API_BASE_URL")) {
+    cfg.api_base_url = api_url;
+  }
+  if (const char *ws_url = std::getenv("WS_URL")) {
+    cfg.ws_url = ws_url;
+  }
+
+  cfg.masquerade_handler = [](stoatpp::cluster &bot,
+                              const std::string &channel_id,
+                              stoatpp::models::MessagePayload &payload) {
+    if (!bronx::g_db)
+      return;
+    auto chan_opt = bot.get_channel(channel_id);
+    if (!chan_opt || !chan_opt->server)
+      return;
+    std::string server_id = *(chan_opt->server);
+
+    // Check if the bot actually has the Masquerade permission in this channel.
+    // If not, discard masquerade to prevent a 403 HTTP error when sending
+    // messages.
+    if (!bot_has_masquerade_permission(bot, channel_id)) {
+      payload.masquerade = std::nullopt;
+      return;
+    }
+
+    // 1. Check server config — if masquerades are completely disabled for this server,
+    // apply nothing
+    auto server_cfg = bronx::g_db->get_masquerade_config(server_id);
+    if (server_cfg && server_cfg->disabled) {
+      payload.masquerade = std::nullopt;
+      return;
+    }
+
+    // 2. Look up per-user masquerade — only if user masquerades are NOT disabled
+    std::string invoker_id;
+    {
+      std::lock_guard<std::mutex> lock(g_invoker_mutex);
+      auto it = g_channel_last_invoker.find(channel_id);
+      if (it != g_channel_last_invoker.end())
+        invoker_id = it->second;
+    }
+
+    if (!invoker_id.empty() && (!server_cfg || !server_cfg->disable_user)) {
+      auto user_masq = bronx::g_db->get_user_masquerade(invoker_id);
+      if (user_masq) {
+        if (!payload.masquerade) {
+          payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
         }
+        if (user_masq->name && !payload.masquerade->name && (!server_cfg || !server_cfg->disable_user_name))
+          payload.masquerade->name = user_masq->name;
+        if (user_masq->avatar && !payload.masquerade->avatar && (!server_cfg || !server_cfg->disable_user_avatar))
+          payload.masquerade->avatar = user_masq->avatar;
+        if (user_masq->colour && !payload.masquerade->colour && (!server_cfg || !server_cfg->disable_user_colour))
+          payload.masquerade->colour = user_masq->colour;
+      }
     }
 
-    const char* token_env = std::getenv("BOT_TOKEN");
-    std::string token = token_env ? token_env : "";
-    if (token.empty() || token == "token") {
-        std::cerr << "[bronx error] bot_token is empty or not set. please update your .env file.\n";
-        return 1;
+    // 3. Apply server override on top (field-by-field: server beats user)
+    if (server_cfg && (server_cfg->name || server_cfg->avatar || server_cfg->colour)) {
+      if (!payload.masquerade) {
+        payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
+      }
+      if (server_cfg->name)
+        payload.masquerade->name = server_cfg->name;
+      if (server_cfg->avatar)
+        payload.masquerade->avatar = server_cfg->avatar;
+      if (server_cfg->colour)
+        payload.masquerade->colour = server_cfg->colour;
     }
 
-    // DB configuration
-    const char* db_host_env = std::getenv("DB_HOST");
-    std::string db_host = db_host_env ? db_host_env : "127.0.0.1";
-    
-    const char* db_user_env = std::getenv("DB_USER");
-    std::string db_user = db_user_env ? db_user_env : "root";
-    
-    const char* db_pass_env = std::getenv("DB_PASSWORD");
-    std::string db_pass = db_pass_env ? db_pass_env : "";
-    
-    const char* db_name_env = std::getenv("DB_DATABASE");
-    std::string db_name = db_name_env ? db_name_env : "bronx";
-    
-    int db_port = 3306;
-    if (const char* db_port_env = std::getenv("DB_PORT")) {
-        try {
-            db_port = std::stoi(db_port_env);
-        } catch(...) {}
+    // 4. If payload.masquerade is still empty (no fields set), clear it to
+    // avoid sending empty object
+    if (payload.masquerade && !payload.masquerade->name &&
+        !payload.masquerade->avatar && !payload.masquerade->colour) {
+      payload.masquerade = std::nullopt;
     }
+  };
 
-    std::cout << "[bronx db] connecting to MariaDB on " << db_host << ":" << db_port << "...\n";
-    bronx::g_db = std::make_shared<bronx::Database>();
-    if (!bronx::g_db->init(db_host, db_user, db_pass, db_name, db_port)) {
-        std::cerr << "[bronx error] failed to initialize database connection. exiting.\n";
-        return 1;
+  cfg.prefix_resolver =
+      [](stoatpp::cluster &bot,
+         const stoatpp::events::Message &msg) -> std::vector<std::string> {
+    std::vector<std::string> prefixes;
+    std::string bot_id = bot.current_user().id;
+    if (!bot_id.empty()) {
+      prefixes.push_back("<@" + bot_id + "> ");
+      prefixes.push_back("<@" + bot_id + ">");
     }
+    bool server_has_custom = false;
 
-    stoatpp::ClientConfig cfg;
-    cfg.log_level = verbose ? stoatpp::LogLevel::TRACE : stoatpp::LogLevel::INFO;
-    cfg.enable_default_help = false;
-    cfg.dispatch_commands_on_edit = true;
-    cfg.case_insensitive_commands = true;
-    
-    cfg.command_prefix = ".";
-    if (const char* pfx = std::getenv("COMMAND_PREFIX")) {
-        cfg.command_prefix = pfx;
-    }
+    if (bronx::g_db) {
+      // 1. User prefixes always apply
+      std::vector<std::string> user_pfx =
+          bronx::g_db->get_prefixes("user", msg.author.id);
+      prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
 
-    if (const char* api_url = std::getenv("API_BASE_URL")) {
-        cfg.api_base_url = api_url;
-    }
-    if (const char* ws_url = std::getenv("WS_URL")) {
-        cfg.ws_url = ws_url;
-    }
-
-    cfg.masquerade_handler = [](stoatpp::cluster& bot, const std::string& channel_id, stoatpp::models::MessagePayload& payload) {
-        if (!bronx::g_db) return;
-        auto chan_opt = bot.get_channel(channel_id);
-        if (!chan_opt || !chan_opt->server) return;
-        std::string server_id = *(chan_opt->server);
-
-        // Check if the bot actually has the Masquerade permission in this channel.
-        // If not, discard masquerade to prevent a 403 HTTP error when sending messages.
-        if (!bot_has_masquerade_permission(bot, channel_id)) {
-            payload.masquerade = std::nullopt;
-            return;
+      // 2. Server custom prefixes
+      if (!msg.server_id.empty()) {
+        std::vector<std::string> server_pfx =
+            bronx::g_db->get_prefixes("server", msg.server_id);
+        if (!server_pfx.empty()) {
+          server_has_custom = true;
+          prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
         }
+      }
+    }
 
-        // 1. Check server config — if masquerades are disabled for this server, apply nothing
-        auto server_cfg = bronx::g_db->get_masquerade_config(server_id);
-        if (server_cfg && server_cfg->disabled) {
-            payload.masquerade = std::nullopt;
-            return;
+    // 3. Default prefix — skip if the server has custom prefixes AND default is
+    // disabled
+    bool add_default = true;
+    if (server_has_custom && !msg.server_id.empty() && bronx::g_db) {
+      add_default = bronx::g_db->get_prefix_default_enabled(msg.server_id);
+    }
+    if (add_default) {
+      prefixes.push_back(bot.config().command_prefix);
+    }
+
+    // Deduplicate
+    std::vector<std::string> unique_prefixes;
+    for (const auto &p : prefixes) {
+      if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) ==
+          unique_prefixes.end()) {
+        unique_prefixes.push_back(p);
+      }
+    }
+    return unique_prefixes;
+  };
+
+  std::cout << "[bronx] initialising stoatpp cluster...\n";
+  std::cout << "        api base: " << cfg.api_base_url << "\n";
+  std::cout << "        ws gateway: " << cfg.ws_url << "\n";
+  std::cout << "        command prefix: " << cfg.command_prefix << "\n";
+
+  stoatpp::cluster bot(token, cfg);
+
+  // Register our Cogs/Modules
+  bot.use(std::make_unique<bronx::cogs::HelpModule>());
+  bot.use(std::make_unique<bronx::cogs::GeneralModule>());
+  bot.use(std::make_unique<bronx::cogs::ModerationModule>());
+  bot.use(std::make_unique<bronx::cogs::RolesModule>());
+  bot.use(std::make_unique<bronx::cogs::UsersModule>());
+  bot.use(std::make_unique<bronx::cogs::PrefixModule>());
+  bot.use(std::make_unique<bronx::cogs::ReactionRolesModule>());
+  bot.use(std::make_unique<bronx::cogs::EmojiModule>());
+  bot.use(std::make_unique<bronx::cogs::StatsModule>());
+  bot.use(std::make_unique<bronx::cogs::EconomyModule>());
+  bot.use(std::make_unique<bronx::cogs::BlackjackModule>());
+  bot.use(std::make_unique<bronx::cogs::GamesModule>());
+  bot.use(std::make_unique<bronx::cogs::WelcomeLeaveModule>());
+  bot.use(std::make_unique<bronx::cogs::LoggingModule>());
+  bot.use(std::make_unique<bronx::cogs::CommandConfigModule>());
+  bot.use(std::make_unique<bronx::cogs::MediaModule>());
+  bot.use(std::make_unique<bronx::cogs::RemindersModule>());
+  bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
+  bot.use(std::make_unique<bronx::cogs::AutoModule>());
+  bot.use(std::make_unique<bronx::cogs::TicketsModule>());
+  bot.use(std::make_unique<bronx::cogs::CountingModule>());
+  bot.use(std::make_unique<bronx::cogs::AFKModule>());
+  bot.use(std::make_unique<bronx::cogs::RobloxModule>());
+  bot.use(std::make_unique<bronx::cogs::RSSModule>());
+  bot.use(std::make_unique<bronx::cogs::MasqueradeModule>());
+  bot.use(std::make_unique<bronx::cogs::TupperModule>());
+  bot.use(std::make_unique<bronx::cogs::SocialModule>());
+  bot.use(std::make_unique<bronx::cogs::AliasModule>());
+  bot.use(std::make_unique<bronx::cogs::FilterModule>());
+  bot.use(std::make_unique<bronx::cogs::BridgeModule>());
+  bot.use(std::make_unique<bronx::cogs::LevelingModule>());
+  bot.use(std::make_unique<bronx::cogs::FishingModule>());
+
+  bot.on_ready([&bot](const stoatpp::events::Ready &e) {
+    std::cout << "[bronx event] ready! logged in as: " << e.user.username
+              << " (id: " << e.user.id << ")\n";
+    std::cout << "              serving: " << e.servers.size() << " servers, "
+              << e.channels.size() << " channels.\n";
+    std::cout << "              users in ready payload: " << e.users.size()
+              << "\n";
+
+    std::string status_text =
+        "serving " + std::to_string(e.servers.size()) + " servers";
+    bot.update_status(status_text, "Online", [](bool success) {
+      if (success) {
+        std::cout << "[bronx] successfully set presence status.\n";
+      } else {
+        std::cout << "[bronx] failed to set presence status.\n";
+      }
+    });
+
+    // Shifting status timer (runs every 90 seconds)
+    bot.start_timer(
+        [&bot](stoatpp::timer t) {
+          static int status_index = 1;
+          std::string status_text;
+
+          size_t server_count = bot.get_servers().size();
+          size_t user_count = bot.get_total_member_count();
+          const auto &cmds = bot.get_commands();
+          size_t cmd_count = cmds.size();
+
+          static bool seeded = false;
+          if (!seeded) {
+            std::srand(static_cast<unsigned int>(std::time(nullptr)));
+            seeded = true;
+          }
+
+          switch (status_index) {
+          case 0:
+            status_text =
+                "serving " + std::to_string(server_count) + " servers";
+            break;
+          case 1:
+            status_text =
+                "watching over " + std::to_string(user_count) + " users";
+            break;
+          case 2:
+            status_text = "bronx.siqnole.dev";
+            break;
+          case 3:
+            status_text = ".help";
+            break;
+          case 4: {
+            std::string rand_cmd = "ping";
+            if (cmd_count > 0) {
+              int idx = std::rand() % cmd_count;
+              rand_cmd = cmds[idx].name;
+            }
+            status_text = "try ." + rand_cmd;
+            break;
+          }
+          case 5:
+            status_text = "i have " + std::to_string(cmd_count) + " commands !";
+            break;
+          case 6:
+            status_text = "made in c++!";
+            break;
+          default:
+            status_text = "bronx.siqnole.dev";
+            break;
+          }
+
+          bot.update_status(status_text, "Online");
+          status_index = (status_index + 1) % 7;
+        },
+        90);
+
+    // Fix historical DB rows where bot users were mis-tagged as is_bot=FALSE.
+    // Revolt only sends "bot": true reliably in the Ready payload; message
+    // payloads omit it. We run this once per startup on a background thread.
+    if (bronx::g_db) {
+      // Collect bot user IDs: all users in Ready with bot=true, plus self
+      std::vector<std::string> bot_ids;
+      for (const auto &u : e.users) {
+        if (u.bot && !u.id.empty()) {
+          bot_ids.push_back(u.id);
+          std::cout << "[bronx] ready: detected bot user " << u.username << " ("
+                    << u.id << ")\n";
         }
+      }
+      // bronx itself is always a bot
+      if (!e.user.id.empty()) {
+        bot_ids.push_back(e.user.id);
+      }
 
-        // 2. Look up per-user masquerade — the invoker is tracked per-channel
-        std::string invoker_id;
-        {
+      std::thread([bot_ids]() {
+        for (const auto &id : bot_ids) {
+          bronx::g_db->fix_bot_flags(id);
+        }
+      }).detach();
+    }
+  });
+
+  bot.set_message_preprocessor([](stoatpp::cluster &bot,
+                                  stoatpp::events::Message &msg) {
+    if (msg.author.bot || msg.content.empty() || !bronx::g_db)
+      return;
+
+    // 1. Resolve message prefix
+    std::vector<std::string> prefixes;
+    std::string bot_id = bot.current_user().id;
+    if (!bot_id.empty()) {
+      prefixes.push_back("<@" + bot_id + "> ");
+      prefixes.push_back("<@" + bot_id + ">");
+    }
+    std::vector<std::string> user_pfx =
+        bronx::g_db->get_prefixes("user", msg.author.id);
+    prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
+
+    if (!msg.server_id.empty()) {
+      std::vector<std::string> server_pfx =
+          bronx::g_db->get_prefixes("server", msg.server_id);
+      prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
+    }
+    prefixes.push_back(bot.config().command_prefix);
+
+    std::vector<std::string> unique_prefixes;
+    for (const auto &p : prefixes) {
+      if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) ==
+          unique_prefixes.end()) {
+        unique_prefixes.push_back(p);
+      }
+    }
+
+    std::string matched_prefix;
+    for (const auto &p : unique_prefixes) {
+      if (!p.empty() && msg.content.rfind(p, 0) == 0) {
+        matched_prefix = p;
+        break;
+      }
+    }
+
+    if (matched_prefix.empty())
+      return;
+
+    // 2. Parse command name from content
+    std::string command_part = msg.content.substr(matched_prefix.size());
+    std::stringstream ss(command_part);
+    std::string cmd;
+    ss >> cmd;
+    if (cmd.empty())
+      return;
+
+    // 3. Resolve alias in database (checking server-level, then user-level)
+    std::string target =
+        bronx::g_db->resolve_alias(msg.server_id, msg.author.id, cmd);
+    if (!target.empty()) {
+      // Keep any trailing arguments/characters intact
+      std::string remainder = command_part.substr(cmd.size());
+      msg.content = matched_prefix + target + remainder;
+      std::cout << "[bronx alias] resolved alias: '" << cmd << "' -> '"
+                << target << "'. rewritten content: '" << msg.content << "'\n";
+    }
+  });
+
+  bot.on_message([&bot](const stoatpp::events::Message &msg) {
+    if (g_verbose_logging.load()) {
+      std::cout << "[bronx event] message in channel " << msg.channel_id
+                << " by " << msg.author.username << ": " << msg.content << "\n";
+    }
+
+    bronx::cogs::FilterModule::scan_message(bot, msg);
+
+    // Tupperbox proxying check
+    if (!msg.author.bot && !msg.content.empty() && msg.content[0] != '\\' &&
+        bronx::g_db) {
+      std::vector<bronx::Database::Tupper> tuppers =
+          bronx::g_db->get_user_tuppers(msg.author.id);
+      for (const auto &t : tuppers) {
+        bool prefix_match =
+            t.prefix.empty() || (msg.content.rfind(t.prefix, 0) == 0);
+        bool suffix_match =
+            t.suffix.empty() ||
+            (msg.content.size() >= t.prefix.size() + t.suffix.size() &&
+             msg.content.substr(msg.content.size() - t.suffix.size()) ==
+                 t.suffix);
+
+        if (prefix_match && suffix_match) {
+          std::string inner = msg.content.substr(
+              t.prefix.size(),
+              msg.content.size() - t.prefix.size() - t.suffix.size());
+          if (!inner.empty()) {
+            bot.delete_message(msg.channel_id, msg.id);
+
+            stoatpp::models::MessagePayload payload;
+            payload.content = inner;
+            payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
+            payload.masquerade->name =
+                t.name + " [" + msg.author.username + "]";
+            payload.masquerade->avatar = t.avatar_url;
+
+            std::string author_id = msg.author.id;
+            std::string tupper_name = t.name;
+            bot.send_message(msg.channel_id, payload,
+                             [&bot, author_id, tupper_name](
+                                 stoatpp::models::Message res, bool success) {
+                               if (success && bronx::g_db) {
+                                 bronx::g_db->add_tupper_proxy(
+                                     res.id, author_id, tupper_name);
+                               }
+                             });
+            return; // Handled proxy, skip further processing
+          }
+        }
+      }
+    }
+
+    if (!msg.author.bot && !msg.channel_id.empty() && !msg.author.id.empty()) {
+      std::lock_guard<std::mutex> lock(g_invoker_mutex);
+      g_channel_last_invoker[msg.channel_id] = msg.author.id;
+      if (!msg.server_id.empty()) {
+        g_server_last_channel[msg.server_id] = msg.channel_id;
+      }
+      g_last_active_channel = msg.channel_id;
+    }
+
+    if (bronx::g_db) {
+      // Resolve bot flag — Revolt sometimes omits "bot" in message payloads,
+      // so fall back to the user cache if the field isn't set on this message.
+      bool is_bot = msg.author.bot;
+      if (!is_bot) {
+        auto cached = bot.get_user(msg.author.id);
+        if (cached && cached->bot)
+          is_bot = true;
+      }
+
+      // 1. Message Telemetry
+      bronx::g_db->increment_user_daily_messages(msg.server_id, msg.author.id,
+                                                 is_bot, "message");
+
+      // 2. Channel Telemetry
+      bronx::g_db->increment_channel_daily_messages(msg.server_id,
+                                                    msg.channel_id);
+
+      // 3. User Channel Telemetry
+      if (!msg.server_id.empty() && !is_bot) {
+        bronx::g_db->increment_user_channel_messages(
+            msg.server_id, msg.channel_id, msg.author.id);
+
+        // XP / Leveling gain check
+        auto cfg_opt = bronx::g_db->get_guild_leveling_config(msg.server_id);
+        if (cfg_opt && cfg_opt->enabled) {
+          bool skip_xp = false;
+
+          // 1. Check message length
+          if (msg.content.size() <
+              static_cast<size_t>(cfg_opt->min_message_chars)) {
+            skip_xp = true;
+          }
+
+          // 2. Check cooldown
+          uint64_t now_sec =
+              std::chrono::duration_cast<std::chrono::seconds>(
+                  std::chrono::system_clock::now().time_since_epoch())
+                  .count();
+          std::string cd_key = msg.author.id + ":" + msg.server_id;
+          if (!skip_xp) {
+            static std::unordered_map<std::string, uint64_t>
+                g_xp_cooldown_cache;
+            static std::mutex g_xp_cooldown_mutex;
+            std::lock_guard<std::mutex> cd_lock(g_xp_cooldown_mutex);
+            auto cd_it = g_xp_cooldown_cache.find(cd_key);
+            if (cd_it != g_xp_cooldown_cache.end() &&
+                now_sec < cd_it->second + cfg_opt->xp_cooldown_seconds) {
+              skip_xp = true;
+            } else {
+              g_xp_cooldown_cache[cd_key] = now_sec;
+            }
+          }
+
+          // 3. Check blacklist
+          if (!skip_xp) {
+            std::vector<std::string> author_roles;
+            auto m_opt = bot.get_member(msg.server_id, msg.author.id);
+            if (m_opt) {
+              author_roles = m_opt->roles;
+            }
+            if (bronx::g_db->is_xp_blocked(msg.server_id, msg.channel_id,
+                                           msg.author.id, author_roles)) {
+              skip_xp = true;
+            }
+          }
+
+          if (!skip_xp) {
+            // Calculate random XP to award
+            int min_xp = cfg_opt->min_xp_per_message;
+            int max_xp = cfg_opt->max_xp_per_message;
+            int xp_gain = min_xp;
+            if (max_xp > min_xp) {
+              xp_gain = min_xp + (std::rand() % (max_xp - min_xp + 1));
+            }
+
+            uint32_t new_level = 1;
+            bool leveled_up = false;
+            if (bronx::g_db->add_xp(msg.author.id, xp_gain, new_level,
+                                    leveled_up, msg.server_id)) {
+              // Economy coin reward if enabled
+              if (cfg_opt->reward_coins && cfg_opt->coins_per_message > 0) {
+                bronx::g_db->update_balances(msg.author.id,
+                                             cfg_opt->coins_per_message, 0);
+              }
+
+              if (leveled_up) {
+                // 1. Custom level announcement
+                if (cfg_opt->announce_levelup) {
+                  std::string announce_channel =
+                      cfg_opt->announcement_channel.value_or(msg.channel_id);
+                  std::string ann_msg = cfg_opt->announcement_message;
+
+                  // Replace tokens: {name}, {mention}, {level}
+                  size_t pos;
+                  while ((pos = ann_msg.find("{mention}")) !=
+                         std::string::npos) {
+                    ann_msg.replace(pos, 9, "<@" + msg.author.id + ">");
+                  }
+                  while ((pos = ann_msg.find("{name}")) != std::string::npos) {
+                    ann_msg.replace(pos, 6, msg.author.username);
+                  }
+                  while ((pos = ann_msg.find("{level}")) != std::string::npos) {
+                    ann_msg.replace(pos, 7, std::to_string(new_level));
+                  }
+
+                  bot.send_message(announce_channel, ann_msg);
+                }
+
+                // 2. Assign level roles rewards
+                auto level_roles = bronx::g_db->get_level_roles(msg.server_id);
+                if (!level_roles.empty()) {
+                  // Fetch current member to know their current roles
+                  bot.fetch_member(
+                      msg.server_id, msg.author.id,
+                      [&bot, msg, level_roles, new_level,
+                       cfg_opt](stoatpp::models::Member member, bool ok) {
+                        if (!ok)
+                          return;
+
+                        std::vector<std::string> roles_to_remove;
+                        std::string role_to_add = "";
+
+                        for (const auto &r : level_roles) {
+                          if (r.level == new_level) {
+                            role_to_add = r.role_id;
+                          } else if (r.level < new_level &&
+                                     !cfg_opt->sticky_roles) {
+                            // If sticky roles is off, collect all lower role
+                            // rewards to remove
+                            roles_to_remove.push_back(r.role_id);
+                          }
+                        }
+
+                        if (!role_to_add.empty()) {
+                          bot.add_role_to_member(
+                              msg.server_id, msg.author.id, role_to_add,
+                              [&bot, msg, roles_to_remove](bool added) {
+                                if (added) {
+                                  // Remove old level roles if needed
+                                  for (const auto &r_id : roles_to_remove) {
+                                    bot.remove_role_from_member(
+                                        msg.server_id, msg.author.id, r_id);
+                                  }
+                                }
+                              });
+                        }
+                      });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Skip command telemetry tracking for bots
+      if (is_bot)
+        return;
+
+      // 3. Command Telemetry
+      std::vector<std::string> prefixes;
+      std::string bot_id = bot.current_user().id;
+      if (!bot_id.empty()) {
+        prefixes.push_back("<@" + bot_id + "> ");
+        prefixes.push_back("<@" + bot_id + ">");
+      }
+      std::vector<std::string> user_pfx =
+          bronx::g_db->get_prefixes("user", msg.author.id);
+      prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
+
+      if (!msg.server_id.empty()) {
+        std::vector<std::string> server_pfx =
+            bronx::g_db->get_prefixes("server", msg.server_id);
+        prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
+      }
+      prefixes.push_back(bot.config().command_prefix);
+
+      std::vector<std::string> unique_prefixes;
+      for (const auto &p : prefixes) {
+        if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) ==
+            unique_prefixes.end()) {
+          unique_prefixes.push_back(p);
+        }
+      }
+
+      std::string matched_prefix;
+      for (const auto &p : unique_prefixes) {
+        if (!p.empty() && msg.content.rfind(p, 0) == 0) {
+          matched_prefix = p;
+          break;
+        }
+      }
+
+      if (!matched_prefix.empty()) {
+        std::stringstream ss(msg.content.substr(matched_prefix.size()));
+        std::string cmd_name;
+        ss >> cmd_name;
+
+        if (!cmd_name.empty()) {
+          bool cmd_exists = false;
+          std::string normalized_name = cmd_name;
+          for (const auto &cmd : bot.get_commands()) {
+            if (cmd.name == cmd_name ||
+                std::find(cmd.aliases.begin(), cmd.aliases.end(), cmd_name) !=
+                    cmd.aliases.end()) {
+              cmd_exists = true;
+              normalized_name = cmd.name;
+              break;
+            }
+          }
+
+          if (cmd_exists) {
+            bronx::g_db->increment_command_usage(msg.server_id, normalized_name,
+                                                 msg.channel_id);
+            bronx::g_db->increment_user_daily_commands(
+                msg.server_id, msg.author.id, msg.author.bot);
+            if (!msg.server_id.empty()) {
+              bronx::g_db->increment_user_channel_commands(
+                  msg.server_id, msg.channel_id, msg.author.id);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  bot.on_message_update([](const stoatpp::events::MessageUpdate &e) {
+    if (g_verbose_logging.load()) {
+      std::cout << "[bronx event] message updated! id: " << e.id
+                << " in channel " << e.channel_id << "\n";
+    }
+  });
+
+  bot.on_message_delete([](const stoatpp::events::MessageDelete &e) {
+    if (g_verbose_logging.load()) {
+      std::cout << "[bronx event] message deleted! id: " << e.id
+                << " in channel " << e.channel_id << "\n";
+    }
+  });
+
+  bot.on_message_react([&bot](const stoatpp::events::MessageReact &e) {
+    if (g_verbose_logging.load()) {
+      std::cout << "[bronx event] react: user " << e.user_id << " added emoji "
+                << e.emoji_id << " to message " << e.id << "\n";
+    }
+
+    if (bronx::g_db) {
+      auto proxy_opt = bronx::g_db->get_tupper_proxy(e.id);
+      if (proxy_opt) {
+        if (e.emoji_id == "❌") {
+          if (e.user_id == proxy_opt->user_id) {
+            bot.delete_message(e.channel_id, e.id);
+            bronx::g_db->delete_tupper_proxy(e.id);
+          }
+        } else if (e.emoji_id == "❓" || e.emoji_id == "❔") {
+          std::string proxy_user = proxy_opt->user_id;
+          std::string tupper = proxy_opt->tupper_name;
+          std::thread([&bot, e, proxy_user, tupper]() {
+            auto dm_res = bot.rest().open_dm(e.user_id);
+            if (dm_res.success() && dm_res.body.is_object() &&
+                dm_res.body.contains("_id")) {
+              std::string dm_channel = dm_res.body["_id"].get<std::string>();
+              bot.send_message(dm_channel,
+                               "💬 The message with ID `" + e.id + "` in <#" +
+                                   e.channel_id + "> was sent by <@" +
+                                   proxy_user + "> (User ID: `" + proxy_user +
+                                   "`) using the tupper profile **" + tupper +
+                                   "**.");
+            }
+          }).detach();
+        }
+      }
+    }
+  });
+
+  bot.on_message_unreact([](const stoatpp::events::MessageUnreact &e) {
+    if (g_verbose_logging.load()) {
+      std::cout << "[bronx event] unreact: user " << e.user_id
+                << " removed emoji " << e.emoji_id << " from message " << e.id
+                << "\n";
+    }
+  });
+
+  bot.on_channel_create([](const stoatpp::events::ChannelCreate &e) {
+    if (g_verbose_logging.load()) {
+      std::cout << "[bronx event] channel created: "
+                << e.channel.name.value_or("(unnamed)")
+                << " (id: " << e.channel.id << ")\n";
+    }
+  });
+
+  bot.on_channel_delete([](const stoatpp::events::ChannelDelete &e) {
+    if (g_verbose_logging.load()) {
+      std::cout << "[bronx event] channel deleted: " << e.id << "\n";
+    }
+  });
+
+  bot.on_server_create([&bot](const stoatpp::events::ServerCreate &e) {
+    std::cout << "[bronx event] server added: " << e.server.name
+              << " (id: " << e.server.id << ")\n";
+
+    stoatpp::models::MessagePayload payload;
+    nlohmann::json embed = nlohmann::json::object();
+    embed["title"] = "📥 Joined Server";
+    embed["colour"] = "#44ff44";
+    std::string desc = "• **Name:** " + e.server.name +
+                       "\n"
+                       "• **ID:** `" +
+                       e.server.id +
+                       "`\n"
+                       "• **Owner:** <@" +
+                       e.server.owner +
+                       ">\n"
+                       "• **Channels:** " +
+                       std::to_string(e.server.channels.size()) +
+                       "\n"
+                       "• **Roles:** " +
+                       std::to_string(e.server.roles.size()) + "\n";
+    embed["description"] = desc;
+    payload.embeds.push_back(embed);
+
+    bot.send_message("01KWJBMZFEW97D3VM09TDADRPN", payload);
+  });
+
+  bot.on_server_delete([&bot](const stoatpp::events::ServerDelete &e) {
+    std::cout << "[bronx event] server removed: " << e.id << "\n";
+
+    auto cached = bot.get_server(e.id);
+    std::string server_name = cached ? cached->name : "Unknown Server";
+    std::string owner_id = cached ? cached->owner : "";
+
+    stoatpp::models::MessagePayload payload;
+    nlohmann::json embed = nlohmann::json::object();
+    embed["title"] = "📤 Left Server";
+    embed["colour"] = "#ff4444";
+    std::string desc = "• **Name:** " + server_name +
+                       "\n"
+                       "• **ID:** `" +
+                       e.id + "`\n";
+    if (!owner_id.empty()) {
+      desc += "• **Owner:** <@" + owner_id + ">\n";
+    }
+    embed["description"] = desc;
+    payload.embeds.push_back(embed);
+
+    bot.send_message("01KWJBMZFEW97D3VM09TDADRPN", payload);
+  });
+
+  bot.on_error([](const stoatpp::events::Error &e) {
+    std::cerr << "[bronx event] gateway error: " << e.error_id << "\n";
+  });
+
+  bot.on_rest_error([&bot](const std::string &method, const std::string &path,
+                           int status_code, const std::string &error_msg) {
+    std::cerr << "[bronx rest error] " << method << " " << path << " -> "
+              << status_code << ": " << error_msg << "\n";
+
+    // Try to parse channel ID from path or server ID fallback
+    std::string channel_id = "";
+    if (path.rfind("/channels/", 0) == 0) {
+      std::string sub = path.substr(10);
+      size_t slash = sub.find('/');
+      if (slash != std::string::npos) {
+        channel_id = sub.substr(0, slash);
+      } else {
+        channel_id = sub;
+      }
+    } else if (path.rfind("/servers/", 0) == 0) {
+      std::string server_id = "";
+      std::string sub = path.substr(9);
+      size_t slash = sub.find('/');
+      if (slash != std::string::npos) {
+        server_id = sub.substr(0, slash);
+      } else {
+        server_id = sub;
+      }
+      if (!server_id.empty()) {
+        std::lock_guard<std::mutex> lock(g_invoker_mutex);
+        auto it = g_server_last_channel.find(server_id);
+        if (it != g_server_last_channel.end()) {
+          channel_id = it->second;
+        }
+      }
+    }
+
+    // Final fallback if we still don't have a channel ID
+    if (channel_id.empty()) {
+      std::lock_guard<std::mutex> lock(g_invoker_mutex);
+      channel_id = g_last_active_channel;
+    }
+
+    if (!channel_id.empty()) {
+      // Prevent recursive REST error handling loops
+      {
+        std::lock_guard<std::mutex> lock(g_handling_mutex);
+        if (g_handling_channels.count(channel_id)) {
+          return;
+        }
+        g_handling_channels.insert(channel_id);
+      }
+
+      // Extract the missing permission from error_msg (if format matches)
+      std::string missing_perm = "";
+      size_t pos = error_msg.find("missing permission: ");
+      if (pos != std::string::npos) {
+        missing_perm = error_msg.substr(pos + 20);
+        size_t close_paren = missing_perm.find(')');
+        if (close_paren != std::string::npos) {
+          missing_perm = missing_perm.substr(0, close_paren);
+        }
+      }
+
+      if (!missing_perm.empty()) {
+        std::string lower_perm = missing_perm;
+        std::transform(lower_perm.begin(), lower_perm.end(), lower_perm.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+
+        if (lower_perm == "sendmessages" || lower_perm == "send_messages" ||
+            lower_perm == "send messages") {
+          std::string invoker_id = "";
+          {
             std::lock_guard<std::mutex> lock(g_invoker_mutex);
             auto it = g_channel_last_invoker.find(channel_id);
-            if (it != g_channel_last_invoker.end()) invoker_id = it->second;
-        }
-
-        if (!invoker_id.empty()) {
-            auto user_masq = bronx::g_db->get_user_masquerade(invoker_id);
-            if (user_masq) {
-                if (!payload.masquerade) {
-                    payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
-                }
-                if (user_masq->name   && !payload.masquerade->name)   payload.masquerade->name   = user_masq->name;
-                if (user_masq->avatar && !payload.masquerade->avatar) payload.masquerade->avatar = user_masq->avatar;
-                if (user_masq->colour && !payload.masquerade->colour) payload.masquerade->colour = user_masq->colour;
+            if (it != g_channel_last_invoker.end()) {
+              invoker_id = it->second;
             }
-        }
-
-        // 3. Apply server override on top (field-by-field: server beats user)
-        if (server_cfg) {
-            if (!payload.masquerade) {
-                payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
-            }
-            if (server_cfg->name)   payload.masquerade->name   = server_cfg->name;
-            if (server_cfg->avatar) payload.masquerade->avatar = server_cfg->avatar;
-            if (server_cfg->colour) payload.masquerade->colour = server_cfg->colour;
-        }
-
-        // 4. If payload.masquerade is still empty (no fields set), clear it to avoid sending empty object
-        if (payload.masquerade &&
-            !payload.masquerade->name &&
-            !payload.masquerade->avatar &&
-            !payload.masquerade->colour) {
-            payload.masquerade = std::nullopt;
-        }
-    };
-
-    cfg.prefix_resolver = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg) -> std::vector<std::string> {
-        std::vector<std::string> prefixes;
-        std::string bot_id = bot.current_user().id;
-        if (!bot_id.empty()) {
-            prefixes.push_back("<@" + bot_id + "> ");
-            prefixes.push_back("<@" + bot_id + ">");
-        }
-        bool server_has_custom = false;
-
-        if (bronx::g_db) {
-            // 1. User prefixes always apply
-            std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
-            prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
-
-            // 2. Server custom prefixes
-            if (!msg.server_id.empty()) {
-                std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
-                if (!server_pfx.empty()) {
-                    server_has_custom = true;
-                    prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
-                }
-            }
-        }
-
-        // 3. Default prefix — skip if the server has custom prefixes AND default is disabled
-        bool add_default = true;
-        if (server_has_custom && !msg.server_id.empty() && bronx::g_db) {
-            add_default = bronx::g_db->get_prefix_default_enabled(msg.server_id);
-        }
-        if (add_default) {
-            prefixes.push_back(bot.config().command_prefix);
-        }
-
-        // Deduplicate
-        std::vector<std::string> unique_prefixes;
-        for (const auto& p : prefixes) {
-            if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) == unique_prefixes.end()) {
-                unique_prefixes.push_back(p);
-            }
-        }
-        return unique_prefixes;
-    };
-
-    std::cout << "[bronx] initialising stoatpp cluster...\n";
-    std::cout << "        api base: " << cfg.api_base_url << "\n";
-    std::cout << "        ws gateway: " << cfg.ws_url << "\n";
-    std::cout << "        command prefix: " << cfg.command_prefix << "\n";
-
-    stoatpp::cluster bot(token, cfg);
-
-    // Register our Cogs/Modules
-    bot.use(std::make_unique<bronx::cogs::HelpModule>());
-    bot.use(std::make_unique<bronx::cogs::GeneralModule>());
-    bot.use(std::make_unique<bronx::cogs::ModerationModule>());
-    bot.use(std::make_unique<bronx::cogs::RolesModule>());
-    bot.use(std::make_unique<bronx::cogs::UsersModule>());
-    bot.use(std::make_unique<bronx::cogs::PrefixModule>());
-    bot.use(std::make_unique<bronx::cogs::ReactionRolesModule>());
-    bot.use(std::make_unique<bronx::cogs::EmojiModule>());
-    bot.use(std::make_unique<bronx::cogs::StatsModule>());
-    bot.use(std::make_unique<bronx::cogs::EconomyModule>());
-    bot.use(std::make_unique<bronx::cogs::BlackjackModule>());
-    bot.use(std::make_unique<bronx::cogs::GamesModule>());
-    bot.use(std::make_unique<bronx::cogs::WelcomeLeaveModule>());
-    bot.use(std::make_unique<bronx::cogs::LoggingModule>());
-    bot.use(std::make_unique<bronx::cogs::CommandConfigModule>());
-    bot.use(std::make_unique<bronx::cogs::MediaModule>());
-    bot.use(std::make_unique<bronx::cogs::RemindersModule>());
-    bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
-    bot.use(std::make_unique<bronx::cogs::AutoModule>());
-    bot.use(std::make_unique<bronx::cogs::TicketsModule>());
-    bot.use(std::make_unique<bronx::cogs::CountingModule>());
-    bot.use(std::make_unique<bronx::cogs::AFKModule>());
-    bot.use(std::make_unique<bronx::cogs::RobloxModule>());
-    bot.use(std::make_unique<bronx::cogs::RSSModule>());
-    bot.use(std::make_unique<bronx::cogs::MasqueradeModule>());
-    bot.use(std::make_unique<bronx::cogs::TupperModule>());
-    bot.use(std::make_unique<bronx::cogs::SocialModule>());
-    bot.use(std::make_unique<bronx::cogs::AliasModule>());
-    bot.use(std::make_unique<bronx::cogs::FilterModule>());
-
-
-    bot.on_ready([&bot](const stoatpp::events::Ready& e) {
-        std::cout << "[bronx event] ready! logged in as: " << e.user.username 
-                  << " (id: " << e.user.id << ")\n";
-        std::cout << "              serving: " << e.servers.size() << " servers, "
-                  << e.channels.size() << " channels.\n";
-        std::cout << "              users in ready payload: " << e.users.size() << "\n";
-
-        std::string status_text = "serving " + std::to_string(e.servers.size()) + " servers";
-        bot.update_status(status_text, "Online", [](bool success) {
-            if (success) {
-                std::cout << "[bronx] successfully set presence status.\n";
-            } else {
-                std::cout << "[bronx] failed to set presence status.\n";
-            }
-        });
-
-        // Shifting status timer (runs every 90 seconds)
-        bot.start_timer([&bot](stoatpp::timer t) {
-            static int status_index = 1;
-            std::string status_text;
-            
-            size_t server_count = bot.get_servers().size();
-            size_t user_count = bot.get_total_member_count();
-            const auto& cmds = bot.get_commands();
-            size_t cmd_count = cmds.size();
-            
-            static bool seeded = false;
-            if (!seeded) {
-                std::srand(static_cast<unsigned int>(std::time(nullptr)));
-                seeded = true;
-            }
-
-            switch (status_index) {
-                case 0:
-                    status_text = "serving " + std::to_string(server_count) + " servers";
-                    break;
-                case 1:
-                    status_text = "watching over " + std::to_string(user_count) + " users";
-                    break;
-                case 2:
-                    status_text = "bronx.siqnole.dev";
-                    break;
-                case 3:
-                    status_text = ".help";
-                    break;
-                case 4: {
-                    std::string rand_cmd = "ping";
-                    if (cmd_count > 0) {
-                        int idx = std::rand() % cmd_count;
-                        rand_cmd = cmds[idx].name;
-                    }
-                    status_text = "try ." + rand_cmd;
-                    break;
-                }
-                case 5:
-                    status_text = "i have " + std::to_string(cmd_count) + " commands !";
-                    break;
-                case 6:
-                    status_text = "made in c++!";
-                    break;
-                default:
-                    status_text = "bronx.siqnole.dev";
-                    break;
-            }
-
-            bot.update_status(status_text, "Online");
-            status_index = (status_index + 1) % 7;
-        }, 90);
-
-        // Fix historical DB rows where bot users were mis-tagged as is_bot=FALSE.
-        // Revolt only sends "bot": true reliably in the Ready payload; message payloads
-        // omit it. We run this once per startup on a background thread.
-        if (bronx::g_db) {
-            // Collect bot user IDs: all users in Ready with bot=true, plus self
-            std::vector<std::string> bot_ids;
-            for (const auto& u : e.users) {
-                if (u.bot && !u.id.empty()) {
-                    bot_ids.push_back(u.id);
-                    std::cout << "[bronx] ready: detected bot user " << u.username
-                              << " (" << u.id << ")\n";
-                }
-            }
-            // bronx itself is always a bot
-            if (!e.user.id.empty()) {
-                bot_ids.push_back(e.user.id);
-            }
-
-            std::thread([bot_ids]() {
-                for (const auto& id : bot_ids) {
-                    bronx::g_db->fix_bot_flags(id);
-                }
+          }
+          if (!invoker_id.empty()) {
+            std::thread([&bot, invoker_id, channel_id]() {
+              auto dm_res = bot.rest().open_dm(invoker_id);
+              if (dm_res.success() && dm_res.body.is_object() &&
+                  dm_res.body.contains("_id")) {
+                std::string dm_channel_id =
+                    dm_res.body["_id"].get<std::string>();
+                bot.send_message(
+                    dm_channel_id,
+                    "Missing permission: SendMessages in channel " +
+                        channel_id);
+              }
             }).detach();
+          }
+        } else if (lower_perm == "embedlinks" || lower_perm == "embed_links" ||
+                   lower_perm == "embeds" || lower_perm == "embed") {
+          bot.send_message(channel_id, "Missing permission: EmbedLinks");
+        } else {
+          bot.send_message(channel_id, "Missing permission: " + missing_perm);
         }
-    });
+      } else {
+        // No specific permission extracted — send a generic error to the user
+        // Skip benign 404s from cleanup operations (reaction removal, message
+        // lookups)
+        bool is_benign_404 =
+            (status_code == 404) &&
+            (method == "DELETE" ||
+             (method == "GET" && path.find("/messages/") != std::string::npos));
 
-    bot.set_message_preprocessor([](stoatpp::cluster& bot, stoatpp::events::Message& msg) {
-        if (msg.author.bot || msg.content.empty() || !bronx::g_db) return;
+        if (is_benign_404) {
+          // Silently ignore — these are expected during batch cleanup
+          // operations
+        } else {
+          // Map common error types to user-friendly messages
+          std::string user_msg;
+          if (error_msg == "NotElevated") {
+            user_msg =
+                "⚠️ I don't have a high enough role to perform this action. "
+                "Please move my role above the target user's roles.";
+          } else if (error_msg == "Forbidden" || status_code == 403) {
+            user_msg = "⚠️ I don't have permission to perform this action (" +
+                       std::to_string(status_code) + ": " + error_msg + ").";
+          } else if (error_msg == "NotFound" || status_code == 404) {
+            user_msg = "⚠️ The target resource was not found (it may have been "
+                       "deleted).";
+          } else if (status_code >= 500) {
+            user_msg = "⚠️ The server encountered an internal error. Please try "
+                       "again later.";
+          } else if (status_code >= 400) {
+            user_msg = "⚠️ Request failed (" + std::to_string(status_code) +
+                       ": " + error_msg + ").";
+          }
 
-        // 1. Resolve message prefix
-        std::vector<std::string> prefixes;
-        std::string bot_id = bot.current_user().id;
-        if (!bot_id.empty()) {
-            prefixes.push_back("<@" + bot_id + "> ");
-            prefixes.push_back("<@" + bot_id + ">");
+          if (!user_msg.empty()) {
+            bot.send_message(channel_id, user_msg);
+          }
         }
-        std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
-        prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
-        
-        if (!msg.server_id.empty()) {
-            std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
-            prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
+      }
+
+      // Release handling block after 2 seconds
+      std::thread([channel_id]() {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        std::lock_guard<std::mutex> lock(g_handling_mutex);
+        g_handling_channels.erase(channel_id);
+      }).detach();
+    }
+  });
+
+  bot.on_logout([](const stoatpp::events::Logout &) {
+    std::cout << "[bronx event] logout detected\n";
+  });
+
+  if (verbose) {
+    bot.on_raw_event([](const std::string &type, const nlohmann::json &data) {
+      std::cout << "[bronx audit raw] " << type
+                << " payload size: " << data.dump().size() << "\n";
+    });
+  }
+
+  bot.on_command_cooldown([](stoatpp::cluster &bot,
+                             const stoatpp::events::Message &msg,
+                             const stoatpp::Command &cmd, int64_t remaining) {
+    if (cmd.category == "Economy") {
+      std::string time_str = "";
+      if (remaining >= 3600) {
+        int64_t hours = remaining / 3600;
+        int64_t mins = (remaining % 3600) / 60;
+        time_str = std::to_string(hours) + "h " + std::to_string(mins) + "m";
+      } else if (remaining >= 60) {
+        time_str = std::to_string(remaining / 60) + "m " +
+                   std::to_string(remaining % 60) + "s";
+      } else {
+        time_str = std::to_string(remaining) + "s";
+      }
+      bot.send_message(msg.channel_id,
+                       "you are on cooldown. please wait " + time_str + ".");
+    } else {
+      auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+      std::string ts_tag =
+          stoatpp::utils::format_timestamp(now_unix + remaining, "R");
+      bot.send_message(msg.channel_id,
+                       "you are on cooldown. please wait " + ts_tag + ".");
+    }
+  });
+
+  bot.on_command_error(
+      [](stoatpp::cluster &bot, const stoatpp::events::Message &msg,
+         const stoatpp::Command &cmd, const std::string &error_type) {
+        if (error_type == "member_fetch_failed") {
+          bot.send_message(msg.channel_id,
+                           "failed to verify your server member details.");
+        } else if (error_type == "server_resolve_failed") {
+          bot.send_message(msg.channel_id,
+                           "failed to verify server configuration.");
+        } else if (error_type == "permission_denied") {
+          bot.send_message(msg.channel_id,
+                           "permission error: you do not have the required "
+                           "permissions to use this command.");
+        } else if (error_type == "server_only") {
+          bot.send_message(msg.channel_id,
+                           "this command can only be used in a server.");
         }
-        prefixes.push_back(bot.config().command_prefix);
+      });
 
-        std::vector<std::string> unique_prefixes;
-        for (const auto& p : prefixes) {
-            if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) == unique_prefixes.end()) {
-                unique_prefixes.push_back(p);
-            }
+  bot.on_command_disabled_check([](stoatpp::cluster &bot,
+                                    const stoatpp::events::Message &msg,
+                                    const stoatpp::Command &cmd) {
+    if (msg.server_id.empty() || !bronx::g_db)
+      return false;
+
+    std::string cmd_name = cmd.name;
+    std::string mod_name = cmd.category;
+    std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), ::tolower);
+    std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), ::tolower);
+
+    if (bronx::g_db->is_disabled(msg.server_id, cmd_name, mod_name)) {
+      if (bot.is_owner(msg.author.id) ||
+          bot.is_server_owner(msg.server_id, msg.author.id)) {
+        if (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd") {
+          return false;
         }
+      }
+      return true;
+    }
+    return false;
+  });
 
-        std::string matched_prefix;
-        for (const auto& p : unique_prefixes) {
-            if (!p.empty() && msg.content.rfind(p, 0) == 0) {
-                matched_prefix = p;
-                break;
-            }
+  bot.on_command_run([](stoatpp::cluster &bot,
+                        const stoatpp::events::Message &msg,
+                        const stoatpp::Command &cmd,
+                        const std::optional<stoatpp::models::Member> &mem_opt,
+                        const std::vector<std::string> &args) {
+    if (msg.server_id.empty())
+      return true;
+    if (!bronx::g_db)
+      return true;
+
+    std::string cmd_name = cmd.name;
+    std::string mod_name = cmd.category;
+    std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(),
+                   ::tolower);
+    std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(),
+                   ::tolower);
+
+    // 1. Completely Disabled Commands/Modules Check (ignores invocation
+    // completely)
+    if (bronx::g_db->is_disabled(msg.server_id, cmd_name, mod_name)) {
+      // Bypass for Server Owner or Bot Owner on command config commands to
+      // avoid locked out state
+      if (bot.is_owner(msg.author.id) ||
+          bot.is_server_owner(msg.server_id, msg.author.id)) {
+        if (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd") {
+          return true;
         }
-
-        if (matched_prefix.empty()) return;
-
-        // 2. Parse command name from content
-        std::string command_part = msg.content.substr(matched_prefix.size());
-        std::stringstream ss(command_part);
-        std::string cmd;
-        ss >> cmd;
-        if (cmd.empty()) return;
-
-        // 3. Resolve alias in database (checking server-level, then user-level)
-        std::string target = bronx::g_db->resolve_alias(msg.server_id, msg.author.id, cmd);
-        if (!target.empty()) {
-            // Keep any trailing arguments/characters intact
-            std::string remainder = command_part.substr(cmd.size());
-            msg.content = matched_prefix + target + remainder;
-            std::cout << "[bronx alias] resolved alias: '" << cmd << "' -> '" << target << "'. rewritten content: '" << msg.content << "'\n";
-        }
-    });
-
-    bot.on_message([&bot](const stoatpp::events::Message& msg) {
-        std::cout << "[bronx event] message in channel " << msg.channel_id
-                  << " by " << msg.author.username << ": " << msg.content << "\n";
-
-        bronx::cogs::FilterModule::scan_message(bot, msg);
-
-        // Tupperbox proxying check
-        if (!msg.author.bot && !msg.content.empty() && msg.content[0] != '\\' && bronx::g_db) {
-            std::vector<bronx::Database::Tupper> tuppers = bronx::g_db->get_user_tuppers(msg.author.id);
-            for (const auto& t : tuppers) {
-                bool prefix_match = t.prefix.empty() || (msg.content.rfind(t.prefix, 0) == 0);
-                bool suffix_match = t.suffix.empty() || (msg.content.size() >= t.prefix.size() + t.suffix.size() &&
-                                                          msg.content.substr(msg.content.size() - t.suffix.size()) == t.suffix);
-
-                if (prefix_match && suffix_match) {
-                    std::string inner = msg.content.substr(t.prefix.size(), msg.content.size() - t.prefix.size() - t.suffix.size());
-                    if (!inner.empty()) {
-                        bot.delete_message(msg.channel_id, msg.id);
-
-                        stoatpp::models::MessagePayload payload;
-                        payload.content = inner;
-                        payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
-                        payload.masquerade->name = t.name + " [" + msg.author.username + "]";
-                        payload.masquerade->avatar = t.avatar_url;
-
-                        std::string author_id = msg.author.id;
-                        std::string tupper_name = t.name;
-                        bot.send_message(msg.channel_id, payload, [&bot, author_id, tupper_name](stoatpp::models::Message res, bool success) {
-                            if (success && bronx::g_db) {
-                                bronx::g_db->add_tupper_proxy(res.id, author_id, tupper_name);
-                            }
-                        });
-                        return; // Handled proxy, skip further processing
-                    }
-                }
-            }
-        }
-
-        if (!msg.author.bot && !msg.channel_id.empty() && !msg.author.id.empty()) {
-            std::lock_guard<std::mutex> lock(g_invoker_mutex);
-            g_channel_last_invoker[msg.channel_id] = msg.author.id;
-            if (!msg.server_id.empty()) {
-                g_server_last_channel[msg.server_id] = msg.channel_id;
-            }
-            g_last_active_channel = msg.channel_id;
-        }
-
-        if (bronx::g_db) {
-            // Resolve bot flag — Revolt sometimes omits "bot" in message payloads,
-            // so fall back to the user cache if the field isn't set on this message.
-            bool is_bot = msg.author.bot;
-            if (!is_bot) {
-                auto cached = bot.get_user(msg.author.id);
-                if (cached && cached->bot) is_bot = true;
-            }
-
-            // 1. Message Telemetry
-            bronx::g_db->increment_user_daily_messages(msg.server_id, msg.author.id, is_bot, "message");
-
-            // 2. Channel Telemetry
-            bronx::g_db->increment_channel_daily_messages(msg.server_id, msg.channel_id);
-
-            // 3. User Channel Telemetry
-            if (!msg.server_id.empty() && !is_bot) {
-                bronx::g_db->increment_user_channel_messages(msg.server_id, msg.channel_id, msg.author.id);
-            }
-
-            // Skip command telemetry tracking for bots
-            if (is_bot) return;
-
-            // 3. Command Telemetry
-            std::vector<std::string> prefixes;
-            std::string bot_id = bot.current_user().id;
-            if (!bot_id.empty()) {
-                prefixes.push_back("<@" + bot_id + "> ");
-                prefixes.push_back("<@" + bot_id + ">");
-            }
-            std::vector<std::string> user_pfx = bronx::g_db->get_prefixes("user", msg.author.id);
-            prefixes.insert(prefixes.end(), user_pfx.begin(), user_pfx.end());
-            
-            if (!msg.server_id.empty()) {
-                std::vector<std::string> server_pfx = bronx::g_db->get_prefixes("server", msg.server_id);
-                prefixes.insert(prefixes.end(), server_pfx.begin(), server_pfx.end());
-            }
-            prefixes.push_back(bot.config().command_prefix);
-
-            std::vector<std::string> unique_prefixes;
-            for (const auto& p : prefixes) {
-                if (std::find(unique_prefixes.begin(), unique_prefixes.end(), p) == unique_prefixes.end()) {
-                    unique_prefixes.push_back(p);
-                }
-            }
-
-            std::string matched_prefix;
-            for (const auto& p : unique_prefixes) {
-                if (!p.empty() && msg.content.rfind(p, 0) == 0) {
-                    matched_prefix = p;
-                    break;
-                }
-            }
-
-            if (!matched_prefix.empty()) {
-                std::stringstream ss(msg.content.substr(matched_prefix.size()));
-                std::string cmd_name;
-                ss >> cmd_name;
-
-                if (!cmd_name.empty()) {
-                    bool cmd_exists = false;
-                    std::string normalized_name = cmd_name;
-                    for (const auto& cmd : bot.get_commands()) {
-                        if (cmd.name == cmd_name || std::find(cmd.aliases.begin(), cmd.aliases.end(), cmd_name) != cmd.aliases.end()) {
-                            cmd_exists = true;
-                            normalized_name = cmd.name;
-                            break;
-                        }
-                    }
-
-                    if (cmd_exists) {
-                        bronx::g_db->increment_command_usage(msg.server_id, normalized_name, msg.channel_id);
-                        bronx::g_db->increment_user_daily_commands(msg.server_id, msg.author.id, msg.author.bot);
-                        if (!msg.server_id.empty()) {
-                            bronx::g_db->increment_user_channel_commands(msg.server_id, msg.channel_id, msg.author.id);
-                        }
-                    }
-                }
-            }
-        }
-    });
-
-    bot.on_message_update([](const stoatpp::events::MessageUpdate& e) {
-        std::cout << "[bronx event] message updated! id: " << e.id << " in channel " << e.channel_id << "\n";
-    });
-
-    bot.on_message_delete([](const stoatpp::events::MessageDelete& e) {
-        std::cout << "[bronx event] message deleted! id: " << e.id << " in channel " << e.channel_id << "\n";
-    });
-
-    bot.on_message_react([&bot](const stoatpp::events::MessageReact& e) {
-        std::cout << "[bronx event] react: user " << e.user_id 
-                  << " added emoji " << e.emoji_id << " to message " << e.id << "\n";
-
-        if (bronx::g_db) {
-            auto proxy_opt = bronx::g_db->get_tupper_proxy(e.id);
-            if (proxy_opt) {
-                if (e.emoji_id == "❌") {
-                    if (e.user_id == proxy_opt->user_id) {
-                        bot.delete_message(e.channel_id, e.id);
-                        bronx::g_db->delete_tupper_proxy(e.id);
-                    }
-                } else if (e.emoji_id == "❓" || e.emoji_id == "❔") {
-                    std::string proxy_user = proxy_opt->user_id;
-                    std::string tupper = proxy_opt->tupper_name;
-                    std::thread([&bot, e, proxy_user, tupper]() {
-                        auto dm_res = bot.rest().open_dm(e.user_id);
-                        if (dm_res.success() && dm_res.body.is_object() && dm_res.body.contains("_id")) {
-                            std::string dm_channel = dm_res.body["_id"].get<std::string>();
-                            bot.send_message(dm_channel, "💬 The message with ID `" + e.id + "` in <#" + e.channel_id + "> was sent by <@" + proxy_user + "> (User ID: `" + proxy_user + "`) using the tupper profile **" + tupper + "**.");
-                        }
-                    }).detach();
-                }
-            }
-        }
-    });
-
-    bot.on_message_unreact([](const stoatpp::events::MessageUnreact& e) {
-        std::cout << "[bronx event] unreact: user " << e.user_id 
-                  << " removed emoji " << e.emoji_id << " from message " << e.id << "\n";
-    });
-
-    bot.on_channel_create([](const stoatpp::events::ChannelCreate& e) {
-        std::cout << "[bronx event] channel created: " << e.channel.name.value_or("(unnamed)") 
-                  << " (id: " << e.channel.id << ")\n";
-    });
-
-    bot.on_channel_delete([](const stoatpp::events::ChannelDelete& e) {
-        std::cout << "[bronx event] channel deleted: " << e.id << "\n";
-    });
-
-    bot.on_server_create([&bot](const stoatpp::events::ServerCreate& e) {
-        std::cout << "[bronx event] server added: " << e.server.name << " (id: " << e.server.id << ")\n";
-        
-        stoatpp::models::MessagePayload payload;
-        nlohmann::json embed = nlohmann::json::object();
-        embed["title"] = "📥 Joined Server";
-        embed["colour"] = "#44ff44";
-        std::string desc = "• **Name:** " + e.server.name + "\n"
-                           "• **ID:** `" + e.server.id + "`\n"
-                           "• **Owner:** <@" + e.server.owner + ">\n"
-                           "• **Channels:** " + std::to_string(e.server.channels.size()) + "\n"
-                           "• **Roles:** " + std::to_string(e.server.roles.size()) + "\n";
-        embed["description"] = desc;
-        payload.embeds.push_back(embed);
-
-        bot.send_message("01KWJBMZFEW97D3VM09TDADRPN", payload);
-    });
-
-    bot.on_server_delete([&bot](const stoatpp::events::ServerDelete& e) {
-        std::cout << "[bronx event] server removed: " << e.id << "\n";
-        
-        auto cached = bot.get_server(e.id);
-        std::string server_name = cached ? cached->name : "Unknown Server";
-        std::string owner_id = cached ? cached->owner : "";
-
-        stoatpp::models::MessagePayload payload;
-        nlohmann::json embed = nlohmann::json::object();
-        embed["title"] = "📤 Left Server";
-        embed["colour"] = "#ff4444";
-        std::string desc = "• **Name:** " + server_name + "\n"
-                           "• **ID:** `" + e.id + "`\n";
-        if (!owner_id.empty()) {
-            desc += "• **Owner:** <@" + owner_id + ">\n";
-        }
-        embed["description"] = desc;
-        payload.embeds.push_back(embed);
-
-        bot.send_message("01KWJBMZFEW97D3VM09TDADRPN", payload);
-    });
-
-
-
-    bot.on_error([](const stoatpp::events::Error& e) {
-        std::cerr << "[bronx event] gateway error: " << e.error_id << "\n";
-    });
-
-    bot.on_rest_error([&bot](const std::string& method, const std::string& path, int status_code, const std::string& error_msg) {
-        std::cerr << "[bronx rest error] " << method << " " << path << " -> " << status_code << ": " << error_msg << "\n";
-
-        // Try to parse channel ID from path or server ID fallback
-        std::string channel_id = "";
-        if (path.rfind("/channels/", 0) == 0) {
-            std::string sub = path.substr(10);
-            size_t slash = sub.find('/');
-            if (slash != std::string::npos) {
-                channel_id = sub.substr(0, slash);
-            } else {
-                channel_id = sub;
-            }
-        } else if (path.rfind("/servers/", 0) == 0) {
-            std::string server_id = "";
-            std::string sub = path.substr(9);
-            size_t slash = sub.find('/');
-            if (slash != std::string::npos) {
-                server_id = sub.substr(0, slash);
-            } else {
-                server_id = sub;
-            }
-            if (!server_id.empty()) {
-                std::lock_guard<std::mutex> lock(g_invoker_mutex);
-                auto it = g_server_last_channel.find(server_id);
-                if (it != g_server_last_channel.end()) {
-                    channel_id = it->second;
-                }
-            }
-        }
-
-        // Final fallback if we still don't have a channel ID
-        if (channel_id.empty()) {
-            std::lock_guard<std::mutex> lock(g_invoker_mutex);
-            channel_id = g_last_active_channel;
-        }
-
-        if (!channel_id.empty()) {
-            // Prevent recursive REST error handling loops
-            {
-                std::lock_guard<std::mutex> lock(g_handling_mutex);
-                if (g_handling_channels.count(channel_id)) {
-                    return;
-                }
-                g_handling_channels.insert(channel_id);
-            }
-
-            // Extract the missing permission from error_msg (if format matches)
-            std::string missing_perm = "";
-            size_t pos = error_msg.find("missing permission: ");
-            if (pos != std::string::npos) {
-                missing_perm = error_msg.substr(pos + 20);
-                size_t close_paren = missing_perm.find(')');
-                if (close_paren != std::string::npos) {
-                    missing_perm = missing_perm.substr(0, close_paren);
-                }
-            }
-
-            if (!missing_perm.empty()) {
-                std::string lower_perm = missing_perm;
-                std::transform(lower_perm.begin(), lower_perm.end(), lower_perm.begin(), [](unsigned char c) { return std::tolower(c); });
-
-                if (lower_perm == "sendmessages" || lower_perm == "send_messages" || lower_perm == "send messages") {
-                    std::string invoker_id = "";
-                    {
-                        std::lock_guard<std::mutex> lock(g_invoker_mutex);
-                        auto it = g_channel_last_invoker.find(channel_id);
-                        if (it != g_channel_last_invoker.end()) {
-                            invoker_id = it->second;
-                        }
-                    }
-                    if (!invoker_id.empty()) {
-                        std::thread([&bot, invoker_id, channel_id]() {
-                            auto dm_res = bot.rest().open_dm(invoker_id);
-                            if (dm_res.success() && dm_res.body.is_object() && dm_res.body.contains("_id")) {
-                                std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
-                                bot.send_message(dm_channel_id, "Missing permission: SendMessages in channel " + channel_id);
-                            }
-                        }).detach();
-                    }
-                } else if (lower_perm == "embedlinks" || lower_perm == "embed_links" || lower_perm == "embeds" || lower_perm == "embed") {
-                    bot.send_message(channel_id, "Missing permission: EmbedLinks");
-                } else {
-                    bot.send_message(channel_id, "Missing permission: " + missing_perm);
-                }
-            }
-
-            // Release handling block after 2 seconds
-            std::thread([channel_id]() {
-                std::this_thread::sleep_for(std::chrono::seconds(2));
-                std::lock_guard<std::mutex> lock(g_handling_mutex);
-                g_handling_channels.erase(channel_id);
-            }).detach();
-        }
-    });
-
-    bot.on_logout([](const stoatpp::events::Logout&) {
-        std::cout << "[bronx event] logout detected\n";
-    });
-
-    if (verbose) {
-        bot.on_raw_event([](const std::string& type, const nlohmann::json& data) {
-            std::cout << "[bronx audit raw] " << type << " payload size: " << data.dump().size() << "\n";
-        });
+      }
+      return false;
     }
 
-    bot.on_command_cooldown([](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const stoatpp::Command& cmd, int64_t remaining) {
-        if (cmd.category == "Economy") {
-            std::string time_str = "";
-            if (remaining >= 3600) {
-                int64_t hours = remaining / 3600;
-                int64_t mins = (remaining % 3600) / 60;
-                time_str = std::to_string(hours) + "h " + std::to_string(mins) + "m";
-            } else if (remaining >= 60) {
-                time_str = std::to_string(remaining / 60) + "m " + std::to_string(remaining % 60) + "s";
-            } else {
-                time_str = std::to_string(remaining) + "s";
-            }
-            bot.send_message(msg.channel_id, "you are on cooldown. please wait " + time_str + ".");
-        } else {
-            auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
-                std::chrono::system_clock::now().time_since_epoch()
-            ).count();
-            std::string ts_tag = stoatpp::utils::format_timestamp(now_unix + remaining, "R");
-            bot.send_message(msg.channel_id, "you are on cooldown. please wait " + ts_tag + ".");
+    // Emergency Override: Bot Owner always bypasses. Server Owner and
+    // ManageServer users only bypass config commands
+    bool bypass = bot.is_owner(msg.author.id);
+    if (!bypass) {
+      bool is_admin = bot.is_server_owner(msg.server_id, msg.author.id);
+      if (!is_admin && mem_opt) {
+        auto server_opt = bot.get_server(msg.server_id);
+        if (server_opt &&
+            bot.has_permission(*server_opt, *mem_opt,
+                               stoatpp::permissions::ManageServer)) {
+          is_admin = true;
         }
-    });
+      }
+      if (is_admin &&
+          (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd")) {
+        bypass = true;
+      }
+    }
 
-    bot.on_command_error([](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const stoatpp::Command& cmd, const std::string& error_type) {
-        if (error_type == "member_fetch_failed") {
-            bot.send_message(msg.channel_id, "failed to verify your server member details.");
-        } else if (error_type == "server_resolve_failed") {
-            bot.send_message(msg.channel_id, "failed to verify server configuration.");
-        } else if (error_type == "permission_denied") {
-            bot.send_message(msg.channel_id, "permission error: you do not have the required permissions to use this command.");
-        } else if (error_type == "server_only") {
-            bot.send_message(msg.channel_id, "this command can only be used in a server.");
-        }
-    });
+    // Whitelist/blacklist restrictions check
+    if (!bypass) {
+      auto rules =
+          bronx::g_db->get_restrictions(msg.server_id, "command", cmd_name);
+      auto mod_rules =
+          bronx::g_db->get_restrictions(msg.server_id, "module", mod_name);
+      rules.insert(rules.end(), mod_rules.begin(), mod_rules.end());
 
-    bot.on_command_run([](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const stoatpp::Command& cmd, const std::optional<stoatpp::models::Member>& mem_opt, const std::vector<std::string>& args) {
-        if (msg.server_id.empty()) return true; 
-        if (!bronx::g_db) return true;
+      if (!rules.empty()) {
+        std::vector<std::string> whitelist_roles;
+        std::vector<std::string> whitelist_channels;
+        std::vector<int64_t> whitelist_permissions;
 
-        std::string cmd_name = cmd.name;
-        std::string mod_name = cmd.category;
-        std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), ::tolower);
-        std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), ::tolower);
+        std::vector<std::string> blacklist_roles;
+        std::vector<std::string> blacklist_channels;
+        std::vector<int64_t> blacklist_permissions;
 
-        // 1. Completely Disabled Commands/Modules Check (ignores invocation completely)
-        if (bronx::g_db->is_disabled(msg.server_id, cmd_name, mod_name)) {
-            // Bypass for Server Owner or Bot Owner on command config commands to avoid locked out state
-            if (bot.is_owner(msg.author.id) || bot.is_server_owner(msg.server_id, msg.author.id)) {
-                if (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd") {
-                    return true;
-                }
+        for (const auto &re : rules) {
+          if (re.restriction_type == "allow") {
+            if (re.entity_type == "role")
+              whitelist_roles.push_back(re.entity_id);
+            else if (re.entity_type == "channel")
+              whitelist_channels.push_back(re.entity_id);
+            else if (re.entity_type == "permission") {
+              whitelist_permissions.push_back(
+                  bronx::cogs::parse_permission_name(re.entity_id));
             }
+          } else if (re.restriction_type == "restrict") {
+            if (re.entity_type == "role")
+              blacklist_roles.push_back(re.entity_id);
+            else if (re.entity_type == "channel")
+              blacklist_channels.push_back(re.entity_id);
+            else if (re.entity_type == "permission") {
+              blacklist_permissions.push_back(
+                  bronx::cogs::parse_permission_name(re.entity_id));
+            }
+          }
+        }
+
+        bool has_channel_whitelist = !whitelist_channels.empty();
+        bool has_member_whitelist =
+            !whitelist_roles.empty() || !whitelist_permissions.empty();
+
+        if (has_channel_whitelist) {
+          bool channel_ok =
+              (std::find(whitelist_channels.begin(), whitelist_channels.end(),
+                         msg.channel_id) != whitelist_channels.end());
+          if (!channel_ok) {
+            bot.send_message(
+                msg.channel_id,
+                "⚠️ This command/module is allowed only in specific channels.");
             return false;
+          }
         }
 
-        // Emergency Override: Bot Owner always bypasses. Server Owner and ManageServer users only bypass config commands
-        bool bypass = bot.is_owner(msg.author.id);
-        if (!bypass) {
-            bool is_admin = bot.is_server_owner(msg.server_id, msg.author.id);
-            if (!is_admin && mem_opt) {
-                auto server_opt = bot.get_server(msg.server_id);
-                if (server_opt && bot.has_permission(*server_opt, *mem_opt, stoatpp::permissions::ManageServer)) {
-                    is_admin = true;
+        if (has_member_whitelist) {
+          bool member_ok = false;
+          if (mem_opt) {
+            for (const auto &r : mem_opt->roles) {
+              if (std::find(whitelist_roles.begin(), whitelist_roles.end(),
+                            r) != whitelist_roles.end()) {
+                member_ok = true;
+                break;
+              }
+            }
+            auto server_opt = bot.get_server(msg.server_id);
+            if (server_opt && !member_ok) {
+              for (auto mask : whitelist_permissions) {
+                if (bot.has_permission(*server_opt, *mem_opt, mask)) {
+                  member_ok = true;
+                  break;
                 }
+              }
             }
-            if (is_admin && (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd")) {
-                bypass = true;
-            }
+          }
+          if (!member_ok) {
+            bot.send_message(
+                msg.channel_id,
+                "⚠️ This command/module is whitelisted and not accessible by "
+                "your current roles or permissions.");
+            return false;
+          }
         }
 
-        // Whitelist/blacklist restrictions check
-        if (!bypass) {
-            auto rules = bronx::g_db->get_restrictions(msg.server_id, "command", cmd_name);
-            auto mod_rules = bronx::g_db->get_restrictions(msg.server_id, "module", mod_name);
-            rules.insert(rules.end(), mod_rules.begin(), mod_rules.end());
-
-            if (!rules.empty()) {
-                std::vector<std::string> whitelist_roles;
-                std::vector<std::string> whitelist_channels;
-                std::vector<int64_t> whitelist_permissions;
-
-                std::vector<std::string> blacklist_roles;
-                std::vector<std::string> blacklist_channels;
-                std::vector<int64_t> blacklist_permissions;
-
-                for (const auto& re : rules) {
-                    if (re.restriction_type == "allow") {
-                        if (re.entity_type == "role") whitelist_roles.push_back(re.entity_id);
-                        else if (re.entity_type == "channel") whitelist_channels.push_back(re.entity_id);
-                        else if (re.entity_type == "permission") {
-                            whitelist_permissions.push_back(bronx::cogs::parse_permission_name(re.entity_id));
-                        }
-                    } else if (re.restriction_type == "restrict") {
-                        if (re.entity_type == "role") blacklist_roles.push_back(re.entity_id);
-                        else if (re.entity_type == "channel") blacklist_channels.push_back(re.entity_id);
-                        else if (re.entity_type == "permission") {
-                            blacklist_permissions.push_back(bronx::cogs::parse_permission_name(re.entity_id));
-                        }
-                    }
-                }
-
-                bool has_channel_whitelist = !whitelist_channels.empty();
-                bool has_member_whitelist = !whitelist_roles.empty() || !whitelist_permissions.empty();
-
-                if (has_channel_whitelist) {
-                    bool channel_ok = (std::find(whitelist_channels.begin(), whitelist_channels.end(), msg.channel_id) != whitelist_channels.end());
-                    if (!channel_ok) {
-                        bot.send_message(msg.channel_id, "⚠️ This command/module is allowed only in specific channels.");
-                        return false;
-                    }
-                }
-
-                if (has_member_whitelist) {
-                    bool member_ok = false;
-                    if (mem_opt) {
-                        for (const auto& r : mem_opt->roles) {
-                            if (std::find(whitelist_roles.begin(), whitelist_roles.end(), r) != whitelist_roles.end()) {
-                                member_ok = true;
-                                break;
-                            }
-                        }
-                        auto server_opt = bot.get_server(msg.server_id);
-                        if (server_opt && !member_ok) {
-                            for (auto mask : whitelist_permissions) {
-                                if (bot.has_permission(*server_opt, *mem_opt, mask)) {
-                                    member_ok = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if (!member_ok) {
-                        bot.send_message(msg.channel_id, "⚠️ This command/module is whitelisted and not accessible by your current roles or permissions.");
-                        return false;
-                    }
-                }
-
-                // Check blacklist
-                bool matches_blacklist = false;
-                if (std::find(blacklist_channels.begin(), blacklist_channels.end(), msg.channel_id) != blacklist_channels.end()) {
-                    matches_blacklist = true;
-                }
-                if (mem_opt) {
-                    for (const auto& r : mem_opt->roles) {
-                        if (std::find(blacklist_roles.begin(), blacklist_roles.end(), r) != blacklist_roles.end()) {
-                            matches_blacklist = true;
-                            break;
-                        }
-                    }
-                    // Check permissions
-                    auto server_opt = bot.get_server(msg.server_id);
-                    if (server_opt) {
-                        for (auto mask : blacklist_permissions) {
-                            if (bot.has_permission(*server_opt, *mem_opt, mask)) {
-                                matches_blacklist = true;
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                if (matches_blacklist) {
-                    bot.send_message(msg.channel_id, "⚠️ This command/module has been blacklisted for your current roles, permissions, or channel.");
-                    return false;
-                }
+        // Check blacklist
+        bool matches_blacklist = false;
+        if (std::find(blacklist_channels.begin(), blacklist_channels.end(),
+                      msg.channel_id) != blacklist_channels.end()) {
+          matches_blacklist = true;
+        }
+        if (mem_opt) {
+          for (const auto &r : mem_opt->roles) {
+            if (std::find(blacklist_roles.begin(), blacklist_roles.end(), r) !=
+                blacklist_roles.end()) {
+              matches_blacklist = true;
+              break;
             }
+          }
+          // Check permissions
+          auto server_opt = bot.get_server(msg.server_id);
+          if (server_opt) {
+            for (auto mask : blacklist_permissions) {
+              if (bot.has_permission(*server_opt, *mem_opt, mask)) {
+                matches_blacklist = true;
+                break;
+              }
+            }
+          }
         }
 
-        // 3. Config commands protection (trust, command)
-        if (cmd_name == "trust" || cmd_name == "command" || cmd_name == "cmd") {
-            if (mem_opt) {
-                if (!bronx::cogs::is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, *mem_opt)) {
-                    bot.send_message(msg.channel_id, "permission error: you need to be trusted or have Manage Server permission to configure command permissions.");
-                    return false;
-                }
-            }
+        if (matches_blacklist) {
+          bot.send_message(msg.channel_id,
+                           "⚠️ This command/module has been blacklisted for "
+                           "your current roles, permissions, or channel.");
+          return false;
         }
+      }
+    }
 
-        return true;
-    });
+    // 3. Config commands protection (trust, command)
+    if (cmd_name == "trust" || cmd_name == "command" || cmd_name == "cmd") {
+      if (mem_opt) {
+        if (!bronx::cogs::is_user_trusted_or_owner(bot, msg.server_id,
+                                                   msg.author.id, *mem_opt)) {
+          bot.send_message(
+              msg.channel_id,
+              "permission error: you need to be trusted or have Manage Server "
+              "permission to configure command permissions.");
+          return false;
+        }
+      }
+    }
 
-    std::cout << "[bronx] starting cluster start() loop. press ctrl+c to terminate.\n";
-    bot.start();
+    return true;
+  });
 
-    return 0;
+  std::cout
+      << "[bronx] starting cluster start() loop. press ctrl+c to terminate.\n";
+  bot.start();
+
+  return 0;
 }

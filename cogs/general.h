@@ -7,6 +7,7 @@
 #include <string>
 #include <sstream>
 #include <algorithm>
+#include <random>
 
 namespace bronx::cogs {
 
@@ -284,7 +285,8 @@ public:
                 stoatpp::models::MessagePayload payload;
                 payload.content = " ";
 
-                std::string desc = "**[Invite](https://stoat.chat/bot/01FZB4GBHDVYY6KT8JH4RBX4KR)** - Invite bronx to your own server! :01KWKZDHDNYYFJYS6BHM5CW2V5:\n\n"
+                std::string desc = "**[Invite (Stoat)](https://stoat.chat/bot/01FZB4GBHDVYY6KT8JH4RBX4KR)** - Invite bronx to your Stoat server! :01KWKZDHDNYYFJYS6BHM5CW2V5:\n"
+                                   "**[Invite (Discord)](https://discord.com/oauth2/authorize?client_id=1494385109648933045&permissions=8&integration_type=0&scope=bot+applications.commands)** - Invite bronx to your Discord server!\n\n"
                                    "**[Website](https://bronx.siqnole.dev)** - Learn more about Bronx\n"
                                    "**[Documentation](https://bronx.siqnole.dev/docs)** - Commands, features, and setup guides :01KWKZKZBSHJ85GFK12409YR10:\n"
                                    "**[Support Server](https://stt.gg/crBC07Ea)** - Join our community to get help, report bugs, or submit feedback\n"
@@ -454,6 +456,110 @@ public:
             },
             "General"
         });
+
+        bot.register_command({
+            "dice",
+            {"roll"},
+            "roll one or more dice (e.g. .dice 6 or .dice 4d6 2d10).",
+            "dice [dice_expression...]",
+            {"[dice_expression...]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::vector<std::string> dice_args = args;
+                if (dice_args.empty()) {
+                    dice_args.push_back("1d6"); // default to 1d6
+                }
+                
+                struct DiceGroup {
+                    std::string input;
+                    int count = 0;
+                    int sides = 0;
+                    std::vector<int> rolls;
+                    int sum = 0;
+                };
+                
+                std::vector<DiceGroup> groups;
+                int total_dice = 0;
+                
+                for (const auto& arg : dice_args) {
+                    int count = 0;
+                    int sides = 0;
+                    if (!parse_dice_token(arg, count, sides)) {
+                        stoatpp::models::MessagePayload err_payload;
+                        err_payload.content = " ";
+                        stoatpp::models::Embed err_embed;
+                        err_embed.set_colour("#E5989B")
+                                 .set_title("❌ Error")
+                                 .set_description("Invalid dice expression: `" + arg + "`. Please use format like `6`, `d20`, or `4d6`.");
+                        err_payload.add_embed(err_embed);
+                        bot.send_message(msg.channel_id, err_payload);
+                        return;
+                    }
+                    
+                    total_dice += count;
+                    if (total_dice > 100) {
+                        stoatpp::models::MessagePayload err_payload;
+                        err_payload.content = " ";
+                        stoatpp::models::Embed err_embed;
+                        err_embed.set_colour("#E5989B")
+                                 .set_title("❌ Error")
+                                 .set_description("You cannot roll more than 100 dice at once.");
+                        err_payload.add_embed(err_embed);
+                        bot.send_message(msg.channel_id, err_payload);
+                        return;
+                    }
+                    
+                    DiceGroup group;
+                    group.input = arg;
+                    group.count = count;
+                    group.sides = sides;
+                    groups.push_back(group);
+                }
+                
+                // Perform rolls
+                static thread_local std::mt19937 gen(std::random_device{}());
+                int grand_total = 0;
+                
+                for (auto& group : groups) {
+                    std::uniform_int_distribution<int> dis(1, group.sides);
+                    for (int i = 0; i < group.count; ++i) {
+                        int roll = dis(gen);
+                        group.rolls.push_back(roll);
+                        group.sum += roll;
+                    }
+                    grand_total += group.sum;
+                }
+                
+                // Format description
+                std::string desc = "🎲 **Dice Roll Results**\n\n";
+                for (const auto& group : groups) {
+                    std::string normalized_input = std::to_string(group.count) + "d" + std::to_string(group.sides);
+                    desc += "**" + normalized_input + "** (Sum: **" + std::to_string(group.sum) + "**)\n";
+                    desc += "Rolls: ";
+                    for (size_t i = 0; i < group.rolls.size(); ++i) {
+                        desc += "`" + std::to_string(group.rolls[i]) + "`";
+                        if (i + 1 < group.rolls.size()) {
+                            desc += ", ";
+                        }
+                    }
+                    desc += "\n\n";
+                }
+                
+                desc += "━━━━━━━━━━━━━━━━━━━━━━\n";
+                desc += "**Grand Total**: 🏆 **" + std::to_string(grand_total) + "**";
+                
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                
+                stoatpp::models::Embed embed;
+                embed.set_colour("#a29bfe")
+                     .set_title("Dice Roller")
+                     .set_description(desc);
+                     
+                payload.add_embed(embed);
+                bot.send_message(msg.channel_id, payload);
+            },
+            "General"
+        });
     }
 
 private:
@@ -576,6 +682,66 @@ private:
         payload.set_interactions(reactions, false);
         
         bot.edit_message(channel_id, message_id, payload);
+    }
+
+    static bool parse_dice_token(const std::string& token, int& count, int& sides) {
+        if (token.empty()) return false;
+        
+        // Find 'd' or 'D'
+        size_t d_pos = token.find('d');
+        if (d_pos == std::string::npos) {
+            d_pos = token.find('D');
+        }
+        
+        if (d_pos == std::string::npos) {
+            // No 'd' found, check if it's a single number
+            for (char c : token) {
+                if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+            }
+            try {
+                count = 1;
+                long long val = std::stoll(token);
+                if (val < 1 || val > 1000000) return false;
+                sides = static_cast<int>(val);
+                return true;
+            } catch (...) {
+                return false;
+            }
+        }
+        
+        // Split by 'd'
+        std::string prefix = token.substr(0, d_pos);
+        std::string suffix = token.substr(d_pos + 1);
+        
+        if (suffix.empty()) return false;
+        for (char c : suffix) {
+            if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+        }
+        
+        if (!prefix.empty()) {
+            for (char c : prefix) {
+                if (!std::isdigit(static_cast<unsigned char>(c))) return false;
+            }
+            try {
+                long long count_val = std::stoll(prefix);
+                if (count_val < 1 || count_val > 100) return false;
+                count = static_cast<int>(count_val);
+            } catch (...) {
+                return false;
+            }
+        } else {
+            count = 1;
+        }
+        
+        try {
+            long long sides_val = std::stoll(suffix);
+            if (sides_val < 1 || sides_val > 1000000) return false;
+            sides = static_cast<int>(sides_val);
+        } catch (...) {
+            return false;
+        }
+        
+        return true;
     }
 
     static std::string get_first_utf8_char(const std::string& str, size_t& len) {

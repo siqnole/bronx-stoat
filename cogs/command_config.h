@@ -38,14 +38,24 @@ inline int64_t parse_permission_name(const std::string& name) {
 inline std::string resolve_primary_command_name(stoatpp::cluster& bot, const std::string& input_name) {
     std::string target = input_name;
     std::transform(target.begin(), target.end(), target.begin(), [](unsigned char c) { return std::tolower(c); });
+    
+    // Pass 1: Check primary command names first
     for (const auto& cmd : bot.get_commands()) {
         std::string c_name = cmd.name;
         std::transform(c_name.begin(), c_name.end(), c_name.begin(), [](unsigned char c) { return std::tolower(c); });
         if (c_name == target) return c_name;
+    }
+
+    // Pass 2: Check aliases only if no primary name matches
+    for (const auto& cmd : bot.get_commands()) {
         for (const auto& alias : cmd.aliases) {
             std::string a_name = alias;
             std::transform(a_name.begin(), a_name.end(), a_name.begin(), [](unsigned char c) { return std::tolower(c); });
-            if (a_name == target) return c_name;
+            if (a_name == target) {
+                std::string c_name = cmd.name;
+                std::transform(c_name.begin(), c_name.end(), c_name.begin(), [](unsigned char c) { return std::tolower(c); });
+                return c_name;
+            }
         }
     }
     return target;

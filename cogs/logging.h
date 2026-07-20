@@ -11,6 +11,11 @@
 
 namespace bronx::cogs {
 
+inline std::string truncate_str(const std::string& str, size_t max_len = 1900) {
+    if (str.length() <= max_len) return str;
+    return str.substr(0, max_len - 3) + "...";
+}
+
 inline std::string format_log_placeholders(std::string text, const std::unordered_map<std::string, std::string>& placeholders) {
     auto replace_all = [](std::string& str, const std::string& from, const std::string& to) {
         size_t start_pos = 0;
@@ -173,19 +178,41 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
         payload.add_attachment(att);
     }
 
+    for (auto& emb : payload.embeds) {
+        if (emb.contains("description") && emb["description"].is_string()) {
+            std::string desc = emb["description"].get<std::string>();
+            if (desc.length() > 1900) {
+                emb["description"] = desc.substr(0, 1897) + "...";
+            }
+        }
+    }
+    if (payload.content.length() > 1900) {
+        payload.content = payload.content.substr(0, 1897) + "...";
+    }
+
     // Run the webhook resolution and execution logic in a separate thread so it doesn't block the gateway thread
     std::string server_id_copy = server_id;
     std::string event_type_copy = event_type;
     std::thread([&bot, server_id_copy, event_type_copy, log_chan, payload]() {
         bool sent_via_webhook = false;
-        
-        auto wh_opt = g_db->get_logging_webhook(log_chan);
+        static std::unordered_set<std::string> g_no_webhook_channels;
+        static std::mutex g_no_webhook_mutex;
+
+        bool skip_webhook = false;
+        {
+            std::lock_guard<std::mutex> lock(g_no_webhook_mutex);
+            if (g_no_webhook_channels.find(log_chan) != g_no_webhook_channels.end()) {
+                skip_webhook = true;
+            }
+        }
+
+        auto wh_opt = skip_webhook ? std::nullopt : g_db->get_logging_webhook(log_chan);
         std::string wh_id, wh_token;
         
         if (wh_opt) {
             wh_id = wh_opt->first;
             wh_token = wh_opt->second;
-        } else {
+        } else if (!skip_webhook) {
             // Check if there is already a webhook named "Bronx Logger" in the channel
             auto get_res = bot.rest().get_channel_webhooks(log_chan);
             if (get_res.success()) {
@@ -205,9 +232,13 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
                 std::cout << "[bronx logging] Evicting deleted log channel " << log_chan << " for event " << event_type_copy << "\n";
                 g_db->remove_logging_channel(server_id_copy, event_type_copy);
                 return;
+            } else if (get_res.status_code == 403) {
+                // Missing ManageWebhooks permission — cache this so we don't spam 403 errors
+                std::lock_guard<std::mutex> lock(g_no_webhook_mutex);
+                g_no_webhook_channels.insert(log_chan);
             }
             
-            if (wh_id.empty()) {
+            if (wh_id.empty() && get_res.status_code != 403) {
                 // No existing webhook found, create a new one
                 auto create_res = bot.rest().create_webhook(log_chan, "Bronx Logger");
                 if (create_res.success()) {
@@ -222,6 +253,10 @@ inline void dispatch_log(stoatpp::cluster& bot, const std::string& server_id, co
                     std::cout << "[bronx logging] Evicting deleted log channel " << log_chan << " for event " << event_type_copy << "\n";
                     g_db->remove_logging_channel(server_id_copy, event_type_copy);
                     return;
+                } else if (create_res.status_code == 403) {
+                    // Missing ManageWebhooks permission — cache this so we don't spam 403 errors
+                    std::lock_guard<std::mutex> lock(g_no_webhook_mutex);
+                    g_no_webhook_channels.insert(log_chan);
                 }
             }
         }
@@ -546,7 +581,7 @@ public:
                         
                         auto res = bot.rest().create_channel(server_id, "Text", ch_name);
                         if (!res.success()) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to create channel. Please check my server permissions (Manage Channels).");
+                            bot.send_message(msg.channel_id, "⚠️ Failed to create channel `" + ch_name + "`: " + std::to_string(res.status_code) + " — " + res.error_message());
                             return;
                         }
 
@@ -588,8 +623,19 @@ public:
                         auto res_joins = bot.rest().create_channel(server_id, "Text", "joins-leaves");
                         auto res_mod = bot.rest().create_channel(server_id, "Text", "moderation");
 
-                        if (!res_edits.success() || !res_deletes.success() || !res_joins.success() || !res_mod.success()) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to create one or more log channels. Please check my server permissions (Manage Channels).");
+                        // Collect and report individual failures
+                        std::vector<std::string> failures;
+                        if (!res_edits.success()) failures.push_back("edits: " + std::to_string(res_edits.status_code) + " — " + res_edits.error_message());
+                        if (!res_deletes.success()) failures.push_back("deletions: " + std::to_string(res_deletes.status_code) + " — " + res_deletes.error_message());
+                        if (!res_joins.success()) failures.push_back("joins-leaves: " + std::to_string(res_joins.status_code) + " — " + res_joins.error_message());
+                        if (!res_mod.success()) failures.push_back("moderation: " + std::to_string(res_mod.status_code) + " — " + res_mod.error_message());
+
+                        if (!failures.empty()) {
+                            std::string err_msg = "⚠️ Failed to create log channels:\n";
+                            for (const auto& f : failures) {
+                                err_msg += "• " + f + "\n";
+                            }
+                            bot.send_message(msg.channel_id, err_msg);
                             return;
                         }
 
@@ -981,15 +1027,16 @@ public:
             std::string author_id = cached_opt ? cached_opt->author.id : "";
             std::string username = cached_opt ? cached_opt->author.username : "";
             std::string deleted_content = cached_opt ? cached_opt->content : "";
+            std::string trunc_deleted = truncate_str(deleted_content, 1500);
 
             std::unordered_map<std::string, std::string> placeholders = {
                 {"author", "<@" + author_id + ">"},
                 {"username", username},
                 {"channel", "<#" + e.channel_id + ">"},
-                {"content", deleted_content}
+                {"content", trunc_deleted}
             };
 
-            auto default_fallback = [e, author_id, username, deleted_content]() {
+            auto default_fallback = [e, author_id, username, trunc_deleted]() {
                 nlohmann::json embed = nlohmann::json::object();
                 embed["title"] = "🗑️ Message Deleted";
                 embed["colour"] = "#ff4444"; // Red
@@ -997,11 +1044,11 @@ public:
                 std::string desc = "• **Channel:** <#" + e.channel_id + ">\n";
                 if (!author_id.empty()) {
                     desc += "• **Author:** <@" + author_id + "> (" + username + ")\n"
-                            "• **Content:**\n" + deleted_content + "\n";
+                            "• **Content:**\n" + trunc_deleted + "\n";
                 } else {
                     desc += "• **Message ID:** `" + e.id + "` *(not cached)*\n";
                 }
-                embed["description"] = desc;
+                embed["description"] = truncate_str(desc, 1900);
                 return std::make_pair("", embed);
             };
 
@@ -1046,15 +1093,18 @@ public:
                 std::string author_id = cached_opt ? cached_opt->author.id : "";
                 std::string username = cached_opt ? cached_opt->author.username : "";
 
+                std::string trunc_old = truncate_str(old_content, 800);
+                std::string trunc_new = truncate_str(new_content, 800);
+
                 std::unordered_map<std::string, std::string> placeholders = {
                     {"author", "<@" + author_id + ">"},
                     {"username", username},
                     {"channel", "<#" + e.channel_id + ">"},
-                    {"before", old_content},
-                    {"after", new_content}
+                    {"before", trunc_old},
+                    {"after", trunc_new}
                 };
 
-                auto default_fallback = [e, author_id, old_content, new_content]() {
+                auto default_fallback = [e, author_id, trunc_old, trunc_new]() {
                     nlohmann::json embed = nlohmann::json::object();
                     embed["title"] = "✏️ Message Edited";
                     embed["colour"] = "#ffaa00"; // Orange
@@ -1062,13 +1112,13 @@ public:
                     std::string desc = "• **Channel:** <#" + e.channel_id + ">\n";
                     if (!author_id.empty()) {
                         desc += "• **Author:** <@" + author_id + ">\n"
-                                "• **Before:**\n" + old_content + "\n\n"
-                                "• **After:**\n" + new_content + "\n";
+                                "• **Before:**\n" + trunc_old + "\n\n"
+                                "• **After:**\n" + trunc_new + "\n";
                     } else {
                         desc += "• **Message ID:** `" + e.id + "` *(not cached)*\n"
-                                "• **After:**\n" + new_content + "\n";
+                                "• **After:**\n" + trunc_new + "\n";
                     }
-                    embed["description"] = desc;
+                    embed["description"] = truncate_str(desc, 1900);
                     return std::make_pair("", embed);
                 };
 
