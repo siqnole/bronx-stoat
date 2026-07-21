@@ -1050,6 +1050,12 @@ int main(int argc, char *argv[]) {
     std::cerr << "[bronx rest error] " << method << " " << path << " -> "
               << status_code << ": " << error_msg << "\n";
 
+    // Ignore all errors from GET requests. GETs are read-only and queries
+    // are typically handled directly by the calling functions via result checks.
+    if (method == "GET") {
+      return;
+    }
+
     // Try to parse channel ID from path or server ID fallback
     std::string channel_id = "";
     if (path.rfind("/channels/", 0) == 0) {
@@ -1165,6 +1171,8 @@ int main(int argc, char *argv[]) {
           } else if (error_msg == "NotFound" || status_code == 404) {
             user_msg = "⚠️ The target resource was not found (it may have been "
                        "deleted).";
+          } else if (status_code == 400 && path.find("/reactions/") != std::string::npos) {
+            user_msg = "⚠️ The specified emoji is invalid or cannot be used here.";
           } else if (status_code >= 500) {
             user_msg = "⚠️ The server encountered an internal error. Please try "
                        "again later.";
@@ -1273,11 +1281,11 @@ int main(int argc, char *argv[]) {
                         const stoatpp::events::Message &msg,
                         const stoatpp::Command &cmd,
                         const std::optional<stoatpp::models::Member> &mem_opt,
-                        const std::vector<std::string> &args) {
+                        const std::vector<std::string> &args) -> stoatpp::CommandRunResult {
     if (msg.server_id.empty())
-      return true;
+      return stoatpp::CommandRunResult::Allow;
     if (!bronx::g_db)
-      return true;
+      return stoatpp::CommandRunResult::Allow;
 
     std::string cmd_name = cmd.name;
     std::string mod_name = cmd.category;
@@ -1294,10 +1302,10 @@ int main(int argc, char *argv[]) {
       if (bot.is_owner(msg.author.id) ||
           bot.is_server_owner(msg.server_id, msg.author.id)) {
         if (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd") {
-          return true;
+          return stoatpp::CommandRunResult::AllowBypassPermissions;
         }
       }
-      return false;
+      return stoatpp::CommandRunResult::Deny;
     }
 
     // Emergency Override: Bot Owner always bypasses. Server Owner and
@@ -1318,6 +1326,8 @@ int main(int argc, char *argv[]) {
         bypass = true;
       }
     }
+
+    bool explicitly_allowed_by_role = false;
 
     // Whitelist/blacklist restrictions check
     if (!bypass) {
@@ -1370,7 +1380,7 @@ int main(int argc, char *argv[]) {
             bot.send_message(
                 msg.channel_id,
                 "⚠️ This command/module is allowed only in specific channels.");
-            return false;
+            return stoatpp::CommandRunResult::Deny;
           }
         }
 
@@ -1381,6 +1391,7 @@ int main(int argc, char *argv[]) {
               if (std::find(whitelist_roles.begin(), whitelist_roles.end(),
                             r) != whitelist_roles.end()) {
                 member_ok = true;
+                explicitly_allowed_by_role = true;
                 break;
               }
             }
@@ -1399,7 +1410,7 @@ int main(int argc, char *argv[]) {
                 msg.channel_id,
                 "⚠️ This command/module is whitelisted and not accessible by "
                 "your current roles or permissions.");
-            return false;
+            return stoatpp::CommandRunResult::Deny;
           }
         }
 
@@ -1433,7 +1444,7 @@ int main(int argc, char *argv[]) {
           bot.send_message(msg.channel_id,
                            "⚠️ This command/module has been blacklisted for "
                            "your current roles, permissions, or channel.");
-          return false;
+          return stoatpp::CommandRunResult::Deny;
         }
       }
     }
@@ -1447,12 +1458,16 @@ int main(int argc, char *argv[]) {
               msg.channel_id,
               "permission error: you need to be trusted or have Manage Server "
               "permission to configure command permissions.");
-          return false;
+          return stoatpp::CommandRunResult::Deny;
         }
       }
     }
 
-    return true;
+    if (bypass || explicitly_allowed_by_role) {
+      return stoatpp::CommandRunResult::AllowBypassPermissions;
+    }
+
+    return stoatpp::CommandRunResult::Allow;
   });
 
   std::cout
