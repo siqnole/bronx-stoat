@@ -308,6 +308,63 @@ public:
             "General"
         });
 
+        bot.register_command({
+            "dashboard",
+            {"dash", "token"},
+            "get a secure personal access token to log into the Bronx web dashboard.",
+            "",
+            {},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::cout << "[bronx command] handling dashboard token request...\n";
+                if (!bronx::g_db) {
+                    bot.send_message(msg.channel_id, "⚠️ Database connection unavailable.");
+                    return;
+                }
+
+                std::string user_id = msg.author.id;
+                if (!msg.server_id.empty()) {
+                    bronx::g_db->upsert_server_member(msg.server_id, user_id, false, true);
+                }
+
+                std::string token = bronx::g_db->create_dashboard_token(user_id, msg.author.username);
+                if (token.empty()) {
+                    bot.send_message(msg.channel_id, "⚠️ Failed to generate access token.");
+                    return;
+                }
+
+                std::string dash_url = "https://bronx.siqnole.dev/dashboard";
+                std::string dm_content = "🔑 **Bronx Web Dashboard Access Token**\n\n"
+                                         "Your personal access token is:\n`" + token + "`\n\n"
+                                         "🔗 **Dashboard**: " + dash_url + "\n"
+                                         "⚠️ *Valid for 24 hours. Keep this token private.*";
+
+                std::thread([&bot, msg, user_id, token, dm_content]() {
+                    auto dm_res = bot.rest().open_dm(user_id);
+                    if (dm_res.success()) {
+                        std::string dm_channel_id = "";
+                        if (dm_res.body.contains("_id") && dm_res.body["_id"].is_string()) {
+                            dm_channel_id = dm_res.body["_id"].get<std::string>();
+                        } else if (dm_res.body.contains("id") && dm_res.body["id"].is_string()) {
+                            dm_channel_id = dm_res.body["id"].get<std::string>();
+                        }
+
+                        if (!dm_channel_id.empty()) {
+                            bot.send_message(dm_channel_id, dm_content, [&bot, msg, user_id](auto res, bool ok) {
+                                if (ok) {
+                                    bot.send_message(msg.channel_id, "📩 **Access Token DM Sent!** Check your private DMs (<@" + user_id + ">) for your dashboard token.");
+                                } else {
+                                    bot.send_message(msg.channel_id, "⚠️ Unable to DM token. Please allow Direct Messages from Bronx in privacy settings.");
+                                }
+                            });
+                            return;
+                        }
+                    }
+                    bot.send_message(msg.channel_id, "⚠️ Unable to open DM channel. Please check your Direct Message privacy settings.");
+                }).detach();
+            },
+            "General"
+        });
+
         bot.on_message_react([&bot](const stoatpp::events::MessageReact& e) {
             std::unique_lock<std::mutex> lock(helpers::g_pages_mutex);
             auto it = helpers::g_pages.find(e.id);

@@ -158,7 +158,10 @@ public:
                     }
                 }
 
-                if (msg.server_id.empty() && !clean_args.empty() && clean_args[0] != "top" && clean_args[0] != "t") {
+                bool is_cmd_arg = (!clean_args.empty() && (clean_args[0] == "command" || clean_args[0] == "commands" || clean_args[0] == "cmd" || clean_args[0] == "cmds"));
+                bool is_global_arg = (clean_args.size() > 1 && (clean_args[1] == "g" || clean_args[1] == "global" || clean_args[1] == "all"));
+
+                if (msg.server_id.empty() && !clean_args.empty() && clean_args[0] != "top" && clean_args[0] != "t" && !(is_cmd_arg && is_global_arg)) {
                     bot.send_message(msg.channel_id, "⚠️ Non-global stats commands can only be used inside a server.");
                     return;
                 }
@@ -188,6 +191,18 @@ public:
                     } else if (first == "channel" || first == "channels" || first == "c") {
                         sub = "channels";
                         if (clean_args.size() > 1) tf_str = clean_args[1];
+                    } else if (first == "command" || first == "commands" || first == "cmd" || first == "cmds") {
+                        sub = "commands";
+                        if (clean_args.size() > 1) {
+                            std::string second = clean_args[1];
+                            std::transform(second.begin(), second.end(), second.begin(), [](unsigned char c) { return std::tolower(c); });
+                            if (second == "g" || second == "global" || second == "all") {
+                                global_top = true;
+                                if (clean_args.size() > 2) tf_str = clean_args[2];
+                            } else {
+                                tf_str = clean_args[1];
+                            }
+                        }
                     } else if (first == "overview" || first == "o") {
                         sub = "overview";
                         if (clean_args.size() > 1) tf_str = clean_args[1];
@@ -199,6 +214,7 @@ public:
                         tf_str = clean_args[0];
                     }
                 }
+
 
                 int days = parse_timeframe(tf_str, 7);
 
@@ -563,13 +579,142 @@ public:
                     embed.set_description(desc);
 #endif
                 }
+                else if (sub == "commands") {
+#ifdef BRONX_CHART_ENABLED
+                    if (!global_top && msg.server_id.empty()) {
+                        bot.send_message(msg.channel_id, "⚠️ Server command stats can only be used inside a server. Use `.stats command g` for global command stats.");
+                        return;
+                    }
+
+                    auto srv_opt = bot.get_server(msg.server_id);
+                    std::string srv_name = srv_opt ? srv_opt->name : "server";
+                    std::string server_id_copy = msg.server_id;
+                    std::string channel_id_copy = msg.channel_id;
+
+                    std::string status_text = global_top ? "⏳ rendering global commands pie chart..." : "⏳ rendering commands pie chart...";
+
+                    bot.send_message(msg.channel_id, status_text, [&bot, server_id_copy, channel_id_copy, days, srv_name, global_top](stoatpp::models::Message sent_msg, bool success) {
+                        if (!success) return;
+                        std::string status_msg_id = sent_msg.id;
+                        std::thread([&bot, server_id_copy, channel_id_copy, status_msg_id, days, srv_name, global_top]() {
+                            try {
+                                std::vector<Database::TopCmdEntry> top_cmds;
+                                if (global_top) {
+                                    top_cmds = g_db->get_top_commands_global(days, 10);
+                                } else {
+                                    top_cmds = g_db->get_top_commands(server_id_copy, days, 10);
+                                }
+
+                                if (top_cmds.empty()) {
+                                    bot.edit_message(channel_id_copy, status_msg_id, "no command usage telemetry recorded in this period.");
+                                    return;
+                                }
+
+                                std::vector<chart::PieSlice> slices;
+                                std::string text_desc = "";
+                                int rank = 1;
+                                for (const auto& c : top_cmds) {
+                                    slices.push_back({"." + c.command_name, static_cast<double>(c.use_count), {0,0,0,0}});
+                                    text_desc += std::to_string(rank++) + ". **." + c.command_name + "** — " + std::to_string(c.use_count) + " uses\n";
+                                }
+
+                                std::string title_str = global_top ?
+                                    ("most used commands (global) (" + std::to_string(days) + "d)") :
+                                    ("most used commands — " + srv_name + " (" + std::to_string(days) + "d)");
+
+                                std::string png = chart::render_pie_chart(title_str, slices);
+
+                                std::string autumn_id = chart::upload_chart(bot, png, "commands_pie_chart.png");
+
+                                stoatpp::models::MessagePayload payload;
+                                payload.content = " ";
+                                stoatpp::models::Embed embed;
+                                embed.set_colour(0x5865F2);
+                                embed.set_title(global_top ?
+                                    ("⚙️ most used commands (global) (" + std::to_string(days) + "d)") :
+                                    ("⚙️ most used commands — " + srv_name + " (" + std::to_string(days) + "d)"));
+                                
+                                std::string desc = text_desc;
+                                if (!global_top) {
+                                    desc += "\n-# use `.stats command g` for global command stats";
+                                }
+                                embed.set_description(desc);
+
+                                if (!autumn_id.empty()) {
+                                    embed.set_image(autumn_id);
+                                }
+                                payload.add_embed(embed);
+                                bot.edit_message(channel_id_copy, status_msg_id, payload);
+                            } catch (const std::exception& ex) {
+                                bot.edit_message(channel_id_copy, status_msg_id, "⚠️ commands chart error: " + std::string(ex.what()));
+                            }
+                        }).detach();
+                    });
+                    return;
+#else
+                    if (!global_top && msg.server_id.empty()) {
+                        bot.send_message(msg.channel_id, "⚠️ Server command stats can only be used inside a server. Use `.stats command g` for global command stats.");
+                        return;
+                    }
+
+                    std::vector<Database::TopCmdEntry> top_cmds;
+                    if (global_top) {
+                        top_cmds = g_db->get_top_commands_global(days, 10);
+                    } else {
+                        top_cmds = g_db->get_top_commands(msg.server_id, days, 10);
+                    }
+
+                    auto srv_opt = bot.get_server(msg.server_id);
+                    std::string srv_name = srv_opt ? srv_opt->name : "this server";
+
+                    embed.set_title(global_top ?
+                        ("⚙️ most used commands (global) (" + std::to_string(days) + "d)") :
+                        ("⚙️ most used commands — " + srv_name + " (" + std::to_string(days) + "d)"));
+                    std::string desc;
+                    if (top_cmds.empty()) {
+                        desc = "no command usage telemetry recorded in this period.";
+                    } else {
+                        int rank = 1;
+                        for (const auto& c : top_cmds)
+                            desc += std::to_string(rank++) + ". **." + c.command_name + "** — " + std::to_string(c.use_count) + " uses\n";
+                    }
+                    if (!global_top) {
+                        desc += "\n-# use `.stats command g` for global command stats";
+                    }
+                    embed.set_description(desc);
+#endif
+                }
 
                 payload.add_embed(embed);
                 bot.send_message(msg.channel_id, payload);
             },
             "Stats"
         });
+
+        bot.register_command({
+            "cmdstats",
+            {"commandstats", "topcommands", "topcmds"},
+            "shows most used commands in the server or globally with a pie chart.",
+            "cmdstats [g/global] [timeframe]",
+            {"[global/timeframe]"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::vector<std::string> forwarded_args = {"command"};
+                forwarded_args.insert(forwarded_args.end(), args.begin(), args.end());
+                auto cmd_opt = bot.get_commands();
+                for (const auto& c : cmd_opt) {
+                    if (c.name == "stats") {
+                        if (c.callback) {
+                            c.callback(bot, msg, forwarded_args);
+                        }
+                        break;
+                    }
+                }
+            },
+            "Stats"
+        });
     }
 };
+
+
 
 } // namespace bronx::cogs

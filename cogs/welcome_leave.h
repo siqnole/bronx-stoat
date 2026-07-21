@@ -1428,6 +1428,8 @@ public:
 
         // --- GATEWAY MEMBER JOIN HOOK ---
         bot.on_server_member_join([&bot](const stoatpp::events::ServerMemberJoin& e) {
+            if (g_db) g_db->increment_guild_member_joins(e.server_id);
+
             auto config_opt = g_db->get_welcome_leave_config(e.server_id);
             if (!config_opt) return;
 
@@ -1596,6 +1598,8 @@ public:
 
         // --- GATEWAY MEMBER LEAVE HOOK ---
         bot.on_server_member_leave([&bot](const stoatpp::events::ServerMemberLeave& e) {
+            if (g_db) g_db->increment_guild_member_leaves(e.server_id);
+
             auto config_opt = g_db->get_welcome_leave_config(e.server_id);
             if (!config_opt || config_opt->leave_channel_id.empty()) return;
 

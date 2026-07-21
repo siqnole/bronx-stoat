@@ -10,6 +10,7 @@
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 #include <algorithm>
+#include <random>
 #include <functional>
 #include <cmath>
 
@@ -950,6 +951,47 @@ public:
             ")";
         if (mysql_query(mysql_, create_tuppers.c_str())) {
             std::cerr << "[bronx db] failed to create table 'tuppers': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table dashboard_tokens
+        std::string create_dash_tokens = 
+            "CREATE TABLE IF NOT EXISTS dashboard_tokens ("
+            "  token VARCHAR(64) NOT NULL PRIMARY KEY,"
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  user_name VARCHAR(64) DEFAULT NULL,"
+            "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            "  expires_at TIMESTAMP NOT NULL"
+            ")";
+        if (mysql_query(mysql_, create_dash_tokens.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'dashboard_tokens': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table servers
+        std::string create_servers_table = 
+            "CREATE TABLE IF NOT EXISTS servers ("
+            "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+            "  name VARCHAR(100) NOT NULL,"
+            "  icon_id VARCHAR(100) DEFAULT NULL,"
+            "  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+            ")";
+        if (mysql_query(mysql_, create_servers_table.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'servers': " << mysql_error(mysql_) << "\n";
+            return false;
+        }
+
+        // Create Table server_members
+        std::string create_server_members = 
+            "CREATE TABLE IF NOT EXISTS server_members ("
+            "  server_id VARCHAR(30) NOT NULL,"
+            "  user_id VARCHAR(30) NOT NULL,"
+            "  is_owner TINYINT(1) NOT NULL DEFAULT 0,"
+            "  is_admin TINYINT(1) NOT NULL DEFAULT 0,"
+            "  PRIMARY KEY (server_id, user_id)"
+            ")";
+        if (mysql_query(mysql_, create_server_members.c_str())) {
+            std::cerr << "[bronx db] failed to create table 'server_members': " << mysql_error(mysql_) << "\n";
             return false;
         }
 
@@ -2223,14 +2265,73 @@ public:
             }
         }
 
-        std::cout << "[bronx db] database successfully initialized.\n"
-                  << "           loaded " << masquerade_cache_.size() << " masquerade configurations.\n"
+        std::cout << "[bronx db] database successfully initialized.\n";
+        return true;
+    }
+
+    std::string create_dashboard_token(const std::string& user_id, const std::string& user_name) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return "";
+
+        static const char hex_chars[] = "0123456789abcdef";
+        static thread_local std::mt19937 rng(std::random_device{}());
+        std::uniform_int_distribution<int> dist(0, 15);
+        
+        std::string token = "brx_tkn_";
+        for (int i = 0; i < 32; ++i) {
+            token += hex_chars[dist(rng)];
+        }
+
+        std::string esc_token = escape_string(token);
+        std::string esc_user_id = escape_string(user_id);
+        std::string esc_user_name = escape_string(user_name);
+
+        std::string del_sql = "DELETE FROM dashboard_tokens WHERE user_id = '" + esc_user_id + "'";
+        mysql_query(mysql_, del_sql.c_str());
+
+        std::string ins_sql = "INSERT INTO dashboard_tokens (token, user_id, user_name, expires_at) "
+                              "VALUES ('" + esc_token + "', '" + esc_user_id + "', '" + esc_user_name + "', "
+                              "DATE_ADD(NOW(), INTERVAL 24 HOUR))";
+        if (mysql_query(mysql_, ins_sql.c_str())) {
+            std::cerr << "[bronx db] failed to insert dashboard token: " << mysql_error(mysql_) << "\n";
+            return "";
+        }
+
+        return token;
+    }
+
+    void upsert_server(const std::string& server_id, const std::string& name, const std::string& icon_id = "") {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_ || server_id.empty()) return;
+
+        std::string esc_id = escape_string(server_id);
+        std::string esc_name = escape_string(name);
+        std::string esc_icon = escape_string(icon_id);
+
+        std::string sql = "INSERT INTO servers (server_id, name, icon_id) VALUES ('" + esc_id + "', '" + esc_name + "', '" + esc_icon + "') "
+                          "ON DUPLICATE KEY UPDATE name=VALUES(name), icon_id=VALUES(icon_id)";
+        mysql_query(mysql_, sql.c_str());
+    }
+
+    void upsert_server_member(const std::string& server_id, const std::string& user_id, bool is_owner = false, bool is_admin = false) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_ || server_id.empty() || user_id.empty()) return;
+
+        std::string esc_sid = escape_string(server_id);
+        std::string esc_uid = escape_string(user_id);
+
+        std::string sql = "INSERT INTO server_members (server_id, user_id, is_owner, is_admin) "
+                          "VALUES ('" + esc_sid + "', '" + esc_uid + "', " + (is_owner ? "1" : "0") + ", " + (is_admin ? "1" : "0") + ") "
+                          "ON DUPLICATE KEY UPDATE is_owner=VALUES(is_owner), is_admin=VALUES(is_admin)";
+        mysql_query(mysql_, sql.c_str());
+    }
+
+    void print_cache_stats() {
+        std::cout << "           loaded " << masquerade_cache_.size() << " masquerade configurations.\n"
                   << "           loaded " << tupper_cache_.size() << " user tupper profiles.\n"
                   << "           loaded " << leveling_config_cache_.size() << " leveling configurations.\n"
                   << "           loaded " << level_roles_cache_.size() << " level role rewards servers.\n"
                   << "           loaded " << xp_blacklist_cache_.size() << " server blacklist mappings.\n"
-
-
                   << "           loaded " << cache_.size() << " prefix configurations.\n"
                   << "           loaded " << rr_cache_.size() << " reaction role messages.\n"
                   << "           loaded " << wl_cache_.size() << " welcome/leave configurations.\n"
@@ -2252,7 +2353,6 @@ public:
                   << "           loaded " << roblox_links_cache_.size() << " roblox linked accounts.\n"
                   << "           loaded " << arsp_cache_.size() << " autoresponders.\n"
                   << "           loaded " << arct_cache_.size() << " autoreacts.\n";
-        return true;
     }
 
     std::vector<std::string> get_prefixes(const std::string& target_type, const std::string& target_id) {
@@ -2622,6 +2722,24 @@ public:
         return mysql_query(mysql_, sql.c_str()) == 0;
     }
 
+    bool increment_guild_member_joins(const std::string& guild_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO guild_member_events_daily (guild_id, event_date, joins, leaves) VALUES ('"
+            + escape_string(guild_id) + "', CURDATE(), 1, 0) "
+            "ON DUPLICATE KEY UPDATE joins = joins + 1";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
+    bool increment_guild_member_leaves(const std::string& guild_id) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        if (!mysql_) return false;
+        std::string sql = "INSERT INTO guild_member_events_daily (guild_id, event_date, joins, leaves) VALUES ('"
+            + escape_string(guild_id) + "', CURDATE(), 0, 1) "
+            "ON DUPLICATE KEY UPDATE leaves = leaves + 1";
+        return mysql_query(mysql_, sql.c_str()) == 0;
+    }
+
     struct UserChannelActivityEntry {
         std::string channel_id;
         int messages = 0;
@@ -2793,6 +2911,30 @@ public:
         }
         return entries;
     }
+
+    std::vector<TopCmdEntry> get_top_commands_global(int days, int limit = 10) {
+        std::lock_guard<std::mutex> lock(db_mutex_);
+        std::vector<TopCmdEntry> entries;
+        if (!mysql_) return entries;
+
+        std::string sql = "SELECT command_name, SUM(use_count) FROM guild_command_usage "
+                          "WHERE usage_date >= DATE_SUB(CURDATE(), INTERVAL " + std::to_string(days) + " DAY) "
+                          "GROUP BY command_name ORDER BY SUM(use_count) DESC LIMIT " + std::to_string(limit);
+        if (mysql_query(mysql_, sql.c_str()) == 0) {
+            MYSQL_RES* res = mysql_store_result(mysql_);
+            if (res) {
+                MYSQL_ROW row;
+                while ((row = mysql_fetch_row(res))) {
+                    if (row[0] && row[1]) {
+                        entries.push_back({row[0], std::stoi(row[1])});
+                    }
+                }
+                mysql_free_result(res);
+            }
+        }
+        return entries;
+    }
+
 
     std::vector<TopServerEntry> get_top_servers(int days, bool include_bots = false, int limit = 10) {
         std::lock_guard<std::mutex> lock(db_mutex_);

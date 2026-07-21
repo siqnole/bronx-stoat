@@ -434,6 +434,16 @@ int main(int argc, char *argv[]) {
     std::cout << "              users in ready payload: " << e.users.size()
               << "\n";
 
+    if (bronx::g_db) {
+      for (const auto& srv : e.servers) {
+        std::string icon = srv.icon ? *srv.icon : "";
+        bronx::g_db->upsert_server(srv.id, srv.name, icon);
+        if (!srv.owner.empty()) {
+          bronx::g_db->upsert_server_member(srv.id, srv.owner, true, true);
+        }
+      }
+    }
+
     std::string status_text =
         "serving " + std::to_string(e.servers.size()) + " servers";
     bot.update_status(status_text, "Online", [](bool success) {
@@ -1062,54 +1072,54 @@ int main(int argc, char *argv[]) {
         }
       }
 
-      if (!missing_perm.empty()) {
-        std::string lower_perm = missing_perm;
-        std::transform(lower_perm.begin(), lower_perm.end(), lower_perm.begin(),
-                       [](unsigned char c) { return std::tolower(c); });
+      std::string lower_perm = missing_perm;
+      std::transform(lower_perm.begin(), lower_perm.end(), lower_perm.begin(),
+                     [](unsigned char c) { return std::tolower(c); });
 
-        if (lower_perm == "sendmessages" || lower_perm == "send_messages" ||
-            lower_perm == "send messages") {
-          std::string invoker_id = "";
-          {
-            std::lock_guard<std::mutex> lock(g_invoker_mutex);
-            auto it = g_channel_last_invoker.find(channel_id);
-            if (it != g_channel_last_invoker.end()) {
-              invoker_id = it->second;
+      bool is_send_msg_perm_error =
+          (status_code == 403 && method == "POST" && path.find("/messages") != std::string::npos) ||
+          (lower_perm == "sendmessage" || lower_perm == "sendmessages" ||
+           lower_perm == "send_message" || lower_perm == "send_messages" ||
+           lower_perm == "send message" || lower_perm == "send messages");
+
+      if (is_send_msg_perm_error) {
+        std::string invoker_id = "";
+        {
+          std::lock_guard<std::mutex> lock(g_invoker_mutex);
+          auto it = g_channel_last_invoker.find(channel_id);
+          if (it != g_channel_last_invoker.end()) {
+            invoker_id = it->second;
+          }
+        }
+        if (!invoker_id.empty()) {
+          std::thread([&bot, invoker_id, channel_id]() {
+            auto dm_res = bot.rest().open_dm(invoker_id);
+            if (dm_res.success() && dm_res.body.is_object() &&
+                dm_res.body.contains("_id")) {
+              std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
+              bot.send_message(
+                  dm_channel_id,
+                  "⚠️ **Permission Error**: Bronx is missing the `SendMessage` permission in <#" +
+                      channel_id + "> so your command response could not be sent.");
             }
-          }
-          if (!invoker_id.empty()) {
-            std::thread([&bot, invoker_id, channel_id]() {
-              auto dm_res = bot.rest().open_dm(invoker_id);
-              if (dm_res.success() && dm_res.body.is_object() &&
-                  dm_res.body.contains("_id")) {
-                std::string dm_channel_id =
-                    dm_res.body["_id"].get<std::string>();
-                bot.send_message(
-                    dm_channel_id,
-                    "Missing permission: SendMessages in channel " +
-                        channel_id);
-              }
-            }).detach();
-          }
-        } else if (lower_perm == "embedlinks" || lower_perm == "embed_links" ||
-                   lower_perm == "embeds" || lower_perm == "embed") {
+          }).detach();
+        }
+      } else if (!missing_perm.empty()) {
+        if (lower_perm == "embedlinks" || lower_perm == "embed_links" ||
+            lower_perm == "embeds" || lower_perm == "embed") {
           bot.send_message(channel_id, "Missing permission: EmbedLinks");
         } else {
           bot.send_message(channel_id, "Missing permission: " + missing_perm);
         }
       } else {
         // No specific permission extracted — send a generic error to the user
-        // Skip benign 404s from cleanup operations (reaction removal, message
-        // lookups)
+        // Skip benign 404s from cleanup operations (reaction removal, message lookups)
         bool is_benign_404 =
             (status_code == 404) &&
             (method == "DELETE" ||
              (method == "GET" && path.find("/messages/") != std::string::npos));
 
-        if (is_benign_404) {
-          // Silently ignore — these are expected during batch cleanup
-          // operations
-        } else {
+        if (!is_benign_404) {
           // Map common error types to user-friendly messages
           std::string user_msg;
           if (error_msg == "NotElevated") {
