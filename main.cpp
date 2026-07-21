@@ -535,6 +535,43 @@ int main(int argc, char *argv[]) {
         }
       }).detach();
     }
+
+    // Background user & member caching across all servers on startup
+    std::thread([&bot, servers = e.servers]() {
+      std::cout << "[bronx cache] starting background fetch to cache all server members and users...\n";
+      size_t total_cached_users = 0;
+      size_t total_cached_members = 0;
+      for (const auto &srv : servers) {
+        auto res = bot.rest().get_server_members(srv.id);
+        if (res.success() && res.body.is_object()) {
+          if (res.body.contains("users") && res.body["users"].is_array()) {
+            for (const auto &item : res.body["users"]) {
+              auto u = stoatpp::models::User::from_json(item);
+              bot.cache_user(u);
+              total_cached_users++;
+              if (bronx::g_db && u.bot && !u.id.empty()) {
+                bronx::g_db->fix_bot_flags(u.id);
+              }
+            }
+          }
+          if (res.body.contains("members") && res.body["members"].is_array()) {
+            for (const auto &item : res.body["members"]) {
+              auto m = stoatpp::models::Member::from_json(item);
+              if (m.server_id.empty()) m.server_id = srv.id;
+              bot.cache_member(m);
+              total_cached_members++;
+              if (bronx::g_db && !m.id.empty() && !srv.id.empty()) {
+                bool is_owner = (!srv.owner.empty() && srv.owner == m.id);
+                bronx::g_db->upsert_server_member(srv.id, m.id, is_owner, false);
+              }
+            }
+          }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      }
+      std::cout << "[bronx cache] finished caching all server users & members! total users cached: "
+                << total_cached_users << ", total members cached: " << total_cached_members << "\n";
+    }).detach();
   });
 
   bot.set_message_preprocessor([](stoatpp::cluster &bot,
