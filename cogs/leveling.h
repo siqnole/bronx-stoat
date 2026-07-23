@@ -6,6 +6,13 @@
 #include <algorithm>
 #include <iomanip>
 #include <cmath>
+#include <filesystem>
+#include <thread>
+#include <random>
+
+#ifdef BRONX_CHART_ENABLED
+#include "chart_renderer.h"
+#endif
 
 namespace bronx::cogs {
 
@@ -155,6 +162,83 @@ private:
                 return;
             }
 
+#ifdef BRONX_CHART_ENABLED
+            std::string user_id = target_user.id;
+            std::string username = target_user.username;
+            std::string avatar_url = target_user.avatar_url(bot.config().cdn_url);
+            std::string server_id = msg.server_id;
+            std::string channel_id = msg.channel_id;
+
+            bot.begin_typing(channel_id);
+
+            std::thread([&bot, server_id, channel_id, user_id, username, avatar_url]() {
+                auto xp_opt = g_db->get_user_xp(user_id, server_id);
+                if (!xp_opt) {
+                    bot.send_message(channel_id, "ℹ️ " + username + " has no XP progress yet (needs to send messages first).");
+                    return;
+                }
+
+                uint32_t level = xp_opt->level;
+                uint64_t current_xp = xp_opt->total_xp;
+                uint64_t base_xp = Database::calculate_xp_for_level(level);
+                uint64_t next_xp = Database::calculate_xp_for_level(level + 1);
+
+                int rank = g_db->get_user_server_xp_rank(user_id, server_id);
+                auto leaderboard = g_db->get_server_xp_leaderboard(server_id, 9999);
+                int total_users = leaderboard.size();
+
+                // Download avatar to a temp file
+                std::string temp_avatar_png = "";
+                if (!avatar_url.empty() && avatar_url != "https://api.stoat.chat/assets/default_avatar.png") {
+                    std::random_device rd;
+                    std::mt19937 gen(rd());
+                    std::uniform_int_distribution<> dis(100000, 999999);
+                    std::string tmp_id = std::to_string(dis(gen));
+                    std::string raw_avatar_path = "/tmp/avatar_raw_" + tmp_id;
+                    std::string converted_avatar_png = "/tmp/avatar_" + tmp_id + ".png";
+
+                    // Use shell curl to download the file
+                    std::string dl_cmd = "curl -L -s -o " + helpers::shell_escape(raw_avatar_path) + " " + helpers::shell_escape(avatar_url);
+                    int dl_status = std::system(dl_cmd.c_str());
+                    if (dl_status == 0 && std::filesystem::exists(raw_avatar_path) && std::filesystem::file_size(raw_avatar_path) > 0) {
+                        // Use ffmpeg to convert to a square PNG of 128x128
+                        std::string conv_cmd = "ffmpeg -y -i " + helpers::shell_escape(raw_avatar_path) + " -vf scale=128:128 " + helpers::shell_escape(converted_avatar_png) + " >/dev/null 2>&1";
+                        int conv_status = std::system(conv_cmd.c_str());
+                        if (conv_status == 0 && std::filesystem::exists(converted_avatar_png) && std::filesystem::file_size(converted_avatar_png) > 0) {
+                            temp_avatar_png = converted_avatar_png;
+                        }
+                    }
+                    if (std::filesystem::exists(raw_avatar_path)) std::filesystem::remove(raw_avatar_path);
+                }
+
+                // Render the rank card PNG
+                std::string png_bytes = chart::render_rank_card(
+                    username, level, rank, total_users, current_xp, next_xp, base_xp, temp_avatar_png
+                );
+
+                // Clean up temp file
+                if (!temp_avatar_png.empty() && std::filesystem::exists(temp_avatar_png)) {
+                    std::filesystem::remove(temp_avatar_png);
+                }
+
+                if (png_bytes.empty()) {
+                    bot.send_message(channel_id, "❌ Failed to render rank card.");
+                    return;
+                }
+
+                // Upload to Autumn
+                std::string file_id = chart::upload_chart(bot, png_bytes, "rank_card.png");
+                if (file_id.empty()) {
+                    bot.send_message(channel_id, "❌ Failed to upload rank card to CDN.");
+                    return;
+                }
+
+                // Send the rank card as attachment
+                stoatpp::models::MessagePayload payload;
+                payload.add_attachment(file_id);
+                bot.send_message(channel_id, payload);
+            }).detach();
+#else
             auto xp_opt = g_db->get_user_xp(target_user.id, msg.server_id);
             if (!xp_opt) {
                 bot.send_message(msg.channel_id, "ℹ️ " + target_user.username + " has no XP progress yet (needs to send messages first).");
@@ -200,6 +284,7 @@ private:
                               "🏆 **Rank**: #" + std::to_string(rank) + " of " + std::to_string(total_users);
 
             bot.send_message(msg.channel_id, out);
+#endif
         });
     }
 

@@ -24,6 +24,20 @@ namespace bronx {
 
 namespace bronx::helpers {
 
+inline std::string shell_escape(const std::string& str) {
+    std::string res;
+    res += "'";
+    for (char c : str) {
+        if (c == '\'') {
+            res += "'\\''";
+        } else {
+            res += c;
+        }
+    }
+    res += "'";
+    return res;
+}
+
 inline uint64_t parse_duration(const std::string& input) {
     uint64_t total_seconds = 0;
     std::string current_num = "";
