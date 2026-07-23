@@ -40,6 +40,7 @@
 #include "cogs/masquerade.h"
 #include "cogs/media.h"
 #include "cogs/moderation.h"
+#include "cogs/owner.h"
 #include "cogs/prefix.h"
 #include "cogs/reaction_roles.h"
 #include "cogs/reminders.h"
@@ -258,6 +259,13 @@ int main(int argc, char *argv[]) {
     cfg.command_prefix = pfx;
   }
 
+  cfg.owner_id = "01FZB2QAPRVT8PVMF11480GRCD";
+  if (const char *oid = std::getenv("OWNER_ID")) {
+    cfg.owner_id = oid;
+  } else if (const char *boid = std::getenv("BOT_OWNER_ID")) {
+    cfg.owner_id = boid;
+  }
+
   if (const char *api_url = std::getenv("API_BASE_URL")) {
     cfg.api_base_url = api_url;
   }
@@ -266,8 +274,8 @@ int main(int argc, char *argv[]) {
   }
 
   cfg.masquerade_handler = [](stoatpp::cluster &bot,
-                              const std::string &channel_id,
-                              stoatpp::models::MessagePayload &payload) {
+                               const std::string &channel_id,
+                               stoatpp::models::MessagePayload &payload) {
     if (!bronx::g_db)
       return;
     auto chan_opt = bot.get_channel(channel_id);
@@ -282,6 +290,24 @@ int main(int argc, char *argv[]) {
       payload.masquerade = std::nullopt;
       return;
     }
+
+    // Helper to extract Autumn File ID from URL if stored as a URL
+    auto extract_file_id = [](const std::optional<std::string>& avatar_str) -> std::optional<std::string> {
+      if (!avatar_str) return std::nullopt;
+      std::string s = *avatar_str;
+      if (s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0) {
+        size_t pos = s.rfind('/');
+        if (pos != std::string::npos && pos + 1 < s.size()) {
+          std::string id = s.substr(pos + 1);
+          size_t q = id.find_first_of("?#");
+          if (q != std::string::npos) {
+            id = id.substr(0, q);
+          }
+          return id;
+        }
+      }
+      return s;
+    };
 
     // 1. Check server config — if masquerades are completely disabled for this server,
     // apply nothing
@@ -309,7 +335,7 @@ int main(int argc, char *argv[]) {
         if (user_masq->name && !payload.masquerade->name && (!server_cfg || !server_cfg->disable_user_name))
           payload.masquerade->name = user_masq->name;
         if (user_masq->avatar && !payload.masquerade->avatar && (!server_cfg || !server_cfg->disable_user_avatar))
-          payload.masquerade->avatar = user_masq->avatar;
+          payload.masquerade->avatar = extract_file_id(user_masq->avatar);
         if (user_masq->colour && !payload.masquerade->colour && (!server_cfg || !server_cfg->disable_user_colour))
           payload.masquerade->colour = user_masq->colour;
       }
@@ -323,7 +349,7 @@ int main(int argc, char *argv[]) {
       if (server_cfg->name)
         payload.masquerade->name = server_cfg->name;
       if (server_cfg->avatar)
-        payload.masquerade->avatar = server_cfg->avatar;
+        payload.masquerade->avatar = extract_file_id(server_cfg->avatar);
       if (server_cfg->colour)
         payload.masquerade->colour = server_cfg->colour;
     }
@@ -389,6 +415,7 @@ int main(int argc, char *argv[]) {
   std::cout << "        api base: " << cfg.api_base_url << "\n";
   std::cout << "        ws gateway: " << cfg.ws_url << "\n";
   std::cout << "        command prefix: " << cfg.command_prefix << "\n";
+  std::cout << "        owner id: " << cfg.owner_id << "\n";
 
   stoatpp::cluster bot(token, cfg);
 
@@ -425,6 +452,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::BridgeModule>());
   bot.use(std::make_unique<bronx::cogs::LevelingModule>());
   bot.use(std::make_unique<bronx::cogs::FishingModule>());
+  bot.use(std::make_unique<bronx::cogs::OwnerModule>());
 
   bot.on_ready([&bot](const stoatpp::events::Ready &e) {
     std::cout << "\033[1;32m[bronx event]\033[0m ready! logged in as: " << e.user.username
@@ -1135,7 +1163,7 @@ int main(int argc, char *argv[]) {
             auto dm_res = bot.rest().open_dm(invoker_id);
             if (dm_res.success() && dm_res.body.is_object() &&
                 dm_res.body.contains("_id")) {
-              std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
+              std::string dm_channel_id = dm_res.body["_id"].template get<std::string>();
               bot.send_message(
                   dm_channel_id,
                   "⚠️ **Permission Error**: Bronx is missing the `SendMessage` permission in <#" +

@@ -316,10 +316,9 @@ public:
                         std::string id;
                         { std::lock_guard<std::mutex> lk(*ack_mutex); id = *ack_id; }
                         if (!id.empty()) {
-                            bot.edit_message(msg.channel_id, id, payload);
-                        } else {
-                            bot.send_message(msg.channel_id, payload);
+                            bot.delete_message(msg.channel_id, id);
                         }
+                        bot.send_message(msg.channel_id, payload);
                     };
 
                     std::string final_url = target_url;
@@ -465,21 +464,11 @@ public:
                             payload.add_attachment(file_id);
                             
                             if (meta.success) {
-                                stoatpp::models::Embed embed;
-                                embed.set_title(meta.title);
-                                if (!meta.description.empty()) {
-                                    std::string desc = meta.description;
-                                    if (desc.size() > 250) desc = desc.substr(0, 247) + "...";
-                                    embed.set_description(desc);
+                                std::string title_line = "🎥 **" + meta.title + "**";
+                                if (!meta.uploader.empty() && meta.uploader != "Unknown") {
+                                    title_line += " by *" + meta.uploader + "*";
                                 }
-                                if (!meta.thumbnail.empty()) {
-                                    std::string thumb_id = bot.rest().upload_from_url(meta.thumbnail, "thumb.png", "image/png");
-                                    if (!thumb_id.empty()) {
-                                        embed.set_image(thumb_id);
-                                    }
-                                }
-                                embed.set_colour("#ff007f");
-                                payload.add_embed(embed);
+                                payload.set_content(title_line);
                             }
                             
                             reply_or_edit_payload(payload);

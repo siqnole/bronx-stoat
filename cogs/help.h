@@ -64,7 +64,9 @@ public:
 
                     auto all_cmds = bot.get_commands();
                     std::optional<stoatpp::Command> matched_cmd;
+                    bool is_owner = bot.is_owner(msg.author.id);
                     for (const auto& cmd : all_cmds) {
+                        if (cmd.category == "Owner" && !is_owner) continue;
                         std::string cmd_name = cmd.name;
                         std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), [](unsigned char c) { return std::tolower(c); });
                         if (cmd_name == target_cmd_name) {
@@ -88,6 +90,7 @@ public:
                         std::unordered_map<std::string, std::vector<stoatpp::Command>> commands_by_cat_cog;
                         std::vector<std::string> categories_cog;
                         for (const auto& cmd : all_cmds_cog) {
+                            if (cmd.category == "Owner" && !is_owner) continue;
                             if (!msg.server_id.empty() && g_db) {
                                 std::string cn = cmd.name, mn = cmd.category;
                                 std::transform(cn.begin(), cn.end(), cn.begin(), ::tolower);
@@ -208,8 +211,10 @@ public:
                 std::unordered_map<std::string, std::vector<stoatpp::Command>> commands_by_cat;
                 std::vector<std::string> categories;
                 
+                bool is_owner = bot.is_owner(msg.author.id);
                 // Group commands by category
                 for (const auto& cmd : all_cmds) {
+                    if (cmd.category == "Owner" && !is_owner) continue;
                     if (!msg.server_id.empty() && g_db) {
                         std::string cmd_name = cmd.name;
                         std::string mod_name = cmd.category;
@@ -284,7 +289,9 @@ public:
             auto all_cmds = bot.get_commands();
             std::unordered_map<std::string, std::vector<stoatpp::Command>> commands_by_cat;
             std::vector<std::string> categories;
+            bool is_owner = bot.is_owner(e.user_id);
             for (const auto& cmd : all_cmds) {
+                if (cmd.category == "Owner" && !is_owner) continue;
                 std::string cat = cmd.category.empty() ? "General" : cmd.category;
                 commands_by_cat[cat].push_back(cmd);
             }
@@ -407,7 +414,9 @@ public:
                 auto all_cmds = bot.get_commands();
                 std::unordered_map<std::string, std::vector<stoatpp::Command>> commands_by_cat;
                 std::vector<std::string> categories;
+                bool is_owner = bot.is_owner(e.author.id);
                 for (const auto& cmd : all_cmds) {
+                    if (cmd.category == "Owner" && !is_owner) continue;
                     if (!e.server_id.empty() && g_db) {
                         std::string cmd_name = cmd.name;
                         std::string mod_name = cmd.category;

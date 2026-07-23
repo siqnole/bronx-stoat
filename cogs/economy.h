@@ -321,6 +321,46 @@ public:
                 auto self = g_db->get_economy_user(msg.author.id);
                 if (!self) return;
 
+                // 1. Check Uno Reverse Card trap
+                if (g_db->is_item_active(target_uid, "reverse_card")) {
+                    g_db->remove_user_economy_item(target_uid, "reverse_card", 1);
+
+                    std::random_device rd;
+                    std::mt19937 gen(rd());
+                    std::uniform_int_distribution<int> success_dist(0, 1);
+                    bool rev_success = (success_dist(gen) == 1);
+
+                    if (rev_success) {
+                        std::uniform_real_distribution<double> percent_dist(0.20, 0.60);
+                        double percent = percent_dist(gen);
+                        int64_t stolen = static_cast<int64_t>(self->wallet * percent);
+                        if (stolen < 1) stolen = 1;
+
+                        g_db->update_balances(target_uid, stolen, 0);
+                        g_db->update_balances(msg.author.id, -stolen, 0);
+
+                        bot.send_message(msg.channel_id, "💥 **GOTCHA!** <@" + target_uid + "> activated an **Uno Reverse Card**! The robbery backfired and <@" + target_uid + "> robbed **" + std::to_string(stolen) + "** coins from <@" + msg.author.id + ">!");
+                    } else {
+                        std::uniform_real_distribution<double> fine_dist(0.10, 0.20);
+                        double percent = fine_dist(gen);
+                        int64_t fine = static_cast<int64_t>(target->wallet * percent);
+                        if (fine < 100) fine = 100;
+                        if (target->wallet < fine) fine = target->wallet;
+
+                        g_db->update_balances(target_uid, -fine, 0);
+                        g_db->update_balances(msg.author.id, fine, 0);
+
+                        bot.send_message(msg.channel_id, "💥 **GOTCHA!** <@" + target_uid + "> activated an **Uno Reverse Card**! However, their counter-attack failed and they were fined **" + std::to_string(fine) + "** coins to <@" + msg.author.id + ">!");
+                    }
+                    return;
+                }
+
+                // 2. Check Robbery Guard protection
+                if (g_db->is_item_active(target_uid, "robbery_guard")) {
+                    bot.send_message(msg.channel_id, "🛡️ **Robbery Blocked!** <@" + target_uid + "> is protected by an active **Robbery Guard**.");
+                    return;
+                }
+
                 std::random_device rd;
                 std::mt19937 gen(rd());
                 std::uniform_int_distribution<int> success_dist(0, 1);
@@ -999,6 +1039,319 @@ public:
                         bot.send_message(msg.channel_id, "❌ Confirmation failed. Prestige cancelled.");
                     }
                 });
+            },
+            "Economy"
+        });
+
+        // 16. inventory command
+        bot.register_command({
+            "inventory",
+            {"inv", "items", "bag"},
+            "shows your inventory including event items, general economy items, and fishing gear.",
+            "inventory [user]",
+            {"[user]"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                std::string target_uid = msg.author.id;
+                if (!args.empty()) {
+                    target_uid = resolve_user_id(args[0]);
+                }
+
+                auto eco = g_db->get_economy_user(target_uid);
+                auto fish = g_db->get_fishing_user(target_uid);
+                auto user_items = g_db->get_user_economy_items(target_uid);
+
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                stoatpp::models::Embed embed;
+                embed.set_colour(0x5865F2);
+                embed.set_title("🎒 Bronx Inventory — <@" + target_uid + ">");
+
+                std::string desc = "";
+
+                // 🎫 Section 1: Event Items
+                desc += "🎫 **EVENT ITEMS & CURRENCY**\n";
+                int event_tokens = fish ? fish->event_tokens : 0;
+                desc += "• Event Tokens: **" + std::to_string(event_tokens) + "** 🎫\n";
+
+                auto user_pets = g_db->get_user_pets(target_uid);
+                if (!user_pets.empty()) {
+                    desc += "• Event / Companion Pets Unlocked: **" + std::to_string(user_pets.size()) + "** pets (`.fish pets`)\n";
+                }
+                desc += "\n";
+
+                // 🎒 Section 2: General Economy Items
+                desc += "🎒 **GENERAL ECONOMY ITEMS & PROTECTIONS**\n";
+                if (user_items.empty()) {
+                    desc += "*No general items owned yet. Visit `.shop` to buy items!*\n";
+                } else {
+                    auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::system_clock::now().time_since_epoch()).count();
+
+                    for (const auto& item : user_items) {
+                        if (item.item_id == "robbery_guard") {
+                            std::string status = (item.active_until > static_cast<uint64_t>(now)) ?
+                                ("🟢 **ACTIVE** (" + format_cooldown(item.active_until - now) + " remaining)") : "⚪ Inactive (Use `.use robbery_guard`)";
+                            desc += "• 🛡️ **Robbery Guard**: " + status + "\n";
+                        } else if (item.item_id == "reverse_card") {
+                            std::string status = (item.active_until > static_cast<uint64_t>(now)) ?
+                                ("🟢 **ACTIVE** (" + format_cooldown(item.active_until - now) + " remaining)") : "⚪ Inactive (Use `.use reverse_card`)";
+                            desc += "• 💥 **Uno Reverse Card**: " + status + "\n";
+                        } else if (item.item_id == "item_detector") {
+                            desc += "• 🔍 **Item Detector**: **" + std::to_string(item.uses_left) + "** uses remaining (Qty: " + std::to_string(item.quantity) + ") — Use `.detect <user>`\n";
+                        } else {
+                            desc += "• 📦 `" + item.item_id + "`: Quantity **" + std::to_string(item.quantity) + "**\n";
+                        }
+                    }
+                }
+                desc += "\n";
+
+                // 🎣 Section 3: Fishing Gear & Fish Bucket
+                desc += "🎣 **FISHING GEAR & BUCKET**\n";
+                if (fish) {
+                    desc += "• Rod: **" + fish->rod_id + "** | Bait: **" + fish->bait_id + "**\n";
+                    desc += "• Active Pet: **" + (fish->active_pet_id == "none" ? "None" : fish->active_pet_id) + "**\n";
+                    desc += "• Total Catches: **" + std::to_string(fish->total_catches) + "** | Fishing Tier: **P" + std::to_string(fish->fish_prestige) + "**\n";
+
+                    auto user_fish = g_db->get_user_fish_inventory(target_uid);
+                    desc += "• Bucket Inventory: **" + std::to_string(user_fish.size()) + "** fish in bucket (`.fish bucket`)\n";
+                } else {
+                    desc += "*No fishing data available.*\n";
+                }
+
+                embed.set_description(desc);
+                payload.add_embed(embed);
+                bot.send_message(msg.channel_id, payload);
+            },
+            "Economy"
+        });
+
+        // 17. generalshop command
+        bot.register_command({
+            "generalshop",
+            {"shop", "store", "market"},
+            "opens the Bronx General Economy Item Shop.",
+            "generalshop",
+            {},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                stoatpp::models::Embed embed;
+                embed.set_colour(0x2ECC71);
+                embed.set_title("🛒 Bronx General Economy Shop");
+
+                std::string desc = "Use `.buy <item_id> [quantity]` to purchase an item, and `.use <item_id>` to activate it!\n\n";
+
+                desc += "🛡️ **`robbery_guard` — Robbery Guard**\n"
+                        "   Price: **5,000** coins | Duration: **24 Hours**\n"
+                        "   *Prevents anyone from robbing you for 24 hours while active.*\n\n";
+
+                desc += "💥 **`reverse_card` — Uno Reverse Card**\n"
+                        "   Price: **15,000** coins | Duration: **24 Hours**\n"
+                        "   *Gotcha trap! Anyone robbing you within 24 hours gets robbed back instead.*\n\n";
+
+                desc += "🔍 **`item_detector` — Item Detector**\n"
+                        "   Price: **2,500** coins | Charges: **5 Uses**\n"
+                        "   *Scans a target user to see if they have active protections or traps (`.detect <user>`).*\n\n";
+
+                auto custom_items = g_db->get_custom_shop_items();
+                if (!custom_items.empty()) {
+                    desc += "✨ **CUSTOM SHOP ITEMS:**\n";
+                    for (const auto& item : custom_items) {
+                        desc += "• `" + item.item_id + "` — **" + item.name + "** (" + std::to_string(item.cost) + " coins)\n"
+                                "   " + item.description + "\n";
+                    }
+                }
+
+                desc += "*Tip: Check your items with `.inventory`!*";
+
+                embed.set_description(desc);
+                payload.add_embed(embed);
+                bot.send_message(msg.channel_id, payload);
+            },
+            "Economy"
+        });
+
+        // 18. buyitem command
+        bot.register_command({
+            "buyitem",
+            {"buy"},
+            "buys an item from the general shop.",
+            "buy <item_id> [quantity]",
+            {"<item_id>", "[quantity]"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "invalid syntax. use `buy <item_id> [quantity]`.");
+                    return;
+                }
+
+                std::string item_id = args[0];
+                std::transform(item_id.begin(), item_id.end(), item_id.begin(), ::tolower);
+
+                int qty = 1;
+                if (args.size() > 1) {
+                    try { qty = std::stoi(args[1]); } catch (...) {}
+                }
+                if (qty <= 0) qty = 1;
+
+                int64_t unit_cost = 0;
+                int default_uses = 0;
+                int duration = 0;
+                std::string item_name = item_id;
+
+                if (item_id == "robbery_guard" || item_id == "guard" || item_id == "shield") {
+                    item_id = "robbery_guard";
+                    item_name = "Robbery Guard";
+                    unit_cost = 5000;
+                    duration = 86400;
+                } else if (item_id == "reverse_card" || item_id == "reverse" || item_id == "uno_reverse") {
+                    item_id = "reverse_card";
+                    item_name = "Uno Reverse Card";
+                    unit_cost = 15000;
+                    duration = 86400;
+                } else if (item_id == "item_detector" || item_id == "detector" || item_id == "scanner") {
+                    item_id = "item_detector";
+                    item_name = "Item Detector";
+                    unit_cost = 2500;
+                    default_uses = 5 * qty;
+                } else {
+                    auto custom = g_db->get_custom_shop_items();
+                    bool found = false;
+                    for (const auto& ci : custom) {
+                        if (ci.item_id == item_id) {
+                            item_name = ci.name;
+                            unit_cost = ci.cost;
+                            default_uses = ci.uses_default * qty;
+                            duration = ci.duration_seconds;
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        bot.send_message(msg.channel_id, "❌ Item `" + item_id + "` not found in general shop. Use `.shop` to see available items or `.fish shop` for fishing items.");
+                        return;
+                    }
+                }
+
+                int64_t total_cost = unit_cost * qty;
+                auto user = g_db->get_economy_user(msg.author.id);
+                if (!user || user->wallet < total_cost) {
+                    bot.send_message(msg.channel_id, "❌ You do not have enough coins in your wallet. Total cost: **" + std::to_string(total_cost) + "** coins.");
+                    return;
+                }
+
+                g_db->update_balances(msg.author.id, -total_cost, 0);
+                g_db->add_user_economy_item(msg.author.id, item_id, qty, default_uses, duration);
+
+                bot.send_message(msg.channel_id, "🎉 Successfully purchased **" + std::to_string(qty) + "x " + item_name + "** for **" + std::to_string(total_cost) + "** coins! Use `.inventory` to view your items.");
+            },
+            "Economy"
+        });
+
+        // 19. useitem command
+        bot.register_command({
+            "useitem",
+            {"use", "activate"},
+            "uses or activates an item from your inventory.",
+            "use <item_id>",
+            {"<item_id>"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "invalid syntax. use `use <item_id>`.");
+                    return;
+                }
+
+                std::string item_id = args[0];
+                std::transform(item_id.begin(), item_id.end(), item_id.begin(), ::tolower);
+
+                if (item_id == "guard" || item_id == "robbery_guard" || item_id == "shield") item_id = "robbery_guard";
+                if (item_id == "reverse" || item_id == "reverse_card" || item_id == "uno_reverse") item_id = "reverse_card";
+                if (item_id == "detector" || item_id == "item_detector") item_id = "item_detector";
+
+                if (item_id == "item_detector") {
+                    bot.send_message(msg.channel_id, "🔍 To use your Item Detector, run `.detect <user>`!");
+                    return;
+                }
+
+                if (item_id == "robbery_guard") {
+                    if (g_db->activate_item(msg.author.id, "robbery_guard", 86400)) {
+                        bot.send_message(msg.channel_id, "🛡️ **Robbery Guard Activated!** You are protected against all robbery attempts for the next 24 hours.");
+                    } else {
+                        bot.send_message(msg.channel_id, "❌ You do not own a Robbery Guard! Buy one in `.shop`.");
+                    }
+                    return;
+                }
+
+                if (item_id == "reverse_card") {
+                    if (g_db->activate_item(msg.author.id, "reverse_card", 86400)) {
+                        bot.send_message(msg.channel_id, "💥 **Uno Reverse Card Armed!** For the next 24 hours, anyone attempting to rob you will be counter-robbed!");
+                    } else {
+                        bot.send_message(msg.channel_id, "❌ You do not own an Uno Reverse Card! Buy one in `.shop`.");
+                    }
+                    return;
+                }
+
+                bot.send_message(msg.channel_id, "❌ Item `" + item_id + "` cannot be activated directly or is not owned.");
+            },
+            "Economy"
+        });
+
+        // 20. detect command
+        bot.register_command({
+            "detect",
+            {"detector", "scan"},
+            "uses an Item Detector to scan a target user for active protections and items.",
+            "detect <user>",
+            {"<user>"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!g_db) return;
+
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "invalid syntax. use `detect <user>`.");
+                    return;
+                }
+
+                std::string target_uid = resolve_user_id(args[0]);
+
+                if (!g_db->use_item_charge(msg.author.id, "item_detector")) {
+                    bot.send_message(msg.channel_id, "❌ You do not have an Item Detector with available uses! Purchase one in `.shop`.");
+                    return;
+                }
+
+                bool guard_active = g_db->is_item_active(target_uid, "robbery_guard");
+                bool reverse_active = g_db->is_item_active(target_uid, "reverse_card");
+                auto items = g_db->get_user_economy_items(target_uid);
+
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                stoatpp::models::Embed embed;
+                embed.set_colour(0xF1C40F);
+                embed.set_title("🔍 Item Detector Scan Results — <@" + target_uid + ">");
+
+                std::string desc = "Scan completed! 1 Detector charge used.\n\n";
+
+                desc += "🛡️ **Robbery Guard Status:** " + std::string(guard_active ? "🟢 **ACTIVE (PROTECTED)**" : "🔴 Inactive") + "\n";
+                desc += "💥 **Uno Reverse Card Status:** " + std::string(reverse_active ? "🟢 **ARMED (GOTCHA TRAP ACTIVE!)**" : "🔴 Inactive") + "\n\n";
+
+                desc += "📦 **Detected Inventory:**\n";
+                if (items.empty()) {
+                    desc += "*No stored inventory items detected.*";
+                } else {
+                    for (const auto& it : items) {
+                        desc += "• `" + it.item_id + "` (Qty: " + std::to_string(it.quantity) + ")\n";
+                    }
+                }
+
+                embed.set_description(desc);
+                payload.add_embed(embed);
+                bot.send_message(msg.channel_id, payload);
             },
             "Economy"
         });

@@ -7,7 +7,7 @@ all: build
 build:
 	mkdir -p build
 	$(CMAKE) -S . -B build
-	$(CMAKE) --build build
+	$(CMAKE) --build build --target bronx
 
 clean:
 	rm -rf build
