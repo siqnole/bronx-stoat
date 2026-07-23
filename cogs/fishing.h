@@ -81,6 +81,11 @@ public:
     std::string user_id;
   };
 
+  struct EquipSession {
+    std::string author_id;
+    std::vector<std::string> owned_emojis;
+  };
+
 private:
   std::vector<RodDef> rods_;
   std::vector<BaitDef> baits_;
@@ -89,6 +94,7 @@ private:
 
   std::unordered_map<std::string, ShopSession> shop_sessions_;
   std::unordered_map<std::string, BossSession> boss_sessions_;
+  std::unordered_map<std::string, EquipSession> equip_sessions_;
   std::mutex shop_mutex_;
 
   void init_catalogs() {
@@ -1150,6 +1156,146 @@ public:
                      });
   }
 
+  std::string get_item_emoji(const std::string& item_id) {
+    if (item_id == "wooden_rod") return "🪵";
+    if (item_id == "bamboo_pole") return "🎋";
+    if (item_id == "fiberglass_rod") return "🎣";
+    if (item_id == "graphite_caster") return "🖋️";
+    if (item_id == "carbon_rod") return "🏴";
+    if (item_id == "magma_forge_rod") return "🌋";
+    if (item_id == "titanium_harpoon") return "🐳";
+    if (item_id == "quantum_tether") return "🧬";
+    if (item_id == "neon_cyber_rod") return "⚡";
+    if (item_id == "hydra_striker") return "🐉";
+    if (item_id == "poseidons_trident") return "🔱";
+    if (item_id == "nebula_starlight_rod") return "🌌";
+    if (item_id == "abyssal_reaper") return "💀";
+    if (item_id == "solar_flare_rod") return "🔴";
+    if (item_id == "chronos_anchor") return "⚓";
+    if (item_id == "void_walker_rod") return "🕳️";
+    if (item_id == "multiverse_rod") return "🌀";
+    if (item_id == "multivertic_god_rod") return "👑";
+
+    if (item_id == "worm") return "🪱";
+    if (item_id == "maggot") return "🐛";
+    if (item_id == "breadcrumb") return "🍞";
+    if (item_id == "minnow") return "🐟";
+    if (item_id == "cricket") return "🦗";
+    if (item_id == "squid_strip") return "🦑";
+    if (item_id == "shrimp") return "🦐";
+    if (item_id == "chum_bucket") return "🪣";
+    if (item_id == "golden_fly") return "🪰";
+    if (item_id == "plasma_worm") return "🧪";
+    if (item_id == "void_grub") return "🦠";
+    if (item_id == "starlight_lure") return "⭐";
+    if (item_id == "chronos_bait") return "⏳";
+    if (item_id == "hyper_singularity") return "🪐";
+    if (item_id == "singularity_core") return "🖤";
+    if (item_id == "multivertic_spark") return "✨";
+
+    return "📦";
+  }
+
+  std::string get_item_id_from_emoji(const std::string& emoji) {
+    if (emoji == "🪵") return "wooden_rod";
+    if (emoji == "🎋") return "bamboo_pole";
+    if (emoji == "🎣") return "fiberglass_rod";
+    if (emoji == "🖋️") return "graphite_caster";
+    if (emoji == "🏴") return "carbon_rod";
+    if (emoji == "🌋") return "magma_forge_rod";
+    if (emoji == "🐳") return "titanium_harpoon";
+    if (emoji == "🧬") return "quantum_tether";
+    if (emoji == "⚡") return "neon_cyber_rod";
+    if (emoji == "🐉") return "hydra_striker";
+    if (emoji == "🔱") return "poseidons_trident";
+    if (emoji == "🌌") return "nebula_starlight_rod";
+    if (emoji == "💀") return "abyssal_reaper";
+    if (emoji == "🔴") return "solar_flare_rod";
+    if (emoji == "⚓") return "chronos_anchor";
+    if (emoji == "🕳️") return "void_walker_rod";
+    if (emoji == "🌀") return "multiverse_rod";
+    if (emoji == "👑") return "multivertic_god_rod";
+
+    if (emoji == "🪱") return "worm";
+    if (emoji == "🐛") return "maggot";
+    if (emoji == "🍞") return "breadcrumb";
+    if (emoji == "🐟") return "minnow";
+    if (emoji == "🦗") return "cricket";
+    if (emoji == "🦑") return "squid_strip";
+    if (emoji == "🦐") return "shrimp";
+    if (emoji == "🪣") return "chum_bucket";
+    if (emoji == "🪰") return "golden_fly";
+    if (emoji == "🧪") return "plasma_worm";
+    if (emoji == "🦠") return "void_grub";
+    if (emoji == "⭐") return "starlight_lure";
+    if (emoji == "⏳") return "chronos_bait";
+    if (emoji == "🪐") return "hyper_singularity";
+    if (emoji == "🖤") return "singularity_core";
+    if (emoji == "✨") return "multivertic_spark";
+
+    return "";
+  }
+
+  void open_equip_selector(stoatpp::cluster& bot, const std::string& channel_id, const std::string& author_id) {
+    if (!g_db) return;
+
+    auto u_opt = g_db->get_fishing_user(author_id);
+    if (!u_opt) return;
+    auto u = *u_opt;
+
+    std::vector<std::string> owned_rods = g_db->get_unlocked_rods(author_id);
+    auto owned_baits = g_db->get_user_baits(author_id);
+
+    stoatpp::models::MessagePayload payload;
+    payload.content = " ";
+    stoatpp::models::Embed embed;
+    embed.set_colour(0x3498DB);
+    embed.set_title("🎒 Gear Inventory Selector");
+
+    std::string desc = "Click a reaction below to quickly equip a rod or bait!\n\n";
+
+    desc += "🎣 **Rods Owned:**\n";
+    std::vector<std::string> emojis;
+    for (const auto& rod_id : owned_rods) {
+      const RodDef* r = get_rod(rod_id);
+      if (r) {
+        std::string emoji = get_item_emoji(rod_id);
+        std::string active_indicator = (u.rod_id == rod_id) ? " 🟢 *(Active)*" : "";
+        desc += emoji + " **" + r->name + "**" + active_indicator + "\n";
+        emojis.push_back(emoji);
+      }
+    }
+
+    desc += "\n🪱 **Baits Owned:**\n";
+    bool has_any_bait = false;
+    for (const auto& b : owned_baits) {
+      if (b.quantity > 0) {
+        const BaitDef* def = get_bait(b.bait_id);
+        if (def) {
+          std::string emoji = get_item_emoji(b.bait_id);
+          std::string active_indicator = (u.bait_id == b.bait_id) ? " 🟢 *(Active)*" : "";
+          desc += emoji + " **" + def->name + "** (x" + std::to_string(b.quantity) + ")" + active_indicator + "\n";
+          emojis.push_back(emoji);
+          has_any_bait = true;
+        }
+      }
+    }
+    if (!has_any_bait) {
+      desc += "*You do not own any bait. Visit `.shop` or `.tackle` to buy some!*\n";
+    }
+
+    embed.set_description(desc);
+    payload.add_embed(embed);
+    payload.set_interactions(emojis);
+
+    bot.send_message(channel_id, payload, [this, author_id, emojis](stoatpp::models::Message res, bool success) {
+      if (success) {
+        std::lock_guard<std::mutex> lock(shop_mutex_);
+        equip_sessions_[res.id] = {author_id, emojis};
+      }
+    });
+  }
+
 public:
   FishingModule() {
       instance = this;
@@ -1175,12 +1321,63 @@ public:
          },
          "Economy"});
 
-    // Standalone .shop command alias
+    // Standalone .equip command
     bot.register_command(
-        {"shop",
-         {"store", "market", "tackle"},
+        {"equip",
+         {"eq", "wield"},
+         "equip your unlocked rod or owned bait.",
+         "equip [item_id]",
+         {"[item_id]"},
+         [this](stoatpp::cluster &bot, const stoatpp::events::Message &msg,
+                const std::vector<std::string> &args) {
+           if (args.empty()) {
+             open_equip_selector(bot, msg.channel_id, msg.author.id);
+             return;
+           }
+
+           std::string target = args[0];
+           auto owned_rods = g_db->get_unlocked_rods(msg.author.id);
+           std::string target_rod = fuzzy_match_str(target, owned_rods);
+
+           if (g_db->has_unlocked_rod(msg.author.id, target_rod)) {
+             auto u_opt = g_db->get_fishing_user(msg.author.id);
+             if (u_opt) {
+               auto u = *u_opt;
+               u.rod_id = target_rod;
+               g_db->update_fishing_user(u);
+               const RodDef *r = get_rod(target_rod);
+               bot.send_message(msg.channel_id, "🎣 Equipped **" + r->name + "**!");
+             }
+             return;
+           }
+
+           std::vector<std::string> bait_ids;
+           for (const auto &b : baits_) bait_ids.push_back(b.id);
+           std::string target_bait = fuzzy_match_str(target, bait_ids);
+
+           int qty = g_db->get_bait_count(msg.author.id, target_bait);
+           if (qty > 0) {
+             auto u_opt = g_db->get_fishing_user(msg.author.id);
+             if (u_opt) {
+               auto u = *u_opt;
+               u.bait_id = target_bait;
+               g_db->update_fishing_user(u);
+               const BaitDef *b = get_bait(target_bait);
+               bot.send_message(msg.channel_id, "🪱 Equipped **" + b->name + "** bait!");
+             }
+             return;
+           }
+
+           bot.send_message(msg.channel_id, "❌ You do not own a rod or bait of type `" + target + "`.");
+         },
+         "Economy"});
+
+    // Standalone .tackle command alias
+    bot.register_command(
+        {"tackle",
+         {},
          "opens the Bronx fishing shop interactive paginator.",
-         "shop [page/category]",
+         "tackle [page/category]",
          {"[page/category]"},
          [this](stoatpp::cluster &bot, const stoatpp::events::Message &msg,
                 const std::vector<std::string> &args) {
@@ -1439,6 +1636,57 @@ public:
           lock.unlock();
           bot.unreact_from_message(e.channel_id, e.id, e.emoji_id, e.user_id);
         }
+        return;
+      }
+
+      auto it_eq = equip_sessions_.find(e.id);
+      if (it_eq != equip_sessions_.end()) {
+        std::string author_id = it_eq->second.author_id;
+        std::vector<std::string> owned_emojis = it_eq->second.owned_emojis;
+
+        if (e.user_id != author_id) {
+          lock.unlock();
+          bot.unreact_from_message(e.channel_id, e.id, e.emoji_id, e.user_id);
+          return;
+        }
+
+        std::string item_id = get_item_id_from_emoji(e.emoji_id);
+        if (!item_id.empty()) {
+          auto u_opt = g_db->get_fishing_user(author_id);
+          if (u_opt) {
+            auto u = *u_opt;
+            std::string item_name = "";
+
+            // Is it a rod?
+            const RodDef* r = get_rod(item_id);
+            if (r) {
+              u.rod_id = item_id;
+              item_name = r->name;
+            } else {
+              // Is it a bait?
+              const BaitDef* b = get_bait(item_id);
+              if (b) {
+                u.bait_id = item_id;
+                item_name = b->name;
+              }
+            }
+
+            if (!item_name.empty()) {
+              g_db->update_fishing_user(u);
+              equip_sessions_.erase(e.id);
+              lock.unlock();
+
+              bot.send_message(e.channel_id, "✅ <@" + author_id + "> successfully equipped **" + item_name + "**!");
+              
+              stoatpp::models::MessagePayload clear_payload;
+              clear_payload.content = "✅ Equipped **" + item_name + "**!";
+              bot.edit_message(e.channel_id, e.id, clear_payload);
+              return;
+            }
+          }
+        }
+        lock.unlock();
+        bot.unreact_from_message(e.channel_id, e.id, e.emoji_id, e.user_id);
         return;
       }
     });
@@ -2051,8 +2299,7 @@ public:
            //  6. EQUIP ROD / BAIT
            if (sub == "equip") {
              if (args.size() < 2) {
-               bot.send_message(msg.channel_id,
-                                "Usage: `.fish equip <rod_id>`");
+               open_equip_selector(bot, msg.channel_id, msg.author.id);
                return;
              }
              std::vector<std::string> owned_rods =

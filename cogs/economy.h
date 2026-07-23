@@ -1053,76 +1053,81 @@ public:
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (!g_db) return;
 
-                std::string target_uid = msg.author.id;
-                if (!args.empty()) {
-                    target_uid = resolve_user_id(args[0]);
-                }
+                std::string target_query = args.empty() ? msg.author.id : args[0];
+                helpers::resolve_user(bot, msg.server_id, target_query, [this, &bot, msg](stoatpp::models::User target_user, stoatpp::models::Member, bool success) {
+                    if (!success) {
+                        bot.send_message(msg.channel_id, "could not resolve target user.");
+                        return;
+                    }
+                    if (!g_db) return;
 
-                auto eco = g_db->get_economy_user(target_uid);
-                auto fish = g_db->get_fishing_user(target_uid);
-                auto user_items = g_db->get_user_economy_items(target_uid);
+                    std::string target_uid = target_user.id;
+                    auto eco = g_db->get_economy_user(target_uid);
+                    auto fish = g_db->get_fishing_user(target_uid);
+                    auto user_items = g_db->get_user_economy_items(target_uid);
 
-                stoatpp::models::MessagePayload payload;
-                payload.content = " ";
-                stoatpp::models::Embed embed;
-                embed.set_colour(0x5865F2);
-                embed.set_title("🎒 Bronx Inventory — <@" + target_uid + ">");
+                    stoatpp::models::MessagePayload payload;
+                    payload.content = " ";
+                    stoatpp::models::Embed embed;
+                    embed.set_colour(0x5865F2);
+                    embed.set_title("🎒 " + target_user.username + "'s Inventory");
 
-                std::string desc = "";
+                    std::string desc = "";
 
-                // 🎫 Section 1: Event Items
-                desc += "🎫 **EVENT ITEMS & CURRENCY**\n";
-                int event_tokens = fish ? fish->event_tokens : 0;
-                desc += "• Event Tokens: **" + std::to_string(event_tokens) + "** 🎫\n";
+                    // 🎫 Section 1: Event Items
+                    desc += "🎫 **EVENT ITEMS & CURRENCY**\n";
+                    int event_tokens = fish ? fish->event_tokens : 0;
+                    desc += "• Event Tokens: **" + std::to_string(event_tokens) + "** 🎫\n";
 
-                auto user_pets = g_db->get_user_pets(target_uid);
-                if (!user_pets.empty()) {
-                    desc += "• Event / Companion Pets Unlocked: **" + std::to_string(user_pets.size()) + "** pets (`.fish pets`)\n";
-                }
-                desc += "\n";
+                    auto user_pets = g_db->get_user_pets(target_uid);
+                    if (!user_pets.empty()) {
+                        desc += "• Event / Companion Pets Unlocked: **" + std::to_string(user_pets.size()) + "** pets (`.fish pets`)\n";
+                    }
+                    desc += "\n";
 
-                // 🎒 Section 2: General Economy Items
-                desc += "🎒 **GENERAL ECONOMY ITEMS & PROTECTIONS**\n";
-                if (user_items.empty()) {
-                    desc += "*No general items owned yet. Visit `.shop` to buy items!*\n";
-                } else {
-                    auto now = std::chrono::duration_cast<std::chrono::seconds>(
-                        std::chrono::system_clock::now().time_since_epoch()).count();
+                    // 🎒 Section 2: General Economy Items
+                    desc += "🎒 **GENERAL ECONOMY ITEMS & PROTECTIONS**\n";
+                    if (user_items.empty()) {
+                        desc += "*No general items owned yet. Visit `.shop` to buy items!*\n";
+                    } else {
+                        auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                            std::chrono::system_clock::now().time_since_epoch()).count();
 
-                    for (const auto& item : user_items) {
-                        if (item.item_id == "robbery_guard") {
-                            std::string status = (item.active_until > static_cast<uint64_t>(now)) ?
-                                ("🟢 **ACTIVE** (" + format_cooldown(item.active_until - now) + " remaining)") : "⚪ Inactive (Use `.use robbery_guard`)";
-                            desc += "• 🛡️ **Robbery Guard**: " + status + "\n";
-                        } else if (item.item_id == "reverse_card") {
-                            std::string status = (item.active_until > static_cast<uint64_t>(now)) ?
-                                ("🟢 **ACTIVE** (" + format_cooldown(item.active_until - now) + " remaining)") : "⚪ Inactive (Use `.use reverse_card`)";
-                            desc += "• 💥 **Uno Reverse Card**: " + status + "\n";
-                        } else if (item.item_id == "item_detector") {
-                            desc += "• 🔍 **Item Detector**: **" + std::to_string(item.uses_left) + "** uses remaining (Qty: " + std::to_string(item.quantity) + ") — Use `.detect <user>`\n";
-                        } else {
-                            desc += "• 📦 `" + item.item_id + "`: Quantity **" + std::to_string(item.quantity) + "**\n";
+                        for (const auto& item : user_items) {
+                            if (item.item_id == "robbery_guard") {
+                                std::string status = (item.active_until > static_cast<uint64_t>(now)) ?
+                                    ("🟢 **ACTIVE** (" + format_cooldown(item.active_until - now) + " remaining)") : "⚪ Inactive (Use `.use robbery_guard`)";
+                                desc += "• 🛡️ **Robbery Guard**: " + status + "\n";
+                            } else if (item.item_id == "reverse_card") {
+                                std::string status = (item.active_until > static_cast<uint64_t>(now)) ?
+                                    ("🟢 **ACTIVE** (" + format_cooldown(item.active_until - now) + " remaining)") : "⚪ Inactive (Use `.use reverse_card`)";
+                                desc += "• 💥 **Uno Reverse Card**: " + status + "\n";
+                            } else if (item.item_id == "item_detector") {
+                                desc += "• 🔍 **Item Detector**: **" + std::to_string(item.uses_left) + "** uses remaining (Qty: " + std::to_string(item.quantity) + ") — Use `.detect <user>`\n";
+                            } else {
+                                desc += "• 📦 `" + item.item_id + "`: Quantity **" + std::to_string(item.quantity) + "**\n";
+                            }
                         }
                     }
-                }
-                desc += "\n";
+                    desc += "\n";
 
-                // 🎣 Section 3: Fishing Gear & Fish Bucket
-                desc += "🎣 **FISHING GEAR & BUCKET**\n";
-                if (fish) {
-                    desc += "• Rod: **" + fish->rod_id + "** | Bait: **" + fish->bait_id + "**\n";
-                    desc += "• Active Pet: **" + (fish->active_pet_id == "none" ? "None" : fish->active_pet_id) + "**\n";
-                    desc += "• Total Catches: **" + std::to_string(fish->total_catches) + "** | Fishing Tier: **P" + std::to_string(fish->fish_prestige) + "**\n";
+                    // 🎣 Section 3: Fishing Gear & Fish Bucket
+                    desc += "🎣 **FISHING GEAR & BUCKET**\n";
+                    if (fish) {
+                        desc += "• Rod: **" + fish->rod_id + "** | Bait: **" + fish->bait_id + "**\n";
+                        desc += "• Active Pet: **" + (fish->active_pet_id == "none" ? "None" : fish->active_pet_id) + "**\n";
+                        desc += "• Total Catches: **" + std::to_string(fish->total_catches) + "** | Fishing Tier: **P" + std::to_string(fish->fish_prestige) + "**\n";
 
-                    auto user_fish = g_db->get_user_fish_inventory(target_uid);
-                    desc += "• Bucket Inventory: **" + std::to_string(user_fish.size()) + "** fish in bucket (`.fish bucket`)\n";
-                } else {
-                    desc += "*No fishing data available.*\n";
-                }
+                        auto user_fish = g_db->get_user_fish_inventory(target_uid);
+                        desc += "• Bucket Inventory: **" + std::to_string(user_fish.size()) + "** fish in bucket (`.fish bucket`)\n";
+                    } else {
+                        desc += "*No fishing data available.*\n";
+                    }
 
-                embed.set_description(desc);
-                payload.add_embed(embed);
-                bot.send_message(msg.channel_id, payload);
+                    embed.set_description(desc);
+                    payload.add_embed(embed);
+                    bot.send_message(msg.channel_id, payload);
+                });
             },
             "Economy"
         });

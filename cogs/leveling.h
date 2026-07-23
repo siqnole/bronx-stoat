@@ -12,6 +12,7 @@
 
 #ifdef BRONX_CHART_ENABLED
 #include "chart_renderer.h"
+#include <leptonica/allheaders.h>
 #endif
 
 namespace bronx::cogs {
@@ -83,7 +84,7 @@ public:
         bot.register_command({
             "level",
             {"lvl"},
-            "configure the server leveling settings.",
+            "configure the server leveling settings or customize your rank card.",
             "[subcommand] [args...]",
             {"[subcommand]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
@@ -97,12 +98,20 @@ public:
                 }
 
                 bool is_admin_cmd = false;
+                bool is_user_edit_cmd = false;
                 if (!args.empty()) {
                     std::string sub = args[0];
                     std::transform(sub.begin(), sub.end(), sub.begin(), ::tolower);
                     if (sub == "enable" || sub == "disable" || sub == "xprange" || sub == "role" || sub == "config") {
                         is_admin_cmd = true;
+                    } else if (sub == "edit" || sub == "customize") {
+                        is_user_edit_cmd = true;
                     }
+                }
+
+                if (is_user_edit_cmd) {
+                    handle_level_edit_cmd(bot, msg, args);
+                    return;
                 }
 
                 if (!is_admin_cmd) {
@@ -138,6 +147,207 @@ public:
     }
 
 private:
+    static void handle_level_edit_cmd(stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+        if (!g_db) {
+            bot.send_message(msg.channel_id, "database is currently unavailable.");
+            return;
+        }
+
+        std::vector<std::string> prefixes = { bot.config().command_prefix };
+        if (bot.config().prefix_resolver) {
+            prefixes = bot.config().prefix_resolver(bot, msg);
+        }
+        std::string pfx = bot.config().command_prefix;
+        for (const auto& p : prefixes) {
+            if (msg.content.rfind(p, 0) == 0) { pfx = p; break; }
+        }
+
+        auto send_edit_help = [&bot, msg, pfx]() {
+            bot.send_message(msg.channel_id,
+                "**🎨 Personalize Your Rank Card**\n\n"
+                "• `" + pfx + "level edit style <image|embed|text>` — Choose rank card display style.\n"
+                "• `" + pfx + "level edit bgcolor <hex_color|none>` — Set background color (e.g., `#0e0e11`).\n"
+                "• `" + pfx + "level edit bgimage <url|attachment|none>` — Set background image URL or upload one.\n"
+                "• `" + pfx + "level edit activecolor <hex_color|none>` — Set progress bar color.\n"
+                "• `" + pfx + "level edit dimcolor <hex_color|none>` — Set progress bar background color.\n"
+                "• `" + pfx + "level edit textcolor <hex_color|none>` — Set text color.\n"
+                "• `" + pfx + "level edit font <font_name|none>` — Set custom font (e.g. `monospace`, `serif`, `sans-serif`).\n"
+                "• `" + pfx + "level edit preview` — Show current settings preview."
+            );
+        };
+
+        if (args.size() < 2) {
+            send_edit_help();
+            return;
+        }
+
+        std::string action = args[1];
+        std::transform(action.begin(), action.end(), action.begin(), ::tolower);
+
+        // Fetch or create user rank card config
+        Database::UserRankCard urc;
+        auto urc_opt = g_db->get_user_rank_card(msg.author.id);
+        if (urc_opt) {
+            urc = *urc_opt;
+        } else {
+            urc.user_id = msg.author.id;
+            urc.style = "image";
+        }
+
+        if (action == "preview") {
+            std::string bg_color_str = urc.bg_color ? *urc.bg_color : "*Default*";
+            std::string bg_image_str = urc.bg_image ? *urc.bg_image : "*Default*";
+            std::string active_str = urc.bar_active ? *urc.bar_active : "*Default*";
+            std::string dimmed_str = urc.bar_dimmed ? *urc.bar_dimmed : "*Default*";
+            std::string text_str = urc.text_color ? *urc.text_color : "*Default*";
+            std::string font_str = urc.font_name ? *urc.font_name : "*Default*";
+
+            bot.send_message(msg.channel_id,
+                "**🎨 Your Rank Card Customization**\n\n"
+                "• **Style**: `" + urc.style + "`\n"
+                "• **Background Color**: `" + bg_color_str + "`\n"
+                "• **Background Image**: " + (urc.bg_image ? ("`" + bg_image_str + "`") : bg_image_str) + "\n"
+                "• **Active Bar Color**: `" + active_str + "`\n"
+                "• **Dimmed Bar Color**: `" + dimmed_str + "`\n"
+                "• **Text Color**: `" + text_str + "`\n"
+                "• **Font Family**: `" + font_str + "`"
+            );
+            return;
+        }
+
+        if (args.size() < 3 && action != "bgimage") {
+            bot.send_message(msg.channel_id, "❌ Please specify a value. Use `" + pfx + "level edit` to see options.");
+            return;
+        }
+
+        std::string val = args.size() >= 3 ? args[2] : "";
+        std::string val_lower = val;
+        std::transform(val_lower.begin(), val_lower.end(), val_lower.begin(), ::tolower);
+
+        if (action == "style") {
+            if (val_lower == "image" || val_lower == "embed" || val_lower == "text") {
+                urc.style = val_lower;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Style updated to `" + val_lower + "`.");
+            } else {
+                bot.send_message(msg.channel_id, "❌ Invalid style. Choose from `image`, `embed`, or `text`.");
+            }
+        }
+        else if (action == "bgcolor") {
+            if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
+                urc.bg_color = std::nullopt;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Background color reset to default.");
+            } else {
+                if (val[0] != '#' && val.length() == 6) val = "#" + val;
+                chart::RGBA dummy;
+                if (chart::parse_hex_color(val, dummy)) {
+                    urc.bg_color = val;
+                    g_db->save_user_rank_card(urc);
+                    bot.send_message(msg.channel_id, "✅ Background color updated to `" + val + "`.");
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Invalid hex color format. Example: `#0e0e11`.");
+                }
+            }
+        }
+        else if (action == "bgimage") {
+            std::string img_url = val;
+            if (msg.raw.contains("attachments") && msg.raw["attachments"].is_array() && !msg.raw["attachments"].empty()) {
+                auto first_attach = msg.raw["attachments"][0];
+                std::string tag = first_attach.value("tag", "");
+                std::string id = first_attach.value("id", "");
+                if (id.empty()) id = first_attach.value("_id", "");
+                std::string filename = first_attach.value("filename", "");
+                if (!tag.empty() && !id.empty()) {
+                    img_url = bot.config().cdn_url + "/" + tag + "/" + id + "/" + filename;
+                }
+            }
+
+            if (img_url.empty() || img_url == "none" || img_url == "default" || img_url == "clear") {
+                urc.bg_image = std::nullopt;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Background image reset to default.");
+            } else {
+                std::string uploaded = helpers::upload_avatar(bot, img_url);
+                if (!uploaded.empty()) {
+                    size_t slash_pos = uploaded.rfind('/');
+                    if (slash_pos != std::string::npos) {
+                        uploaded = uploaded.substr(slash_pos + 1);
+                    }
+                    urc.bg_image = uploaded;
+                    g_db->save_user_rank_card(urc);
+                    bot.send_message(msg.channel_id, "✅ Background image set successfully.");
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Failed to process background image.");
+                }
+            }
+        }
+        else if (action == "activecolor") {
+            if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
+                urc.bar_active = std::nullopt;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Active bar color reset to default.");
+            } else {
+                if (val[0] != '#' && val.length() == 6) val = "#" + val;
+                chart::RGBA dummy;
+                if (chart::parse_hex_color(val, dummy)) {
+                    urc.bar_active = val;
+                    g_db->save_user_rank_card(urc);
+                    bot.send_message(msg.channel_id, "✅ Active bar color updated to `" + val + "`.");
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Invalid hex color format.");
+                }
+            }
+        }
+        else if (action == "dimcolor") {
+            if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
+                urc.bar_dimmed = std::nullopt;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Dimmed bar color reset to default.");
+            } else {
+                if (val[0] != '#' && val.length() == 6) val = "#" + val;
+                chart::RGBA dummy;
+                if (chart::parse_hex_color(val, dummy)) {
+                    urc.bar_dimmed = val;
+                    g_db->save_user_rank_card(urc);
+                    bot.send_message(msg.channel_id, "✅ Dimmed bar color updated to `" + val + "`.");
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Invalid hex color format.");
+                }
+            }
+        }
+        else if (action == "textcolor") {
+            if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
+                urc.text_color = std::nullopt;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Text color reset to default.");
+            } else {
+                if (val[0] != '#' && val.length() == 6) val = "#" + val;
+                chart::RGBA dummy;
+                if (chart::parse_hex_color(val, dummy)) {
+                    urc.text_color = val;
+                    g_db->save_user_rank_card(urc);
+                    bot.send_message(msg.channel_id, "✅ Text color updated to `" + val + "`.");
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Invalid hex color format.");
+                }
+            }
+        }
+        else if (action == "font") {
+            if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
+                urc.font_name = std::nullopt;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Font family reset to default.");
+            } else {
+                urc.font_name = val;
+                g_db->save_user_rank_card(urc);
+                bot.send_message(msg.channel_id, "✅ Font family updated to `" + val + "`.");
+            }
+        } else {
+            send_edit_help();
+        }
+    }
+
     static void show_rank_card(stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
         if (msg.server_id.empty()) {
             bot.send_message(msg.channel_id, "this command can only be used inside a server.");
@@ -162,6 +372,81 @@ private:
                 return;
             }
 
+            auto xp_opt = g_db->get_user_xp(target_user.id, msg.server_id);
+            if (!xp_opt) {
+                bot.send_message(msg.channel_id, "ℹ️ " + target_user.username + " has no XP progress yet (needs to send messages first).");
+                return;
+            }
+
+            uint32_t level = xp_opt->level;
+            uint64_t current_xp = xp_opt->total_xp;
+            uint64_t base_xp = Database::calculate_xp_for_level(level);
+            uint64_t next_xp = Database::calculate_xp_for_level(level + 1);
+
+            uint64_t xp_in_level = current_xp - base_xp;
+            uint64_t xp_required_for_level = next_xp - base_xp;
+
+            int rank = g_db->get_user_server_xp_rank(target_user.id, msg.server_id);
+            auto leaderboard = g_db->get_server_xp_leaderboard(msg.server_id, 9999);
+            int total_users = leaderboard.size();
+
+            // Check style from user customization
+            std::string style = "image";
+            std::optional<Database::UserRankCard> urc_opt;
+            if (g_db) {
+                urc_opt = g_db->get_user_rank_card(target_user.id);
+                if (urc_opt) {
+                    style = urc_opt->style;
+                }
+            }
+
+            int percentage = 0;
+            if (xp_required_for_level > 0) {
+                percentage = static_cast<int>((xp_in_level * 100) / xp_required_for_level);
+            }
+
+            // Generate a nice ASCII progress bar for text/embed style
+            int filled = 0;
+            if (xp_required_for_level > 0) {
+                filled = static_cast<int>((xp_in_level * 10) / xp_required_for_level);
+            }
+            if (filled > 10) filled = 10;
+            if (filled < 0) filled = 0;
+
+            std::string bar = "[";
+            for (int i = 0; i < 10; ++i) {
+                if (i < filled) bar += "█";
+                else bar += "░";
+            }
+            bar += "]";
+
+            if (style == "text") {
+                std::string out = "📊 **Rank progress for " + target_user.username + "**\n"
+                                  "✨ **Level**: " + std::to_string(level) + "\n"
+                                  "📈 **XP**: " + std::to_string(current_xp) + " / " + std::to_string(next_xp) + " (Level progress: " + std::to_string(percentage) + "%)\n" +
+                                  bar + "\n"
+                                  "🏆 **Rank**: #" + std::to_string(rank) + " of " + std::to_string(total_users);
+                bot.send_message(msg.channel_id, out);
+                return;
+            }
+
+            if (style == "embed") {
+                stoatpp::models::MessagePayload payload;
+                payload.content = " ";
+                stoatpp::models::Embed embed;
+                embed.set_title("📊 Rank progress for " + target_user.username);
+                embed.set_colour(0x5865F2);
+                
+                std::string desc = "✨ **Level**: " + std::to_string(level) + "\n"
+                                   "📈 **XP**: " + std::to_string(current_xp) + " / " + std::to_string(next_xp) + " (" + std::to_string(percentage) + "%)\n"
+                                   "🏆 **Rank**: #" + std::to_string(rank) + " of " + std::to_string(total_users) + "\n\n" +
+                                   bar;
+                embed.set_description(desc);
+                payload.add_embed(embed);
+                bot.send_message(msg.channel_id, payload);
+                return;
+            }
+
 #ifdef BRONX_CHART_ENABLED
             std::string user_id = target_user.id;
             std::string username = target_user.username;
@@ -171,7 +456,7 @@ private:
 
             bot.begin_typing(channel_id);
 
-            std::thread([&bot, server_id, channel_id, user_id, username, avatar_url]() {
+            std::thread([&bot, server_id, channel_id, user_id, username, avatar_url, urc_opt]() {
                 auto xp_opt = g_db->get_user_xp(user_id, server_id);
                 if (!xp_opt) {
                     bot.send_message(channel_id, "ℹ️ " + username + " has no XP progress yet (needs to send messages first).");
@@ -198,27 +483,75 @@ private:
                     std::string converted_avatar_png = "/tmp/avatar_" + tmp_id + ".png";
 
                     // Use shell curl to download the file
-                    std::string dl_cmd = "curl -L -s -o " + helpers::shell_escape(raw_avatar_path) + " " + helpers::shell_escape(avatar_url);
+                    std::string dl_cmd = "curl -k -L -s -o " + helpers::shell_escape(raw_avatar_path) + " " + helpers::shell_escape(avatar_url);
                     int dl_status = std::system(dl_cmd.c_str());
                     if (dl_status == 0 && std::filesystem::exists(raw_avatar_path) && std::filesystem::file_size(raw_avatar_path) > 0) {
-                        // Use ffmpeg to convert to a square PNG of 128x128
-                        std::string conv_cmd = "ffmpeg -y -i " + helpers::shell_escape(raw_avatar_path) + " -vf scale=128:128 " + helpers::shell_escape(converted_avatar_png) + " >/dev/null 2>&1";
-                        int conv_status = std::system(conv_cmd.c_str());
-                        if (conv_status == 0 && std::filesystem::exists(converted_avatar_png) && std::filesystem::file_size(converted_avatar_png) > 0) {
-                            temp_avatar_png = converted_avatar_png;
+                        // Use Leptonica to load the raw image and write it as PNG format
+                        Pix* pix = pixRead(raw_avatar_path.c_str());
+                        if (pix) {
+                            int write_status = pixWrite(converted_avatar_png.c_str(), pix, IFF_PNG);
+                            pixDestroy(&pix);
+                            if (write_status == 0 && std::filesystem::exists(converted_avatar_png) && std::filesystem::file_size(converted_avatar_png) > 0) {
+                                temp_avatar_png = converted_avatar_png;
+                            }
                         }
                     }
                     if (std::filesystem::exists(raw_avatar_path)) std::filesystem::remove(raw_avatar_path);
                 }
 
+                // Download custom background image to a temp file if customized
+                std::string temp_bg_png = "";
+                if (urc_opt && urc_opt->bg_image) {
+                    std::string bg_raw = *urc_opt->bg_image;
+                    std::string bg_url = "";
+                    if (bg_raw.find("://") != std::string::npos) {
+                        bg_url = bg_raw;
+                    } else {
+                        bg_url = bot.config().cdn_url + "/attachments/" + bg_raw;
+                    }
+
+                    std::random_device rd;
+                    std::mt19937 gen(rd());
+                    std::uniform_int_distribution<> dis(100000, 999999);
+                    std::string tmp_id = std::to_string(dis(gen));
+                    std::string raw_bg_path = "/tmp/bg_raw_" + tmp_id;
+                    std::string converted_bg_png = "/tmp/bg_" + tmp_id + ".png";
+
+                    // Use shell curl to download the file
+                    std::string dl_cmd = "curl -k -L -s -o " + helpers::shell_escape(raw_bg_path) + " " + helpers::shell_escape(bg_url);
+                    int dl_status = std::system(dl_cmd.c_str());
+                    if (dl_status == 0 && std::filesystem::exists(raw_bg_path) && std::filesystem::file_size(raw_bg_path) > 0) {
+                        Pix* pix = pixRead(raw_bg_path.c_str());
+                        if (pix) {
+                            int write_status = pixWrite(converted_bg_png.c_str(), pix, IFF_PNG);
+                            pixDestroy(&pix);
+                            if (write_status == 0 && std::filesystem::exists(converted_bg_png) && std::filesystem::file_size(converted_bg_png) > 0) {
+                                temp_bg_png = converted_bg_png;
+                            }
+                        }
+                    }
+                    if (std::filesystem::exists(raw_bg_path)) std::filesystem::remove(raw_bg_path);
+                }
+
+                // Resolve customization hex values
+                std::string bg_color_hex = (urc_opt && urc_opt->bg_color) ? *urc_opt->bg_color : "";
+                std::string active_hex = (urc_opt && urc_opt->bar_active) ? *urc_opt->bar_active : "";
+                std::string dimmed_hex = (urc_opt && urc_opt->bar_dimmed) ? *urc_opt->bar_dimmed : "";
+                std::string text_hex = (urc_opt && urc_opt->text_color) ? *urc_opt->text_color : "";
+                std::string font_family = (urc_opt && urc_opt->font_name) ? *urc_opt->font_name : "";
+
                 // Render the rank card PNG
                 std::string png_bytes = chart::render_rank_card(
-                    username, level, rank, total_users, current_xp, next_xp, base_xp, temp_avatar_png
+                    username, level, rank, total_users, current_xp, next_xp, base_xp, temp_avatar_png,
+                    temp_bg_png, bg_color_hex, active_hex, dimmed_hex, text_hex, font_family
                 );
 
-                // Clean up temp file
+                // Clean up temp files
                 if (!temp_avatar_png.empty() && std::filesystem::exists(temp_avatar_png)) {
                     std::filesystem::remove(temp_avatar_png);
+                }
+                if (!temp_bg_png.empty() && std::filesystem::exists(temp_bg_png)) {
+                    std::filesystem::remove(temp_bg_png);
                 }
 
                 if (png_bytes.empty()) {
@@ -239,44 +572,6 @@ private:
                 bot.send_message(channel_id, payload);
             }).detach();
 #else
-            auto xp_opt = g_db->get_user_xp(target_user.id, msg.server_id);
-            if (!xp_opt) {
-                bot.send_message(msg.channel_id, "ℹ️ " + target_user.username + " has no XP progress yet (needs to send messages first).");
-                return;
-            }
-
-            uint32_t level = xp_opt->level;
-            uint64_t current_xp = xp_opt->total_xp;
-            uint64_t base_xp = Database::calculate_xp_for_level(level);
-            uint64_t next_xp = Database::calculate_xp_for_level(level + 1);
-
-            uint64_t xp_in_level = current_xp - base_xp;
-            uint64_t xp_required_for_level = next_xp - base_xp;
-
-            int rank = g_db->get_user_server_xp_rank(target_user.id, msg.server_id);
-            auto leaderboard = g_db->get_server_xp_leaderboard(msg.server_id, 9999);
-            int total_users = leaderboard.size();
-
-            // Generate a nice ASCII progress bar
-            int filled = 0;
-            if (xp_required_for_level > 0) {
-                filled = static_cast<int>((xp_in_level * 10) / xp_required_for_level);
-            }
-            if (filled > 10) filled = 10;
-            if (filled < 0) filled = 0;
-
-            std::string bar = "[";
-            for (int i = 0; i < 10; ++i) {
-                if (i < filled) bar += "█";
-                else bar += "░";
-            }
-            bar += "]";
-
-            int percentage = 0;
-            if (xp_required_for_level > 0) {
-                percentage = static_cast<int>((xp_in_level * 100) / xp_required_for_level);
-            }
-
             std::string out = "📊 **Rank progress for " + target_user.username + "**\n"
                               "✨ **Level**: " + std::to_string(level) + "\n"
                               "📈 **XP**: " + std::to_string(current_xp) + " / " + std::to_string(next_xp) + " (Level progress: " + std::to_string(percentage) + "%)\n" +

@@ -132,6 +132,17 @@ public:
     std::optional<std::string> name;
   };
 
+  struct UserRankCard {
+    std::string user_id;
+    std::string style = "image";
+    std::optional<std::string> bg_color;
+    std::optional<std::string> bg_image;
+    std::optional<std::string> bar_active;
+    std::optional<std::string> bar_dimmed;
+    std::optional<std::string> text_color;
+    std::optional<std::string> font_name;
+  };
+
   struct Tupper {
     int id;
     std::string user_id;
@@ -510,6 +521,9 @@ private:
 
   std::unordered_map<std::string, UserMasquerade> user_masq_cache_;
   std::shared_mutex user_masq_cache_mutex_;
+
+  std::unordered_map<std::string, UserRankCard> user_rank_card_cache_;
+  std::shared_mutex user_rank_card_cache_mutex_;
 
   std::unordered_map<std::string, std::vector<Tupper>> tupper_cache_;
   std::shared_mutex tupper_cache_mutex_;
@@ -1015,6 +1029,24 @@ public:
         ")";
     if (mysql_query(mysql_, create_user_masq.c_str())) {
       std::cerr << "[bronx db] failed to create table 'user_masquerades': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    // Create Table user_rank_card
+    std::string create_urc = 
+        "CREATE TABLE IF NOT EXISTS user_rank_card ("
+        "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+        "  style VARCHAR(10) NOT NULL DEFAULT 'image',"
+        "  bg_color VARCHAR(30) DEFAULT NULL,"
+        "  bg_image VARCHAR(512) DEFAULT NULL,"
+        "  bar_active VARCHAR(30) DEFAULT NULL,"
+        "  bar_dimmed VARCHAR(30) DEFAULT NULL,"
+        "  text_color VARCHAR(30) DEFAULT NULL,"
+        "  font_name VARCHAR(50) DEFAULT NULL"
+        ")";
+    if (mysql_query(mysql_, create_urc.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'user_rank_card': "
                 << mysql_error(mysql_) << "\n";
       return false;
     }
@@ -2401,6 +2433,31 @@ public:
           user_masq_cache_[u_id] = um;
         }
         mysql_free_result(um_res);
+      }
+    }
+
+    // Load user_rank_card
+    std::string select_user_rc =
+        "SELECT user_id, style, bg_color, bg_image, bar_active, bar_dimmed, text_color, font_name FROM user_rank_card";
+    if (mysql_query(mysql_, select_user_rc.c_str()) == 0) {
+      MYSQL_RES *rc_res = mysql_store_result(mysql_);
+      if (rc_res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> rc_lock(user_rank_card_cache_mutex_);
+        while ((row = mysql_fetch_row(rc_res))) {
+          std::string u_id = row[0] ? row[0] : "";
+          UserRankCard urc;
+          urc.user_id = u_id;
+          urc.style = row[1] ? row[1] : "image";
+          if (row[2]) urc.bg_color = row[2];
+          if (row[3]) urc.bg_image = row[3];
+          if (row[4]) urc.bar_active = row[4];
+          if (row[5]) urc.bar_dimmed = row[5];
+          if (row[6]) urc.text_color = row[6];
+          if (row[7]) urc.font_name = row[7];
+          user_rank_card_cache_[u_id] = urc;
+        }
+        mysql_free_result(rc_res);
       }
     }
 
@@ -5063,6 +5120,49 @@ public:
     {
       std::lock_guard<std::shared_mutex> cache_lock(user_masq_cache_mutex_);
       user_masq_cache_[um.user_id] = um;
+    }
+    return true;
+  }
+
+  std::optional<UserRankCard>
+  get_user_rank_card(const std::string &user_id) {
+    std::shared_lock<std::shared_mutex> lock(user_rank_card_cache_mutex_);
+    auto it = user_rank_card_cache_.find(user_id);
+    if (it != user_rank_card_cache_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool save_user_rank_card(const UserRankCard &urc) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+    std::string esc_uid = escape_string(urc.user_id);
+    std::string val_style = escape_string(urc.style);
+    std::string val_bg_color = urc.bg_color ? "'" + escape_string(*urc.bg_color) + "'" : "NULL";
+    std::string val_bg_image = urc.bg_image ? "'" + escape_string(*urc.bg_image) + "'" : "NULL";
+    std::string val_bar_active = urc.bar_active ? "'" + escape_string(*urc.bar_active) + "'" : "NULL";
+    std::string val_bar_dimmed = urc.bar_dimmed ? "'" + escape_string(*urc.bar_dimmed) + "'" : "NULL";
+    std::string val_text_color = urc.text_color ? "'" + escape_string(*urc.text_color) + "'" : "NULL";
+    std::string val_font_name = urc.font_name ? "'" + escape_string(*urc.font_name) + "'" : "NULL";
+
+    std::string query =
+        "INSERT INTO user_rank_card (user_id, style, bg_color, bg_image, bar_active, bar_dimmed, text_color, font_name) "
+        "VALUES ('" + esc_uid + "', '" + val_style + "', " + val_bg_color + ", " + val_bg_image + ", " + 
+        val_bar_active + ", " + val_bar_dimmed + ", " + val_text_color + ", " + val_font_name + ") "
+        "ON DUPLICATE KEY UPDATE style = '" + val_style + "', bg_color = " + val_bg_color + ", bg_image = " + val_bg_image + 
+        ", bar_active = " + val_bar_active + ", bar_dimmed = " + val_bar_dimmed + ", text_color = " + val_text_color + 
+        ", font_name = " + val_font_name;
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save user_rank_card: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(user_rank_card_cache_mutex_);
+      user_rank_card_cache_[urc.user_id] = urc;
     }
     return true;
   }

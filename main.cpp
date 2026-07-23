@@ -26,6 +26,7 @@
 #include "cogs/auto.h"
 #include "cogs/blackjack.h"
 #include "cogs/bridge.h"
+#include "cogs/captcha.h"
 #include "cogs/command_config.h"
 #include "cogs/counting.h"
 #include "cogs/economy.h"
@@ -431,6 +432,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::StatsModule>());
   bot.use(std::make_unique<bronx::cogs::EconomyModule>());
   bot.use(std::make_unique<bronx::cogs::BlackjackModule>());
+  bot.use(std::make_unique<bronx::cogs::CaptchaModule>());
   bot.use(std::make_unique<bronx::cogs::GamesModule>());
   bot.use(std::make_unique<bronx::cogs::WelcomeLeaveModule>());
   bot.use(std::make_unique<bronx::cogs::LoggingModule>());
