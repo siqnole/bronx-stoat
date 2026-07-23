@@ -516,9 +516,15 @@ int main(int argc, char *argv[]) {
             break;
           case 4: {
             std::string rand_cmd = "ping";
-            if (cmd_count > 0) {
-              int idx = std::rand() % cmd_count;
-              rand_cmd = cmds[idx].name;
+            std::vector<stoatpp::Command> non_owner_cmds;
+            for (const auto &cmd : cmds) {
+              if (cmd.category != "Owner") {
+                non_owner_cmds.push_back(cmd);
+              }
+            }
+            if (!non_owner_cmds.empty()) {
+              int idx = std::rand() % non_owner_cmds.size();
+              rand_cmd = non_owner_cmds[idx].name;
             }
             status_text = "try ." + rand_cmd;
             break;
@@ -922,24 +928,49 @@ int main(int argc, char *argv[]) {
         if (!cmd_name.empty()) {
           bool cmd_exists = false;
           std::string normalized_name = cmd_name;
+          std::string category = "";
           for (const auto &cmd : bot.get_commands()) {
             if (cmd.name == cmd_name ||
                 std::find(cmd.aliases.begin(), cmd.aliases.end(), cmd_name) !=
                     cmd.aliases.end()) {
               cmd_exists = true;
               normalized_name = cmd.name;
+              category = cmd.category;
               break;
             }
           }
 
           if (cmd_exists) {
-            bronx::g_db->increment_command_usage(msg.server_id, normalized_name,
-                                                 msg.channel_id);
-            bronx::g_db->increment_user_daily_commands(
-                msg.server_id, msg.author.id, msg.author.bot);
-            if (!msg.server_id.empty()) {
-              bronx::g_db->increment_user_channel_commands(
-                  msg.server_id, msg.channel_id, msg.author.id);
+            bool is_disabled = false;
+            if (bronx::g_db && !msg.server_id.empty()) {
+              std::string cmd_lower = normalized_name;
+              std::string mod_lower = category;
+              std::transform(cmd_lower.begin(), cmd_lower.end(), cmd_lower.begin(), ::tolower);
+              std::transform(mod_lower.begin(), mod_lower.end(), mod_lower.begin(), ::tolower);
+
+              if (bronx::g_db->is_disabled(msg.server_id, cmd_lower, mod_lower)) {
+                bool exception = false;
+                if (bot.is_owner(msg.author.id) ||
+                    bot.is_server_owner(msg.server_id, msg.author.id)) {
+                  if (cmd_lower == "command" || cmd_lower == "trust" || cmd_lower == "cmd") {
+                    exception = true;
+                  }
+                }
+                if (!exception) {
+                  is_disabled = true;
+                }
+              }
+            }
+
+            if (!is_disabled) {
+              bronx::g_db->increment_command_usage(msg.server_id, normalized_name,
+                                                   msg.channel_id);
+              bronx::g_db->increment_user_daily_commands(
+                  msg.server_id, msg.author.id, msg.author.bot);
+              if (!msg.server_id.empty()) {
+                bronx::g_db->increment_user_channel_commands(
+                    msg.server_id, msg.channel_id, msg.author.id);
+              }
             }
           }
         }
