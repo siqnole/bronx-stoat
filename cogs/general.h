@@ -286,7 +286,8 @@ public:
                 payload.content = " ";
 
                 std::string desc = "**[Invite (Stoat)](https://stoat.chat/bot/01FZB4GBHDVYY6KT8JH4RBX4KR)** - Invite bronx to your Stoat server! :01KWKZDHDNYYFJYS6BHM5CW2V5:\n"
-                                   "**[Invite (Discord)](https://discord.com/oauth2/authorize?client_id=1494385109648933045&permissions=8&integration_type=0&scope=bot+applications.commands)** - Invite bronx to your Discord server!\n\n"
+                                   "**[Invite (Discord)](https://discord.com/oauth2/authorize?client_id=828380019406929962&permissions=7610260541407217&integration_type=0&scope=bot+applications.commands)** - Invite bronx to your Discord server!\n"
+                                   "**[Invite (Fluxer)](https://web.fluxer.app/oauth2/authorize?client_id=1480959391284547759&scope=bot&permissions=15772633886359551)** - Invite bronx to your Fluxer server!\n\n"
                                    "**[Website](https://bronx.siqnole.dev)** - Learn more about Bronx\n"
                                    "**[Documentation](https://bronx.siqnole.dev/docs)** - Commands, features, and setup guides :01KWKZKZBSHJ85GFK12409YR10:\n"
                                    "**[Support Server](https://stt.gg/crBC07Ea)** - Join our community to get help, report bugs, or submit feedback\n"
