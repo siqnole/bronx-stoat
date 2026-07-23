@@ -43,6 +43,7 @@
 #include "cogs/moderation.h"
 #include "cogs/owner.h"
 #include "cogs/prefix.h"
+#include "cogs/qte.h"
 #include "cogs/reaction_roles.h"
 #include "cogs/reminders.h"
 #include "cogs/roblox.h"
@@ -433,6 +434,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::EconomyModule>());
   bot.use(std::make_unique<bronx::cogs::BlackjackModule>());
   bot.use(std::make_unique<bronx::cogs::CaptchaModule>());
+  bot.use(std::make_unique<bronx::cogs::QteModule>());
   bot.use(std::make_unique<bronx::cogs::GamesModule>());
   bot.use(std::make_unique<bronx::cogs::WelcomeLeaveModule>());
   bot.use(std::make_unique<bronx::cogs::LoggingModule>());
@@ -973,6 +975,7 @@ int main(int argc, char *argv[]) {
                 bronx::g_db->increment_user_channel_commands(
                     msg.server_id, msg.channel_id, msg.author.id);
               }
+              bronx::cogs::QteModule::on_command_executed(bot, msg, normalized_name, category);
             }
           }
         }

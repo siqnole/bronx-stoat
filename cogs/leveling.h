@@ -507,7 +507,7 @@ private:
                     if (bg_raw.find("://") != std::string::npos) {
                         bg_url = bg_raw;
                     } else {
-                        bg_url = bot.config().cdn_url + "/attachments/" + bg_raw;
+                        bg_url = bot.config().cdn_url + "/attachments/" + bg_raw + "/background.png";
                     }
 
                     std::random_device rd;

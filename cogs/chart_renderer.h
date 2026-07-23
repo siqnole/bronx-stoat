@@ -1058,9 +1058,8 @@ inline std::string render_rank_card(
         
         double scale_x = (double)width / w;
         double scale_y = (double)height / h;
-        double scale = std::max(scale_x, scale_y);
         
-        cairo_scale(cr, scale, scale);
+        cairo_scale(cr, scale_x, scale_y);
         cairo_set_source_surface(cr, bg_surface, 0, 0);
         cairo_paint(cr);
         cairo_restore(cr);
