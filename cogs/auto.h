@@ -1176,7 +1176,7 @@ public:
                 std::thread([&bot, ar, msg]() {
                     send_auto_response(bot, ar, msg);
                 }).detach();
-                break; // only one autoresponder per message (first match wins)
+                // Multiple autoresponders can fire on the same message (all matches)
             }
 
             // ── Autoreacts ────────────────────────────────────────────────
