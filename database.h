@@ -4839,6 +4839,27 @@ public:
     return {count, total_val};
   }
 
+  bool transfer_fish(uint64_t fish_id, const std::string &sender_id, const std::string &recipient_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return false;
+    std::string sql = "UPDATE user_fish_inventory SET user_id = '" +
+                      escape_string(recipient_id) + "' WHERE id = " +
+                      std::to_string(fish_id) + " AND user_id = '" +
+                      escape_string(sender_id) + "'";
+    return mysql_query(mysql_, sql.c_str()) == 0 && mysql_affected_rows(mysql_) > 0;
+  }
+
+  bool delete_single_fish(const std::string &user_id, uint64_t fish_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return false;
+    std::string sql = "DELETE FROM user_fish_inventory WHERE id = " +
+                      std::to_string(fish_id) + " AND user_id = '" +
+                      escape_string(user_id) + "'";
+    return mysql_query(mysql_, sql.c_str()) == 0 && mysql_affected_rows(mysql_) > 0;
+  }
+
   int get_bait_count(const std::string &user_id, const std::string &bait_id) {
     ensure_fishing_user(user_id);
     std::lock_guard<std::mutex> lock(db_mutex_);

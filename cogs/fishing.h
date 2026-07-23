@@ -317,6 +317,63 @@ public:
     return &rods_[0]; // default wooden rod
   }
 
+  void get_prestige_fish_requirements(int current_prestige, std::string &out_rarity, double &out_weight) const {
+    if (current_prestige == 0) {
+      out_rarity = "Rare";
+      out_weight = 10.0;
+    } else if (current_prestige == 1) {
+      out_rarity = "Epic";
+      out_weight = 20.0;
+    } else if (current_prestige == 2) {
+      out_rarity = "Legendary";
+      out_weight = 30.0;
+    } else if (current_prestige == 3) {
+      out_rarity = "Mythic";
+      out_weight = 40.0;
+    } else if (current_prestige == 4) {
+      out_rarity = "Exotic";
+      out_weight = 50.0;
+    } else if (current_prestige == 5) {
+      out_rarity = "Divine";
+      out_weight = 60.0;
+    } else {
+      out_rarity = "Singularity";
+      out_weight = 75.0;
+    }
+  }
+
+  int get_rarity_precedence(const std::string &rarity) const {
+    std::string lower = rarity;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+    if (lower == "common") return 0;
+    if (lower == "uncommon") return 1;
+    if (lower == "rare") return 2;
+    if (lower == "epic") return 3;
+    if (lower == "legendary") return 4;
+    if (lower == "mythic") return 5;
+    if (lower == "exotic") return 6;
+    if (lower == "divine") return 7;
+    if (lower == "singularity") return 8;
+    if (lower == "multivertic") return 9;
+    return -1;
+  }
+
+  std::optional<bronx::Database::CaughtFish> find_prestige_qualifying_fish(
+      const std::vector<bronx::Database::CaughtFish> &inv,
+      const std::string &req_rarity,
+      double req_weight) const {
+    int req_prec = get_rarity_precedence(req_rarity);
+    std::optional<bronx::Database::CaughtFish> best_match;
+    for (const auto &fish : inv) {
+      if (get_rarity_precedence(fish.rarity) >= req_prec && fish.weight >= req_weight) {
+        if (!best_match || fish.value < best_match->value) {
+          best_match = fish;
+        }
+      }
+    }
+    return best_match;
+  }
+
   const BaitDef *get_bait(const std::string &id) const {
     for (const auto &b : baits_)
       if (b.id == id)
@@ -890,10 +947,13 @@ public:
       return "pets";
     if (lower_in == "event" || lower_in == "eventshop" || lower_in == "events")
       return "event";
+    if (lower_in == "gift" || lower_in == "send" || lower_in == "trade" ||
+        lower_in == "transfer" || lower_in == "give")
+      return "gift";
 
     std::vector<std::string> subcommands = {
         "cast", "bucket",   "sell", "shop", "buy",  "equip", "bait", "upgrade",
-        "rod",  "prestige", "flex", "top",  "boss", "pets",  "event"};
+        "rod",  "prestige", "flex", "top",  "boss", "pets",  "event", "gift"};
     return fuzzy_match_str(lower_in, subcommands);
   }
 
@@ -1234,6 +1294,66 @@ public:
     if (emoji == "✨") return "multivertic_spark";
 
     return "";
+  }
+
+  void execute_sell(stoatpp::cluster &bot, const stoatpp::events::Message &msg, const std::vector<std::string> &args) {
+    if (args.size() < 2 || args[1] == "all") {
+      auto [count, total_val] =
+          g_db->sell_all_user_fish(msg.author.id);
+      if (count == 0) {
+        bot.send_message(msg.channel_id,
+                         "You have no fish in your bucket to sell.");
+      } else {
+        auto b_monthly = get_or_init_boss(g_db, "monthly");
+        b_monthly.req_progress += total_val;
+        if (b_monthly.req_progress >= b_monthly.req_target) {
+          b_monthly.req_progress = 0;
+          auto u_seller = g_db->get_fishing_user(msg.author.id);
+          if (u_seller) {
+            u_seller->event_tokens += 100;
+            g_db->update_fishing_user(*u_seller);
+          }
+        }
+        g_db->save_global_boss(b_monthly);
+        g_db->add_user_boss_contribution(msg.author.id, "monthly",
+                                         total_val);
+
+        bot.send_message(msg.channel_id,
+                         "💰 Sold **" + std::to_string(count) +
+                             "** fish for a total of **" +
+                             std::to_string(total_val) + "** coins!");
+      }
+      return;
+    }
+
+    std::string target_rarity = args[1];
+    auto [count, total_val] =
+        g_db->sell_user_fish_by_rarity(msg.author.id, target_rarity);
+    if (count > 0) {
+      auto b_monthly = get_or_init_boss(g_db, "monthly");
+      b_monthly.req_progress += total_val;
+      if (b_monthly.req_progress >= b_monthly.req_target) {
+        b_monthly.req_progress = 0;
+        auto u_seller = g_db->get_fishing_user(msg.author.id);
+        if (u_seller) {
+          u_seller->event_tokens += 100;
+          g_db->update_fishing_user(*u_seller);
+        }
+      }
+      g_db->save_global_boss(b_monthly);
+      g_db->add_user_boss_contribution(msg.author.id, "monthly",
+                                       total_val);
+    }
+    if (count == 0) {
+      bot.send_message(msg.channel_id, "No fish of rarity **" +
+                                           target_rarity +
+                                           "** found in your bucket.");
+    } else {
+      bot.send_message(msg.channel_id,
+                       "💰 Sold **" + std::to_string(count) + "** " +
+                           target_rarity + " fish for **" +
+                           std::to_string(total_val) + "** coins!");
+    }
   }
 
   void open_equip_selector(stoatpp::cluster& bot, const std::string& channel_id, const std::string& author_id) {
@@ -2058,65 +2178,50 @@ public:
 
            //  3. SELL FISH
            if (sub == "sell") {
-             if (args.size() < 2 || args[1] == "all") {
-               auto [count, total_val] =
-                   g_db->sell_all_user_fish(msg.author.id);
-               if (count == 0) {
-                 bot.send_message(msg.channel_id,
-                                  "You have no fish in your bucket to sell.");
-               } else {
-                 auto b_monthly = get_or_init_boss(g_db, "monthly");
-                 b_monthly.req_progress += total_val;
-                 if (b_monthly.req_progress >= b_monthly.req_target) {
-                   b_monthly.req_progress = 0;
-                   auto u_seller = g_db->get_fishing_user(msg.author.id);
-                   if (u_seller) {
-                     u_seller->event_tokens += 100;
-                     g_db->update_fishing_user(*u_seller);
-                   }
-                 }
-                 g_db->save_global_boss(b_monthly);
-                 g_db->add_user_boss_contribution(msg.author.id, "monthly",
-                                                  total_val);
+              auto u_seller_opt = g_db->get_fishing_user(msg.author.id);
+              bool has_prestige_fish = false;
+              std::string prestige_fish_name = "";
 
-                 bot.send_message(msg.channel_id,
-                                  "💰 Sold **" + std::to_string(count) +
-                                      "** fish for a total of **" +
-                                      std::to_string(total_val) + "** coins!");
-               }
-               return;
-             }
+              if (u_seller_opt) {
+                std::string req_rarity;
+                double req_weight = 0.0;
+                get_prestige_fish_requirements(u_seller_opt->fish_prestige, req_rarity, req_weight);
 
-             std::string target_rarity = args[1];
-             auto [count, total_val] =
-                 g_db->sell_user_fish_by_rarity(msg.author.id, target_rarity);
-             if (count > 0) {
-               auto b_monthly = get_or_init_boss(g_db, "monthly");
-               b_monthly.req_progress += total_val;
-               if (b_monthly.req_progress >= b_monthly.req_target) {
-                 b_monthly.req_progress = 0;
-                 auto u_seller = g_db->get_fishing_user(msg.author.id);
-                 if (u_seller) {
-                   u_seller->event_tokens += 100;
-                   g_db->update_fishing_user(*u_seller);
-                 }
-               }
-               g_db->save_global_boss(b_monthly);
-               g_db->add_user_boss_contribution(msg.author.id, "monthly",
-                                                total_val);
-             }
-             if (count == 0) {
-               bot.send_message(msg.channel_id, "No fish of rarity **" +
-                                                    target_rarity +
-                                                    "** found in your bucket.");
-             } else {
-               bot.send_message(msg.channel_id,
-                                "💰 Sold **" + std::to_string(count) + "** " +
-                                    target_rarity + " fish for **" +
-                                    std::to_string(total_val) + "** coins!");
-             }
-             return;
-           }
+                auto inv = g_db->get_user_fish_inventory(msg.author.id);
+                auto qualifying_opt = find_prestige_qualifying_fish(inv, req_rarity, req_weight);
+                if (qualifying_opt.has_value()) {
+                  if (args.size() < 2 || args[1] == "all" || get_rarity_precedence(qualifying_opt->rarity) == get_rarity_precedence(args[1])) {
+                    has_prestige_fish = true;
+                    prestige_fish_name = qualifying_opt->fish_name + " (" + qualifying_opt->rarity + ", " + std::to_string((int)qualifying_opt->weight) + "kg)";
+                  }
+                }
+              }
+
+              if (has_prestige_fish) {
+                bot.send_message(msg.channel_id,
+                                 "⚠️ **Warning**: You have a fish required for your next prestige level in your bucket (**" + prestige_fish_name + "**)! "
+                                 "Do you still want to sell it? Type `yes` to confirm and sell all/selected, or `no` to cancel.");
+
+                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [this, &bot, msg, args](std::optional<stoatpp::events::Message> reply) {
+                  if (!reply) {
+                    bot.send_message(msg.channel_id, "⏱️ Sell confirmation timed out. Action cancelled.");
+                    return;
+                  }
+
+                  std::string ans = reply->content;
+                  std::transform(ans.begin(), ans.end(), ans.begin(), ::tolower);
+                  if (ans == "yes" || ans == "y" || ans == "confirm") {
+                    execute_sell(bot, msg, args);
+                  } else {
+                    bot.send_message(msg.channel_id, "❌ Sale cancelled.");
+                  }
+                });
+                return;
+              }
+
+              execute_sell(bot, msg, args);
+              return;
+            }
 
            //  4. SHOP
            if (sub == "shop") {
@@ -2535,30 +2640,43 @@ public:
              int req_catches = 50 * (u.fish_prestige + 1);
              int64_t req_coins = 100000 * (u.fish_prestige + 1);
 
+             std::string req_rarity;
+             double req_weight = 0.0;
+             get_prestige_fish_requirements(u.fish_prestige, req_rarity, req_weight);
+
+             auto inv = g_db->get_user_fish_inventory(msg.author.id);
+             auto qualifying_opt = find_prestige_qualifying_fish(inv, req_rarity, req_weight);
+             bool has_qualifying_fish = qualifying_opt.has_value();
+
              if (args.size() > 1 && args[1] == "confirm") {
-               if (u.total_catches < req_catches || eco.wallet < req_coins) {
+               if (u.total_catches < req_catches || eco.wallet < req_coins || !has_qualifying_fish) {
                  bot.send_message(
                      msg.channel_id,
                      "❌ You do not meet the Fishing Prestige requirements.");
                  return;
                }
 
-               g_db->update_balances(msg.author.id, -req_coins, 0);
+               if (g_db->delete_single_fish(msg.author.id, qualifying_opt->id)) {
+                 g_db->update_balances(msg.author.id, -req_coins, 0);
 
-               u.fish_prestige++;
-               u.prestige_tokens += 25 * u.fish_prestige;
-               g_db->update_fishing_user(u);
+                 u.fish_prestige++;
+                 u.prestige_tokens += 25 * u.fish_prestige;
+                 g_db->update_fishing_user(u);
 
-               bot.send_message(msg.channel_id,
-                                "🎉 **FISHING PRESTIGE LEVEL " +
-                                    std::to_string(u.fish_prestige) +
-                                    "!** 🎉\n"
-                                    "You gained **+" +
-                                    std::to_string(25 * u.fish_prestige) +
-                                    " Prestige Tokens**!\n"
-                                    "Permanent Luck Multiplier is now **+" +
-                                    std::to_string(u.fish_prestige * 25) +
-                                    "%** across all rods!");
+                 bot.send_message(msg.channel_id,
+                                  "🎉 **FISHING PRESTIGE LEVEL " +
+                                      std::to_string(u.fish_prestige) +
+                                      "!** 🎉\n"
+                                      "Sacrificed **1x " + qualifying_opt->fish_name + " (" + qualifying_opt->rarity + ", " + std::to_string((int)qualifying_opt->weight) + "kg)**!\n"
+                                      "You gained **+" +
+                                      std::to_string(25 * u.fish_prestige) +
+                                      " Prestige Tokens**!\n"
+                                      "Permanent Luck Multiplier is now **+" +
+                                      std::to_string(u.fish_prestige * 25) +
+                                      "%** across all rods!");
+               } else {
+                 bot.send_message(msg.channel_id, "❌ Failed to consume required prestige fish from your bucket.");
+               }
                return;
              }
 
@@ -2568,6 +2686,12 @@ public:
              embed.set_colour(0xE74C3C);
              embed.set_title("🔮 Fishing Prestige Status — Tier " +
                              std::to_string(u.fish_prestige));
+
+             std::ostringstream ss_wt;
+             ss_wt << std::fixed << std::setprecision(1) << req_weight;
+             std::string fish_req_status = has_qualifying_fish ? 
+                 "🟢 **FOUND** (" + qualifying_opt->fish_name + " - " + qualifying_opt->rarity + ", " + std::to_string((int)qualifying_opt->weight) + "kg)" :
+                 "🔴 **MISSING** (Need 1x **" + req_rarity + "** or higher fish weighing **" + ss_wt.str() + "kg** or more)";
 
              std::string desc = "Current Fishing Prestige: **Tier " +
                                 std::to_string(u.fish_prestige) +
@@ -2588,7 +2712,8 @@ public:
                                 "- Wallet Coins: **" +
                                 std::to_string(eco.wallet) + " / " +
                                 std::to_string(req_coins) +
-                                "**\n\n"
+                                "**\n"
+                                "- Prestige Sacrifice: " + fish_req_status + "\n\n"
                                 "✨ **Rewards:**\n"
                                 "- **+" +
                                 std::to_string(25 * (u.fish_prestige + 1)) +
@@ -2799,17 +2924,154 @@ public:
              bot.send_message(msg.channel_id, payload);
              return;
            }
+            //  15. P2P GIFTING / TRANSFER
+            if (sub == "gift") {
+              if (args.size() < 4) {
+                bot.send_message(msg.channel_id,
+                                 "❌ Usage:\n"
+                                 "• `.fish gift <@user> fish <fish_id>`\n"
+                                 "• `.fish gift <@user> bait <bait_id> <quantity>`\n"
+                                 "• `.fish gift <@user> tokens <quantity>`");
+                return;
+              }
 
-           bot.send_message(msg.channel_id,
-                            "Unknown subcommand. Usage: `.fish "
-                            "[cast/bucket/sell/shop/buy/equip/bait/upgrade/rod/"
-                            "prestige/profile/top/boss/pets/event]`");
-         },
-         "Economy",
-         0,
-         0,
-         {"cast", "bucket", "sell", "shop", "buy", "equip", "bait", "upgrade",
-          "rod", "prestige", "flex", "top", "boss", "pets", "event"}});
+              std::string target_query = args[1];
+              std::string gift_type = args[2];
+              std::transform(gift_type.begin(), gift_type.end(), gift_type.begin(), ::tolower);
+
+              helpers::resolve_user(bot, msg.server_id, target_query, [this, &bot, msg, gift_type, args](stoatpp::models::User target_user, stoatpp::models::Member, bool success) {
+                if (!success) {
+                  bot.send_message(msg.channel_id, "❌ Could not resolve recipient user.");
+                  return;
+                }
+
+                std::string recipient_id = target_user.id;
+                if (recipient_id == msg.author.id) {
+                  bot.send_message(msg.channel_id, "❌ You cannot gift items to yourself!");
+                  return;
+                }
+
+                if (gift_type == "fish") {
+                  uint64_t fish_id = 0;
+                  try {
+                    fish_id = std::stoull(args[3]);
+                  } catch (...) {
+                    bot.send_message(msg.channel_id, "❌ Invalid fish ID. Specify the numeric ID (e.g. from `.fish bucket`).");
+                    return;
+                  }
+
+                  // Verify sender owns this fish
+                  auto inv = g_db->get_user_fish_inventory(msg.author.id);
+                  bool owns_fish = false;
+                  std::string fish_desc = "";
+                  for (const auto &f : inv) {
+                    if (f.id == fish_id) {
+                      owns_fish = true;
+                      fish_desc = f.fish_name + " (" + f.rarity + ", " + std::to_string((int)f.weight) + "kg)";
+                      break;
+                    }
+                  }
+
+                  if (!owns_fish) {
+                    bot.send_message(msg.channel_id, "❌ You do not own a fish with ID #" + std::to_string(fish_id) + " in your bucket.");
+                    return;
+                  }
+
+                  if (g_db->transfer_fish(fish_id, msg.author.id, recipient_id)) {
+                    bot.send_message(msg.channel_id, "🎁 Successfully gifted **" + fish_desc + "** to <@" + recipient_id + ">!");
+                  } else {
+                    bot.send_message(msg.channel_id, "❌ Failed to transfer fish.");
+                  }
+                  return;
+                }
+
+                if (gift_type == "bait") {
+                  std::string bait_id = args[3];
+                  std::vector<std::string> bait_ids;
+                  for (const auto &b : baits_) bait_ids.push_back(b.id);
+                  std::string target_bait = fuzzy_match_str(bait_id, bait_ids);
+
+                  int quantity = 1;
+                  if (args.size() >= 5) {
+                    try {
+                      quantity = std::stoi(args[4]);
+                    } catch (...) {}
+                  }
+                  if (quantity <= 0) {
+                    bot.send_message(msg.channel_id, "❌ Quantity must be a positive number.");
+                    return;
+                  }
+
+                  int owned_qty = g_db->get_bait_count(msg.author.id, target_bait);
+                  if (owned_qty < quantity) {
+                    bot.send_message(msg.channel_id, "❌ You only have **" + std::to_string(owned_qty) + "** packs of `" + target_bait + "` bait.");
+                    return;
+                  }
+
+                  const BaitDef *def = get_bait(target_bait);
+                  if (g_db->add_bait(msg.author.id, target_bait, -quantity) &&
+                      g_db->add_bait(recipient_id, target_bait, quantity)) {
+                    bot.send_message(msg.channel_id, "🎁 Successfully gifted **" + std::to_string(quantity) + "x " + def->name + "** packs to <@" + recipient_id + ">!");
+                  } else {
+                    bot.send_message(msg.channel_id, "❌ Failed to transfer bait.");
+                  }
+                  return;
+                }
+
+                if (gift_type == "tokens" || gift_type == "token") {
+                  int quantity = 0;
+                  try {
+                    quantity = std::stoi(args[3]);
+                  } catch (...) {
+                    bot.send_message(msg.channel_id, "❌ Invalid token quantity.");
+                    return;
+                  }
+                  if (quantity <= 0) {
+                    bot.send_message(msg.channel_id, "❌ Quantity must be a positive number.");
+                    return;
+                  }
+
+                  auto sender_opt = g_db->get_fishing_user(msg.author.id);
+                  if (!sender_opt || sender_opt->prestige_tokens < quantity) {
+                    int owned = sender_opt ? sender_opt->prestige_tokens : 0;
+                    bot.send_message(msg.channel_id, "❌ You only have **" + std::to_string(owned) + "** Prestige Tokens.");
+                    return;
+                  }
+
+                  auto recipient_opt = g_db->get_fishing_user(recipient_id);
+                  if (!recipient_opt) {
+                    g_db->ensure_fishing_user(recipient_id);
+                    recipient_opt = g_db->get_fishing_user(recipient_id);
+                  }
+
+                  if (recipient_opt) {
+                    sender_opt->prestige_tokens -= quantity;
+                    recipient_opt->prestige_tokens += quantity;
+
+                    g_db->update_fishing_user(*sender_opt);
+                    g_db->update_fishing_user(*recipient_opt);
+
+                    bot.send_message(msg.channel_id, "🎁 Successfully gifted **" + std::to_string(quantity) + " Prestige Tokens** 🪙 to <@" + recipient_id + ">!");
+                  } else {
+                    bot.send_message(msg.channel_id, "❌ Failed to resolve recipient's fishing profile.");
+                  }
+                  return;
+                }
+
+                bot.send_message(msg.channel_id, "❌ Unknown gift type. Choose from `fish`, `bait`, or `tokens`.");
+              });
+              return;
+            }
+
+            bot.send_message(msg.channel_id,
+                             "Unknown subcommand. Usage: `.fish "
+                             "[cast/bucket/sell/shop/buy/equip/bait/upgrade/rod/prestige/profile/top/boss/pets/event/gift]`");
+          },
+          "Economy",
+          0,
+          0,
+          {"cast", "bucket", "sell", "shop", "buy", "equip", "bait", "upgrade",
+           "rod", "prestige", "flex", "top", "boss", "pets", "event", "gift"}});
   }
 };
 
