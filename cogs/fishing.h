@@ -12,6 +12,7 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace bronx::cogs {
@@ -86,15 +87,22 @@ public:
     std::vector<std::string> owned_emojis;
   };
 
+  struct FishdexSession {
+    int current_page = 0;
+    int max_pages    = 10;
+    std::string user_id;
+  };
+
 private:
   std::vector<RodDef> rods_;
   std::vector<BaitDef> baits_;
   std::vector<RodEffectDef> rod_effects_;
   std::vector<FishDef> fish_pool_;
 
-  std::unordered_map<std::string, ShopSession> shop_sessions_;
-  std::unordered_map<std::string, BossSession> boss_sessions_;
+  std::unordered_map<std::string, ShopSession>  shop_sessions_;
+  std::unordered_map<std::string, BossSession>  boss_sessions_;
   std::unordered_map<std::string, EquipSession> equip_sessions_;
+  std::unordered_map<std::string, FishdexSession> fishdex_sessions_;
   std::mutex shop_mutex_;
 
   void init_catalogs() {
@@ -985,6 +993,12 @@ public:
     ss_x << x_str;
     std::string odds_text = ss_x.str() + " (" + pct_str + ")";
 
+    std::string latex_odds = odds_text;
+    size_t pct_pos = latex_odds.find('%');
+    if (pct_pos != std::string::npos) {
+      latex_odds.replace(pct_pos, 1, "\\%");
+    }
+
     if (rarity == "Common") {
       return "🐟 **Common** `" + odds_text + "`";
     } else if (rarity == "Uncommon") {
@@ -997,25 +1011,118 @@ public:
       return "🟡 **__⚡ LEGENDARY ⚡__** `" + odds_text + "`";
     } else if (rarity == "Mythic") {
       return "$$\\textcolor{#FF0055}{\\text{\\underline{\\textbf{🔥 MYTHIC (" +
-             odds_text + ") 🔥}}}}$$";
+             latex_odds + ") 🔥}}}}$$";
     } else if (rarity == "Exotic") {
-      return "$$\\textcolor{#FF00FF}{\\text{\\underline{\\textbf{\\large ✨ "
-             "EXOTIC (" +
-             odds_text + ") ✨}}}}$$";
+      return "$$\\textcolor{#FF00FF}{\\text{\\underline{\\textbf{\\large ✨ EXOTIC (" +
+             latex_odds + ") ✨}}}}$$";
     } else if (rarity == "Divine") {
-      return "$$\\textcolor{#00FFFF}{\\text{\\underline{\\textbf{\\Large 🔱 "
-             "DIVINE (" +
-             odds_text + ") 🔱}}}}$$";
+      return "$$\\textcolor{#00FFFF}{\\text{\\underline{\\textbf{\\Large 🔱 DIVINE (" +
+             latex_odds + ") 🔱}}}}$$";
     } else if (rarity == "Singularity") {
-      return "$$\\textcolor{#FFD700}{\\text{\\underline{\\textbf{\\huge 🌟 "
-             "SINGULARITY (" +
-             odds_text + ") 🌟}}}}$$";
+      return "$$\\textcolor{#FFD700}{\\text{\\underline{\\textbf{\\huge 🌟 SINGULARITY (" +
+             latex_odds + ") 🌟}}}}$$";
     } else if (rarity == "Multivertic") {
-      return "$$\\textcolor{#FF0000}{\\text{\\underline{\\textbf{\\Huge 🌌 "
-             "MULTIVERTIC PRIMORDIAL (" +
-             odds_text + ") 🌌}}}}$$";
+      return "$$\\textcolor{#FF0000}{\\text{\\underline{\\textbf{\\Huge 🌌 MULTIVERTIC PRIMORDIAL (" +
+             latex_odds + ") 🌌}}}}$$";
     }
     return "**" + rarity + "** `" + odds_text + "`";
+  }
+
+  // ── Fishdex Paginator (10 pages, one per rarity) ──────────────────────────
+  static constexpr const char* FISHDEX_RARITIES[10] = {
+      "Common", "Uncommon", "Rare", "Epic", "Legendary",
+      "Mythic", "Exotic",   "Divine", "Singularity", "Multivertic"
+  };
+
+  static constexpr uint32_t FISHDEX_COLORS[10] = {
+      0x95A5A6, // Common    — grey
+      0x2ECC71, // Uncommon  — green
+      0x3498DB, // Rare      — blue
+      0x9B59B6, // Epic      — purple
+      0xF1C40F, // Legendary — gold
+      0xFF0055, // Mythic    — hot pink
+      0xFF00FF, // Exotic    — magenta
+      0x00FFFF, // Divine    — cyan
+      0xFFD700, // Singularity — bright gold
+      0xFF4444, // Multivertic — red
+  };
+
+  stoatpp::models::MessagePayload render_fishdex_page(
+      const std::string &user_id, int page_idx) {
+
+    if (page_idx < 0)  page_idx = 0;
+    if (page_idx >= 10) page_idx = 9;
+
+    const std::string rarity = FISHDEX_RARITIES[page_idx];
+
+    // Collect fish in this rarity tier from the pool
+    std::vector<const FishDef*> tier_fish;
+    for (const auto &f : fish_pool_) {
+      if (f.rarity == rarity)
+        tier_fish.push_back(&f);
+    }
+
+    // Gather the set of fish IDs this user has ever caught (distinct)
+    std::unordered_set<std::string> caught_ids;
+    if (g_db) {
+      auto inv = g_db->get_user_fish_inventory(user_id);
+      for (const auto &cf : inv)
+        caught_ids.insert(cf.fish_id);
+    }
+    int caught_in_tier = 0;
+    for (const auto *f : tier_fish)
+      if (caught_ids.count(f->id)) ++caught_in_tier;
+
+    stoatpp::models::MessagePayload payload;
+    payload.content = " ";
+    stoatpp::models::Embed embed;
+    embed.set_colour(FISHDEX_COLORS[page_idx]);
+
+    // Rarity emoji headers
+    static const std::unordered_map<std::string,std::string> rarity_emoji = {
+        {"Common","🐟"},{"Uncommon","🟢"},{"Rare","🔵"},{"Epic","🟣"},
+        {"Legendary","🟡"},{"Mythic","🔥"},{"Exotic","✨"},
+        {"Divine","🔱"},{"Singularity","🌟"},{"Multivertic","🌌"}
+    };
+    std::string emoji = "📖";
+    auto it_em = rarity_emoji.find(rarity);
+    if (it_em != rarity_emoji.end()) emoji = it_em->second;
+
+    embed.set_title(emoji + " Fishdex — " + rarity +
+                    " (" + std::to_string(caught_in_tier) +
+                    "/" + std::to_string(tier_fish.size()) + " caught)");
+
+    auto format_double = [](double val, int precision) {
+      std::ostringstream ss;
+      ss << std::fixed << std::setprecision(precision) << val;
+      return ss.str();
+    };
+
+    std::string desc;
+    if (tier_fish.empty()) {
+      desc = "*No fish in this rarity tier yet.*";
+    } else {
+      for (const auto *f : tier_fish) {
+        bool has = caught_ids.count(f->id) > 0;
+        desc += (has ? "✅ " : "🔒 ");
+        desc += "**" + f->name + "** (`" + f->id + "`)";        
+        if (has) {
+          desc += " — " + format_double(f->base_weight_min, 1) + "kg-" +
+                  format_double(f->base_weight_max, 1) + "kg | " +
+                  std::to_string(f->base_val_min) + "-" +
+                  std::to_string(f->base_val_max) + " coins";
+        } else {
+          desc += " — *???*";
+        }
+        desc += "\n";
+      }
+    }
+    desc += "\n*Page " + std::to_string(page_idx + 1) +
+            " of 10 | React ◀ ▶ to browse rarities*\n"
+            "*✅ = caught at least once  |  🔒 = not yet caught*";
+    embed.set_description(desc);
+    payload.embeds.push_back(embed.to_json());
+    return payload;
   }
 
   // Interactive Shop Paginator Renderer (7 Total Pages)
@@ -1759,6 +1866,35 @@ public:
         return;
       }
 
+      auto it_fd = fishdex_sessions_.find(e.id);
+      if (it_fd != fishdex_sessions_.end()) {
+        int page      = it_fd->second.current_page;
+        int max_pages = it_fd->second.max_pages;
+        std::string uid = it_fd->second.user_id;
+
+        bool changed = false;
+        if (e.emoji_id == "◀" || e.emoji_id == "⬅" || e.emoji_id == "◀️") {
+          page = (page - 1 + max_pages) % max_pages;
+          changed = true;
+        } else if (e.emoji_id == "▶" || e.emoji_id == "➡" || e.emoji_id == "▶️") {
+          page = (page + 1) % max_pages;
+          changed = true;
+        }
+
+        if (changed) {
+          fishdex_sessions_[e.id].current_page = page;
+          lock.unlock();
+          auto payload = render_fishdex_page(uid, page);
+          bot.edit_message(e.channel_id, e.id, payload, [&bot, e](auto, bool) {
+            bot.unreact_from_message(e.channel_id, e.id, e.emoji_id, e.user_id);
+          });
+        } else {
+          lock.unlock();
+          bot.unreact_from_message(e.channel_id, e.id, e.emoji_id, e.user_id);
+        }
+        return;
+      }
+
       auto it_eq = equip_sessions_.find(e.id);
       if (it_eq != equip_sessions_.end()) {
         std::string author_id = it_eq->second.author_id;
@@ -1810,6 +1946,437 @@ public:
         return;
       }
     });
+
+    bot.register_command(
+        {"fishdex",
+         {"fdex", "fd"},
+         "shows details of a fish species, or lists catch rates with a given bait.",
+         "fishdex [fish/bait name]",
+         {"[fish/bait name]"},
+         [this](stoatpp::cluster &bot, const stoatpp::events::Message &msg,
+                const std::vector<std::string> &args) {
+           if (!g_db) {
+             bot.send_message(msg.channel_id, "❌ Database connection unavailable.");
+             return;
+           }
+
+           auto format_double = [](double val, int precision) {
+             std::ostringstream ss;
+             ss << std::fixed << std::setprecision(precision) << val;
+             return ss.str();
+           };
+
+           if (args.empty()) {
+             // Paginated fishdex — one page per rarity tier
+             std::string author_id = msg.author.id;
+             auto payload = render_fishdex_page(author_id, 0);
+             bot.send_message(msg.channel_id, payload,
+                 [this, &bot, author_id](stoatpp::models::Message res, bool ok) {
+                   if (!ok) return;
+                   {
+                     std::lock_guard<std::mutex> lk(shop_mutex_);
+                     fishdex_sessions_[res.id] = {0, 10, author_id};
+                   }
+                   // seed navigation reactions
+                   bot.rest().add_reaction(res.channel, res.id, "◀");
+                   bot.rest().add_reaction(res.channel, res.id, "▶");
+                 });
+             return;
+           }
+
+           if (args[0] == "claim" || args[0] == "rewards") {
+             std::string author_id = msg.author.id;
+             // 1. Get user caught fish IDs
+             auto inv = g_db->get_user_fish_inventory(author_id);
+             std::unordered_set<std::string> caught_ids;
+             for (const auto &cf : inv) {
+               caught_ids.insert(cf.fish_id);
+             }
+
+             // 2. Define rewards structure
+             struct RarityReward {
+               std::string rarity;
+               int64_t coins;
+               int tokens;
+             };
+             std::vector<RarityReward> rewards = {
+               {"Common", 1000, 0},
+               {"Uncommon", 2500, 0},
+               {"Rare", 5000, 0},
+               {"Epic", 10000, 0},
+               {"Legendary", 25000, 1},
+               {"Mythic", 50000, 2},
+               {"Exotic", 100000, 3},
+               {"Divine", 250000, 5},
+               {"Singularity", 500000, 10},
+               {"Multivertic", 1000000, 25}
+             };
+
+             std::string response = "🏆 **Fishdex Rewards Claim** 🏆\n\n";
+             int64_t total_coins_gained = 0;
+             int total_tokens_gained = 0;
+             bool any_claimed = false;
+             bool all_completed_overall = true;
+
+             // Check each rarity
+             for (const auto &reward : rewards) {
+               // Find all fish in this rarity
+               std::vector<std::string> tier_fish_ids;
+               for (const auto &f : fish_pool_) {
+                 if (f.rarity == reward.rarity) {
+                   tier_fish_ids.push_back(f.id);
+                 }
+               }
+
+               if (tier_fish_ids.empty()) continue;
+
+               // Check if all are caught
+               bool tier_completed = true;
+               for (const auto &fid : tier_fish_ids) {
+                 if (caught_ids.find(fid) == caught_ids.end()) {
+                   tier_completed = false;
+                   break;
+                 }
+               }
+
+               if (!tier_completed) {
+                 all_completed_overall = false;
+                 continue;
+               }
+
+               // Check if already claimed
+               if (!g_db->has_claimed_fishdex_reward(author_id, reward.rarity)) {
+                 // Save claim
+                 g_db->save_fishdex_claim(author_id, reward.rarity);
+                 // Award reward
+                 if (reward.coins > 0) {
+                   g_db->update_balances(author_id, reward.coins, 0);
+                   total_coins_gained += reward.coins;
+                 }
+                 if (reward.tokens > 0) {
+                   auto u_opt = g_db->get_fishing_user(author_id);
+                   if (u_opt) {
+                     auto u = *u_opt;
+                     u.prestige_tokens += reward.tokens;
+                     g_db->update_fishing_user(u);
+                   }
+                   total_tokens_gained += reward.tokens;
+                 }
+                 response += "🎉 Completed **" + reward.rarity + "** tier! Gained **" +
+                             std::to_string(reward.coins) + " coins**" +
+                             (reward.tokens > 0 ? " and **" + std::to_string(reward.tokens) + " Prestige Tokens**" : "") + "!\n";
+                 any_claimed = true;
+               }
+             }
+
+             // Check ALL fish completed overall
+             if (all_completed_overall && !fish_pool_.empty()) {
+               if (!g_db->has_claimed_fishdex_reward(author_id, "ALL")) {
+                 g_db->save_fishdex_claim(author_id, "ALL");
+                 // Reward: 5M coins + 100 Prestige Tokens
+                 int64_t all_coins = 5000000;
+                 int all_tokens = 100;
+                 g_db->update_balances(author_id, all_coins, 0);
+                 total_coins_gained += all_coins;
+
+                 auto u_opt = g_db->get_fishing_user(author_id);
+                 if (u_opt) {
+                   auto u = *u_opt;
+                   u.prestige_tokens += all_tokens;
+                   g_db->update_fishing_user(u);
+                 }
+                 total_tokens_gained += all_tokens;
+                 response += "👑 **GRAND COMPLETION!** Caught every single fish species! Gained **" +
+                             std::to_string(all_coins) + " coins** and **" + std::to_string(all_tokens) + " Prestige Tokens**!\n";
+                 any_claimed = true;
+               }
+             }
+
+             if (any_claimed) {
+               response += "\n💰 **Total Claimed**: `" + std::to_string(total_coins_gained) + " coins` and `" +
+                           std::to_string(total_tokens_gained) + " Prestige Tokens`!";
+             } else {
+               response += "❌ No new rewards to claim. Make sure you've caught all fish in a rarity tier to unlock its reward! (Check status using `.fishdex`)";
+             }
+
+             bot.send_message(msg.channel_id, response);
+             return;
+           }
+
+           // Combine all arguments to form the input query
+           std::string query = "";
+           for (size_t i = 0; i < args.size(); ++i) {
+             query += args[i] + (i + 1 == args.size() ? "" : " ");
+           }
+
+           // Collect candidates for fish and baits
+           std::vector<std::string> fish_ids;
+           std::vector<std::string> fish_names;
+           for (const auto &f : fish_pool_) {
+             fish_ids.push_back(f.id);
+             fish_names.push_back(f.name);
+           }
+
+           std::vector<std::string> bait_ids;
+           std::vector<std::string> bait_names;
+           for (const auto &b : baits_) {
+             bait_ids.push_back(b.id);
+             bait_names.push_back(b.name);
+           }
+
+           const FishDef* matched_fish = nullptr;
+           const BaitDef* matched_bait = nullptr;
+
+           // 1. Check exact/substring matches for fish
+           std::string query_lower = query;
+           std::transform(query_lower.begin(), query_lower.end(), query_lower.begin(), ::tolower);
+
+           for (const auto &f : fish_pool_) {
+             std::string f_id = f.id;
+             std::string f_name = f.name;
+             std::transform(f_id.begin(), f_id.end(), f_id.begin(), ::tolower);
+             std::transform(f_name.begin(), f_name.end(), f_name.begin(), ::tolower);
+             if (f_id == query_lower || f_name == query_lower || f_id.find(query_lower) != std::string::npos || f_name.find(query_lower) != std::string::npos) {
+               matched_fish = &f;
+               break;
+             }
+           }
+
+           // 2. Check exact/substring matches for baits
+           if (!matched_fish) {
+             for (const auto &b : baits_) {
+               std::string b_id = b.id;
+               std::string b_name = b.name;
+               std::transform(b_id.begin(), b_id.end(), b_id.begin(), ::tolower);
+               std::transform(b_name.begin(), b_name.end(), b_name.begin(), ::tolower);
+               if (b_id == query_lower || b_name == query_lower || b_id.find(query_lower) != std::string::npos || b_name.find(query_lower) != std::string::npos) {
+                 matched_bait = &b;
+                 break;
+               }
+             }
+           }
+
+           // 3. Fallback to Levenshtein fuzzy matching
+           if (!matched_fish && !matched_bait) {
+             std::vector<std::string> fish_candidates = fish_ids;
+             fish_candidates.insert(fish_candidates.end(), fish_names.begin(), fish_names.end());
+             std::string f_match = fuzzy_match_str(query, fish_candidates);
+
+             std::vector<std::string> bait_candidates = bait_ids;
+             bait_candidates.insert(bait_candidates.end(), bait_names.begin(), bait_names.end());
+             std::string b_match = fuzzy_match_str(query, bait_candidates);
+
+             int f_dist = levenshtein_distance(query_lower, f_match);
+             int b_dist = levenshtein_distance(query_lower, b_match);
+
+             if (f_dist <= b_dist && f_dist <= 4) {
+               for (const auto &f : fish_pool_) {
+                 if (f_match == f.id || f_match == f.name) {
+                   matched_fish = &f;
+                   break;
+                 }
+               }
+             } else if (b_dist <= 4) {
+               for (const auto &b : baits_) {
+                 if (b_match == b.id || b_match == b.name) {
+                   matched_bait = &b;
+                   break;
+                 }
+               }
+             }
+           }
+
+           // Retrieve user current fishing profile for dynamic odds calculations
+           auto u_opt = g_db->get_fishing_user(msg.author.id);
+           Database::FishingUser u;
+           if (u_opt) {
+             u = *u_opt;
+           } else {
+             u.rod_id = "wooden_rod";
+             u.bait_id = "worm";
+             u.active_rod_effect = "none";
+             u.active_pet_id = "none";
+             u.fish_prestige = 0;
+             u.rod_luck_level = 0;
+             u.rod_rare_level = 0;
+             u.perm_luck = 0.0;
+           }
+
+           double prestige_luck = 1.0 + (u.fish_prestige * 0.25);
+           double rod_luck_stat = 1.0 + (u.rod_luck_level * 0.15);
+           double temp_boost = (u.temp_luck_casts > 0) ? u.temp_luck_boost : 1.0;
+
+           const RodDef *rod = get_rod(u.rod_id);
+           const RodEffectDef *effect = get_effect(u.active_rod_effect);
+           std::optional<PetDef> pet_def = get_pet_def(u.active_pet_id);
+           double pet_luck = pet_def ? pet_def->luck_bonus : 0.0;
+           double pet_rarity_boost = pet_def ? pet_def->rarity_boost : 1.0;
+
+           if (matched_bait) {
+             // 2. Query is a bait! Calculate catch rates under this bait
+             double total_luck = rod->luck_mult * (1.0 + matched_bait->luck_bonus) *
+                                 (1.0 + effect->luck_bonus) * prestige_luck *
+                                 rod_luck_stat * temp_boost *
+                                 (1.0 + pet_luck + u.perm_luck);
+
+             double total_weight = 0.0;
+             std::unordered_map<std::string, double> tier_weights;
+             std::vector<std::pair<std::string, double>> fish_rates;
+
+             for (const auto &f : fish_pool_) {
+               double w = f.base_odds;
+               if (f.rarity != "Common") {
+                 w *= total_luck * matched_bait->rarity_boost *
+                      (1.0 + u.rod_rare_level * 0.10) * pet_rarity_boost;
+               }
+               if (effect->special_flag == "nebula" &&
+                   (f.rarity == "Mythic" || f.rarity == "Exotic")) {
+                 w *= 3.0;
+               }
+               if (effect->special_flag == "godslayer" &&
+                   (f.rarity == "Divine" || f.rarity == "Singularity" ||
+                    f.rarity == "Multivertic")) {
+                 w *= 5.0;
+               }
+               if (rod->id == "multivertic_god_rod" &&
+                   f.rarity == "Multivertic") {
+                 w *= 5.0;
+               }
+
+               tier_weights[f.rarity] += w;
+               total_weight += w;
+               fish_rates.push_back({f.name, w});
+             }
+
+             std::sort(fish_rates.begin(), fish_rates.end(), [](const auto &a, const auto &b) {
+               return a.second > b.second;
+             });
+
+             std::string desc = "🪱 **Fishdex — Bait Details: " + matched_bait->name + "**\n";
+             desc += "*" + matched_bait->desc + "*\n\n";
+             desc += "**Bait Statistics:**\n";
+             desc += "• Luck Bonus: `+" + std::to_string(static_cast<int>(matched_bait->luck_bonus * 100)) + "%` 🍀\n";
+             desc += "• Rarity Boost: `" + format_double(matched_bait->rarity_boost, 1) + "x` 💎\n";
+             desc += "• Cooldown Reduction: `" + std::to_string(-matched_bait->cd_delta) + "s` ⏱️\n";
+             if (matched_bait->cost > 0) {
+               desc += "• Cost: `" + std::to_string(matched_bait->cost) + "` coins (pack of " + std::to_string(matched_bait->pack_size) + ")\n";
+             } else if (matched_bait->token_cost > 0) {
+               desc += "• Cost: `" + std::to_string(matched_bait->token_cost) + "` Prestige Tokens (pack of " + std::to_string(matched_bait->pack_size) + ")\n";
+             }
+             if (matched_bait->req_prestige > 0) {
+               desc += "• Requires Prestige: `Lvl " + std::to_string(matched_bait->req_prestige) + "`\n";
+             }
+             desc += "\n";
+
+             desc += "**Your Rarity Catch Rates (Estimated):**\n";
+             std::vector<std::string> rarities_order = {
+                 "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Exotic", "Divine", "Singularity", "Multivertic"
+             };
+             for (const auto &r : rarities_order) {
+               double wt = tier_weights[r];
+               double pct = (total_weight > 0.0) ? (wt / total_weight) * 100.0 : 0.0;
+               if (pct > 0.0000001) {
+                 desc += "• " + r + ": `" + format_double(pct, 4) + "%`\n";
+               } else {
+                 desc += "• " + r + ": `0.00%` (Unlocks with better gear/prestige)\n";
+               }
+             }
+
+             desc += "\n**Top Catchable Species:**\n";
+             int count = 0;
+             for (const auto &pair : fish_rates) {
+               if (++count > 6) break;
+               double pct = (total_weight > 0.0) ? (pair.second / total_weight) * 100.0 : 0.0;
+               desc += "• " + pair.first + ": `" + format_double(pct, 3) + "%`\n";
+             }
+
+             bot.send_message(msg.channel_id, desc);
+             return;
+           }
+
+           if (matched_fish) {
+             // 3. Query is a fish! Display detailed fish information
+             std::string desc = "🐟 **Fishdex — Species Details: " + matched_fish->name + "**\n\n";
+             desc += "• **Rarity**: `" + matched_fish->rarity + "`\n";
+             desc += "• **Weight Range**: `" + format_double(matched_fish->base_weight_min, 1) + "kg - " + format_double(matched_fish->base_weight_max, 1) + "kg` ⚖️\n";
+             desc += "• **Value Range**: `" + std::to_string(matched_fish->base_val_min) + " - " + std::to_string(matched_fish->base_val_max) + "` coins 🪙\n";
+             
+             // Effect details
+             std::string eff_desc = "None";
+             if (matched_fish->effect_type == "gold_burst") {
+               eff_desc = "💥 **Gold Burst**: Grants an extra bonus of 2x the fish's coin value upon catch.";
+             } else if (matched_fish->effect_type == "adrenaline") {
+               eff_desc = "⚡ **Adrenaline Rush**: Instantly resets your casting cooldown to 0 seconds.";
+             } else if (matched_fish->effect_type == "luck_blessing") {
+               eff_desc = "🍀 **Luck Blessing**: Gained +200% Luck for your next 3 casts.";
+             } else if (matched_fish->effect_type == "prestige_token") {
+               eff_desc = "🔮 **Prestige Essence**: Gained +2 Prestige Tokens on catch.";
+             } else if (matched_fish->effect_type == "xp_surge") {
+               eff_desc = "⭐ **XP Surge**: Gained +250 Leveling XP on catch.";
+             }
+             desc += "• **Special Effect**: " + eff_desc + "\n\n";
+
+             // Minimum / recommended gear requirements
+             if (matched_fish->rarity == "Multivertic") {
+               desc += "⚠️ **Special Requirement**: Requires `Multiversal Singularity Rod` or `Multivertic Omnipotent Rod` to catch!\n\n";
+             }
+
+             // Show catch rates across a few popular baits (using current user gear)
+             desc += "**Your Catch Chance by Bait:**\n";
+             std::vector<std::string> sample_baits = {"worm", "chum_bucket", "golden_fly", "multivertic_spark"};
+             for (const auto &sb_id : sample_baits) {
+               const BaitDef *sb = get_bait(sb_id);
+               if (!sb) continue;
+
+               double total_luck = rod->luck_mult * (1.0 + sb->luck_bonus) *
+                                   (1.0 + effect->luck_bonus) * prestige_luck *
+                                   rod_luck_stat * temp_boost *
+                                   (1.0 + pet_luck + u.perm_luck);
+
+               double total_weight = 0.0;
+               double target_weight = 0.0;
+
+               for (const auto &f : fish_pool_) {
+                 double w = f.base_odds;
+                 if (f.rarity != "Common") {
+                   w *= total_luck * sb->rarity_boost *
+                        (1.0 + u.rod_rare_level * 0.10) * pet_rarity_boost;
+                 }
+                 if (effect->special_flag == "nebula" &&
+                     (f.rarity == "Mythic" || f.rarity == "Exotic")) {
+                   w *= 3.0;
+                 }
+                 if (effect->special_flag == "godslayer" &&
+                     (f.rarity == "Divine" || f.rarity == "Singularity" ||
+                      f.rarity == "Multivertic")) {
+                   w *= 5.0;
+                 }
+                 if (rod->id == "multivertic_god_rod" &&
+                     f.rarity == "Multivertic") {
+                   w *= 5.0;
+                 }
+
+                 total_weight += w;
+                 if (f.id == matched_fish->id) {
+                   target_weight = w;
+                 }
+               }
+
+               double pct = (total_weight > 0.0) ? (target_weight / total_weight) * 100.0 : 0.0;
+               if (pct > 0.0) {
+                 desc += "• " + sb->name + ": `" + format_double(pct, 5) + "%` (approx. 1 in " + std::to_string(static_cast<int>(100.0 / pct)) + " casts)\n";
+               } else {
+                 desc += "• " + sb->name + ": `0.00%` (Unlocks with better gear)\n";
+               }
+             }
+
+             bot.send_message(msg.channel_id, desc);
+             return;
+           }
+
+           bot.send_message(msg.channel_id, "❌ Could not find a fish species or bait matching `" + query + "`.");
+         },
+         "Economy"});
 
     bot.register_command(
         {"fish",

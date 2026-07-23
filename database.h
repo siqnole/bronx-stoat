@@ -1624,6 +1624,12 @@ public:
                 "  PRIMARY KEY (user_id, pet_id)"
                 ")");
 
+    mysql_query(mysql_, "CREATE TABLE IF NOT EXISTS user_fishdex_claims ("
+                        "  user_id VARCHAR(64) NOT NULL,"
+                        "  rarity VARCHAR(64) NOT NULL,"
+                        "  PRIMARY KEY (user_id, rarity)"
+                        ")");
+
     mysql_query(mysql_, "CREATE TABLE IF NOT EXISTS global_fish_bosses ("
                         "  boss_type VARCHAR(32) PRIMARY KEY,"
                         "  boss_name VARCHAR(128) NOT NULL,"
@@ -4515,6 +4521,33 @@ public:
     std::string sql =
         "INSERT IGNORE INTO user_pets (user_id, pet_id) VALUES ('" +
         escape_string(user_id) + "', '" + escape_string(pet_id) + "')";
+    return mysql_query(mysql_, sql.c_str()) == 0;
+  }
+
+  bool has_claimed_fishdex_reward(const std::string &user_id, const std::string &rarity) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return false;
+    std::string sql = "SELECT COUNT(*) FROM user_fishdex_claims WHERE user_id = '" +
+                      escape_string(user_id) + "' AND rarity = '" + escape_string(rarity) + "'";
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        int count = row && row[0] ? std::stoi(row[0]) : 0;
+        mysql_free_result(res);
+        return count > 0;
+      }
+    }
+    return false;
+  }
+
+  bool save_fishdex_claim(const std::string &user_id, const std::string &rarity) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return false;
+    std::string sql = "INSERT INTO user_fishdex_claims (user_id, rarity) VALUES ('" +
+                      escape_string(user_id) + "', '" + escape_string(rarity) + "')";
     return mysql_query(mysql_, sql.c_str()) == 0;
   }
 
