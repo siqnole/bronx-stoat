@@ -757,7 +757,7 @@ private:
                 reward.role_name = role_name;
 
                 if (g_db->create_level_role(reward)) {
-                    bot.send_message(msg.channel_id, "✅ Added level reward: reaching **Level " + std::to_string(lvl) + "** will award role `<@&" + role_id + ">`.");
+                    bot.send_message(msg.channel_id, "✅ Added level reward: reaching **Level " + std::to_string(lvl) + "** will award role `<%" + role_id + ">`.");
                 } else {
                     bot.send_message(msg.channel_id, "❌ Failed to add level role reward.");
                 }
@@ -820,7 +820,7 @@ private:
                     rewards_desc = "*None*";
                 } else {
                     for (const auto& r : roles) {
-                        rewards_desc += "• Level " + std::to_string(r.level) + ": <@&" + r.role_id + ">\n";
+                        rewards_desc += "• Level " + std::to_string(r.level) + ": <%" + r.role_id + ">\n";
                     }
                 }
 

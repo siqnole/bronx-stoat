@@ -333,6 +333,60 @@ public:
     std::string panel_name = "default";
   };
 
+  struct ApplicationPanel {
+    std::string server_id;
+    std::string name;                // unique panel name per server
+    std::string trigger_command;     // e.g. "apply" — "" = disabled
+    std::string trigger_emoji;       // reaction emoji — "" = disabled
+    std::string modal_channel_id;    // channel where panel embed is posted
+    std::string modal_message_id;    // stored so we can watch reactions
+    std::string modal_content;       // text above the panel embed
+    std::string modal_embed_json;
+    std::string output_channel_id;   // where completed apps are posted / "" if ticket mode
+    std::string mode = "post";       // "post" | "ticket" | "channel"
+    std::string view_roles;          // comma-sep: who can see ticket-mode channels
+    std::string view_users;
+    std::string view_permissions;
+    std::string member_role_id;      // deny role for ticket mode
+    std::string naming_scheme = "app-{number}";      // ticket mode: "app-{number}"
+    std::string welcome_content;     // ticket mode: message sent on open
+    std::string close_emoji = "🔒";        // ticket mode close reaction
+    bool require_role = false;       // if true, require_role_id must be held
+    std::string require_role_id;
+    bool role_to_give = false;
+    std::string role_to_give_id;
+    std::string end_message;
+    std::vector<std::string> questions; // ordered question list (unlimited)
+    int app_counter = 0;
+  };
+
+  struct ApplicationSubmission {
+    int id = 0;
+    std::string server_id;
+    std::string panel_name;
+    std::string user_id;
+    uint64_t submitted_at = 0;
+    std::string answers_json;        // JSON array of answers
+    std::string status = "pending";  // "pending" | "accepted" | "rejected"
+    std::string output_message_id;   // message id in output channel (if post mode)
+    std::string ticket_channel_id;   // channel id (if ticket/channel mode)
+  };
+
+  struct ServerListing {
+    std::string server_id;
+    std::string name;
+    std::string mode = "disabled"; // "website", "bump", "both", "disabled"
+    std::string tags;
+    std::string description;
+    std::string embed_json;
+    std::string invite_url;
+    std::string advertising_channel_id;
+    std::string status = "pending"; // "pending", "approved", "denied"
+    uint64_t last_bumped_at = 0;
+    uint64_t created_at = 0;
+    int bump_count = 0;
+  };
+
   struct UserAFK {
     std::string user_id;
     std::string custom_template;
@@ -382,6 +436,29 @@ public:
     std::string target;
   };
 
+  // Starboards
+  struct StarboardConfig {
+    std::string server_id;
+    std::string board_name;
+    std::string channel_id;
+    int threshold = 3;
+    std::string emojis = "⭐";
+    bool allow_self = true;
+    bool delete_below_threshold = true;
+    bool use_embed = true;
+    std::string message_content = "{emoji} **{count}** | {channel} (ID: {message_id})";
+    std::string embed_title = "";
+    std::string embed_description = "{content}\n\n[Jump to message]({jump_url})";
+  };
+
+  struct StarboardMessage {
+    std::string server_id;
+    std::string board_name;
+    std::string original_message_id;
+    std::string starboard_message_id;
+  };
+
+
 private:
   MYSQL *mysql_ = nullptr;
   std::unordered_map<std::string, UserAFK> user_afk_cache_;
@@ -418,6 +495,10 @@ private:
   // Server ID -> TicketConfig
   std::unordered_map<std::string, TicketConfig> ticket_config_cache_;
   std::shared_mutex ticket_config_cache_mutex_;
+
+  // Server ID + ":" + Panel Name -> ApplicationPanel
+  std::unordered_map<std::string, ApplicationPanel> app_panel_cache_;
+  std::shared_mutex app_panel_cache_mutex_;
 
   // Channel ID -> Ticket
   std::unordered_map<std::string, Ticket> ticket_cache_;
@@ -482,6 +563,14 @@ private:
   std::unordered_map<std::string, std::unordered_map<std::string, std::string>>
       user_alias_cache_;
   std::shared_mutex user_alias_cache_mutex_;
+
+  // server_id -> { board_name -> StarboardConfig }
+  std::unordered_map<std::string, std::unordered_map<std::string, StarboardConfig>> starboard_configs_cache_;
+  std::shared_mutex starboard_configs_cache_mutex_;
+
+  // server_id -> { board_name -> { original_message_id -> starboard_message_id } }
+  std::unordered_map<std::string, std::unordered_map<std::string, std::unordered_map<std::string, std::string>>> starboard_messages_cache_;
+  std::shared_mutex starboard_messages_cache_mutex_;
 
   // server_id -> user aliases disabled?
   std::unordered_map<std::string, bool> server_alias_settings_cache_;
@@ -571,6 +660,14 @@ public:
       std::cerr << "[bronx db] mysql_init failed\n";
       return false;
     }
+
+    // Set connection options (prevent hanging and auto-reconnect)
+    my_bool reconnect = 1;
+    mysql_options(mysql_, MYSQL_OPT_RECONNECT, &reconnect);
+    unsigned int timeout_sec = 10;
+    mysql_options(mysql_, MYSQL_OPT_CONNECT_TIMEOUT, &timeout_sec);
+    mysql_options(mysql_, MYSQL_OPT_READ_TIMEOUT, &timeout_sec);
+    mysql_options(mysql_, MYSQL_OPT_WRITE_TIMEOUT, &timeout_sec);
 
     // Connect to server (without DB name first, to create it if it doesn't
     // exist)
@@ -926,6 +1023,37 @@ public:
       return false;
     }
 
+    // Alter Table moderation_logs to add channel_id if it doesn't exist
+    bool has_channel_id = false;
+    if (mysql_query(mysql_, "SELECT channel_id FROM moderation_logs LIMIT 1") == 0) {
+      has_channel_id = true;
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        mysql_free_result(res);
+      }
+    }
+    if (!has_channel_id) {
+      mysql_query(mysql_, "ALTER TABLE moderation_logs ADD COLUMN channel_id VARCHAR(30) DEFAULT NULL");
+    }
+
+    // Create Table command_usage_history
+    std::string create_cmd_history =
+        "CREATE TABLE IF NOT EXISTS command_usage_history ("
+        "  id INT AUTO_INCREMENT PRIMARY KEY,"
+        "  server_id VARCHAR(30) NOT NULL,"
+        "  command_name VARCHAR(64) NOT NULL,"
+        "  user_id VARCHAR(30) NOT NULL,"
+        "  channel_id VARCHAR(30) NOT NULL,"
+        "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "  INDEX idx_user (server_id, user_id),"
+        "  INDEX idx_command (server_id, command_name)"
+        ")";
+    if (mysql_query(mysql_, create_cmd_history.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'command_usage_history': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     std::string create_reminders = "CREATE TABLE IF NOT EXISTS reminders ("
                                    "  id INT AUTO_INCREMENT PRIMARY KEY,"
                                    "  user_id VARCHAR(30) NOT NULL,"
@@ -1088,6 +1216,7 @@ public:
         "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
         "  name VARCHAR(100) NOT NULL,"
         "  icon_id VARCHAR(100) DEFAULT NULL,"
+        "  banner_id VARCHAR(100) DEFAULT NULL,"
         "  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE "
         "CURRENT_TIMESTAMP"
         ")";
@@ -1096,6 +1225,7 @@ public:
                 << mysql_error(mysql_) << "\n";
       return false;
     }
+    mysql_query(mysql_, "ALTER TABLE servers ADD COLUMN IF NOT EXISTS banner_id VARCHAR(100) DEFAULT NULL");
 
     // Create Table server_members
     std::string create_server_members =
@@ -1350,6 +1480,66 @@ public:
       return false;
     }
 
+    // Create Table application_panels
+    std::string create_app_panels =
+        "CREATE TABLE IF NOT EXISTS application_panels ("
+        "  server_id VARCHAR(30) NOT NULL,"
+        "  name VARCHAR(50) NOT NULL,"
+        "  trigger_command VARCHAR(50) DEFAULT '',"
+        "  trigger_emoji VARCHAR(100) DEFAULT '',"
+        "  modal_channel_id VARCHAR(30) DEFAULT '',"
+        "  modal_message_id VARCHAR(30) DEFAULT '',"
+        "  modal_content TEXT DEFAULT NULL,"
+        "  modal_embed_json TEXT DEFAULT NULL,"
+        "  output_channel_id VARCHAR(30) DEFAULT '',"
+        "  mode VARCHAR(20) NOT NULL DEFAULT 'post',"
+        "  view_roles TEXT DEFAULT NULL,"
+        "  view_users TEXT DEFAULT NULL,"
+        "  view_permissions TEXT DEFAULT NULL,"
+        "  member_role_id VARCHAR(30) DEFAULT NULL,"
+        "  naming_scheme VARCHAR(100) DEFAULT 'app-{number}',"
+        "  welcome_content TEXT DEFAULT NULL,"
+        "  close_emoji VARCHAR(100) DEFAULT '🔒',"
+        "  require_role TINYINT(1) NOT NULL DEFAULT 0,"
+        "  require_role_id VARCHAR(30) DEFAULT '',"
+        "  role_to_give TINYINT(1) NOT NULL DEFAULT 0,"
+        "  role_to_give_id VARCHAR(30) DEFAULT '',"
+        "  end_message TEXT DEFAULT NULL,"
+        "  questions JSON DEFAULT NULL,"
+        "  app_counter INT NOT NULL DEFAULT 0,"
+        "  PRIMARY KEY (server_id, name)"
+        ")";
+    if (mysql_query(mysql_, create_app_panels.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'application_panels': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    mysql_query(mysql_, "ALTER TABLE application_panels ADD COLUMN IF NOT EXISTS role_to_give TINYINT(1) NOT NULL DEFAULT 0");
+    mysql_query(mysql_, "ALTER TABLE application_panels ADD COLUMN IF NOT EXISTS role_to_give_id VARCHAR(30) DEFAULT ''");
+    mysql_query(mysql_, "ALTER TABLE application_panels ADD COLUMN IF NOT EXISTS end_message TEXT DEFAULT NULL");
+
+    // Create Table application_submissions
+    std::string create_app_submissions =
+        "CREATE TABLE IF NOT EXISTS application_submissions ("
+        "  id INT AUTO_INCREMENT PRIMARY KEY,"
+        "  server_id VARCHAR(30) NOT NULL,"
+        "  panel_name VARCHAR(50) NOT NULL,"
+        "  user_id VARCHAR(30) NOT NULL,"
+        "  submitted_at BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+        "  answers_json TEXT DEFAULT NULL,"
+        "  status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "  output_message_id VARCHAR(30) DEFAULT '',"
+        "  ticket_channel_id VARCHAR(30) DEFAULT '',"
+        "  INDEX idx_app_sub_server (server_id, panel_name),"
+        "  INDEX idx_app_sub_user (user_id)"
+        ")";
+    if (mysql_query(mysql_, create_app_submissions.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'application_submissions': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     //  counting_configs
     std::string create_counting =
         "CREATE TABLE IF NOT EXISTS counting_configs ("
@@ -1401,6 +1591,28 @@ public:
       return false;
     }
 
+    // Create Table server_listings
+    std::string create_server_listings =
+        "CREATE TABLE IF NOT EXISTS server_listings ("
+        "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+        "  name VARCHAR(100) NOT NULL,"
+        "  mode VARCHAR(20) NOT NULL DEFAULT 'disabled',"
+        "  tags TEXT DEFAULT NULL,"
+        "  description TEXT DEFAULT NULL,"
+        "  embed_json TEXT DEFAULT NULL,"
+        "  invite_url TEXT DEFAULT NULL,"
+        "  advertising_channel_id VARCHAR(30) DEFAULT NULL,"
+        "  status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+        "  last_bumped_at BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+        "  created_at BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+        "  bump_count INT NOT NULL DEFAULT 0"
+        ")";
+    if (mysql_query(mysql_, create_server_listings.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'server_listings': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     // Migration: add active_preset to user_afk table
     mysql_query(mysql_, "ALTER TABLE user_afk ADD COLUMN IF NOT EXISTS "
                         "active_preset VARCHAR(50) NOT NULL DEFAULT 'default'");
@@ -1415,6 +1627,52 @@ public:
         ")";
     if (mysql_query(mysql_, create_user_afk_presets.c_str())) {
       std::cerr << "[bronx db] failed to create table 'user_afk_presets': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    // Create Table starboards
+  std::string create_starboards =
+      "CREATE TABLE IF NOT EXISTS starboards ("
+      "  server_id VARCHAR(30) NOT NULL,"
+      "  board_name VARCHAR(50) NOT NULL,"
+      "  channel_id VARCHAR(30) NOT NULL DEFAULT '',"
+      "  threshold INT NOT NULL DEFAULT 3,"
+      "  emojis TEXT NOT NULL,"
+      "  allow_self TINYINT(1) NOT NULL DEFAULT 1,"
+        "  delete_below_threshold TINYINT(1) NOT NULL DEFAULT 1,"
+        "  use_embed TINYINT(1) NOT NULL DEFAULT 1,"
+        "  message_content TEXT,"
+        "  embed_title TEXT,"
+        "  embed_description TEXT,"
+        "  PRIMARY KEY (server_id, board_name)"
+        ")";
+    if (mysql_query(mysql_, create_starboards.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'starboards': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    // Alter table starboards to add columns if they don't exist
+    mysql_query(mysql_, "ALTER TABLE starboards ADD COLUMN IF NOT EXISTS use_embed TINYINT(1) NOT NULL DEFAULT 1");
+    mysql_query(mysql_, "ALTER TABLE starboards ADD COLUMN IF NOT EXISTS message_content TEXT");
+    mysql_query(mysql_, "ALTER TABLE starboards ADD COLUMN IF NOT EXISTS embed_title TEXT");
+    mysql_query(mysql_, "ALTER TABLE starboards ADD COLUMN IF NOT EXISTS embed_description TEXT");
+    mysql_query(mysql_, "ALTER TABLE starboards ADD COLUMN IF NOT EXISTS delete_below_threshold TINYINT(1) NOT NULL DEFAULT 1");
+    // Widen emojis column from VARCHAR(255) to TEXT to support boards with many custom emojis
+    mysql_query(mysql_, "ALTER TABLE starboards MODIFY COLUMN emojis TEXT NOT NULL DEFAULT '⭐'");
+
+    // Create Table starboard_messages
+    std::string create_starboard_messages =
+        "CREATE TABLE IF NOT EXISTS starboard_messages ("
+        "  server_id VARCHAR(30) NOT NULL,"
+        "  board_name VARCHAR(50) NOT NULL,"
+        "  original_message_id VARCHAR(30) NOT NULL,"
+        "  starboard_message_id VARCHAR(30) NOT NULL,"
+        "  PRIMARY KEY (server_id, board_name, original_message_id)"
+        ")";
+    if (mysql_query(mysql_, create_starboard_messages.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'starboard_messages': "
                 << mysql_error(mysql_) << "\n";
       return false;
     }
@@ -2262,6 +2520,67 @@ public:
       }
     }
 
+    // Load application_panels
+    std::string select_ap =
+        "SELECT server_id, name, trigger_command, trigger_emoji, "
+        "modal_channel_id, modal_message_id, modal_content, modal_embed_json, "
+        "output_channel_id, mode, view_roles, view_users, view_permissions, "
+        "member_role_id, naming_scheme, welcome_content, close_emoji, "
+        "require_role, require_role_id, questions, app_counter, "
+        "role_to_give, role_to_give_id, end_message FROM application_panels";
+    if (mysql_query(mysql_, select_ap.c_str()) == 0) {
+      MYSQL_RES *ap_res = mysql_store_result(mysql_);
+      if (ap_res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> ap_lock(app_panel_cache_mutex_);
+        while ((row = mysql_fetch_row(ap_res))) {
+          std::string s_id = row[0] ? row[0] : "";
+          std::string p_name = row[1] ? row[1] : "";
+          ApplicationPanel ap;
+          ap.server_id = s_id;
+          ap.name = p_name;
+          ap.trigger_command = row[2] ? row[2] : "";
+          ap.trigger_emoji = row[3] ? row[3] : "";
+          ap.modal_channel_id = row[4] ? row[4] : "";
+          ap.modal_message_id = row[5] ? row[5] : "";
+          ap.modal_content = row[6] ? row[6] : "";
+          ap.modal_embed_json = row[7] ? row[7] : "";
+          ap.output_channel_id = row[8] ? row[8] : "";
+          ap.mode = row[9] ? row[9] : "post";
+          ap.view_roles = row[10] ? row[10] : "";
+          ap.view_users = row[11] ? row[11] : "";
+          ap.view_permissions = row[12] ? row[12] : "";
+          ap.member_role_id = row[13] ? row[13] : "";
+          ap.naming_scheme = row[14] ? row[14] : "app-{number}";
+          ap.welcome_content = row[15] ? row[15] : "";
+          ap.close_emoji = row[16] ? row[16] : "🔒";
+          ap.require_role = row[17] ? (std::stoi(row[17]) != 0) : false;
+          ap.require_role_id = row[18] ? row[18] : "";
+
+          std::string q_json = row[19] ? row[19] : "[]";
+          try {
+            auto parsed = nlohmann::json::parse(q_json);
+            if (parsed.is_array()) {
+              for (const auto& q : parsed) {
+                if (q.is_string()) {
+                  ap.questions.push_back(q.get<std::string>());
+                }
+              }
+            }
+          } catch (...) {}
+
+          ap.app_counter = row[20] ? std::stoi(row[20]) : 0;
+          ap.role_to_give = row[21] ? (std::stoi(row[21]) != 0) : false;
+          ap.role_to_give_id = row[22] ? row[22] : "";
+          ap.end_message = row[23] ? row[23] : "";
+
+          std::string cache_key = s_id + ":" + p_name;
+          app_panel_cache_[cache_key] = ap;
+        }
+        mysql_free_result(ap_res);
+      }
+    }
+
     // Load user_afk
     std::string select_afk = "SELECT user_id, COALESCE(custom_template, ''), "
                              "is_afk, COALESCE(reason, ''), since, "
@@ -2568,6 +2887,48 @@ public:
       }
     }
 
+    // Load starboards into cache
+    if (mysql_query(mysql_, "SELECT server_id, board_name, channel_id, threshold, emojis, allow_self, use_embed, message_content, embed_title, embed_description, delete_below_threshold FROM starboards") == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> lock(starboard_configs_cache_mutex_);
+        while ((row = mysql_fetch_row(res))) {
+          if (row[0] && row[1] && row[2] && row[3] && row[4] && row[5]) {
+            StarboardConfig cfg;
+            cfg.server_id = row[0];
+            cfg.board_name = row[1];
+            cfg.channel_id = row[2];
+            cfg.threshold = std::stoi(row[3]);
+            cfg.emojis = row[4];
+            cfg.allow_self = std::stoi(row[5]) != 0;
+            if (row[6]) cfg.use_embed = std::stoi(row[6]) != 0;
+            if (row[7]) cfg.message_content = row[7];
+            if (row[8]) cfg.embed_title = row[8];
+            if (row[9]) cfg.embed_description = row[9];
+            if (row[10]) cfg.delete_below_threshold = std::stoi(row[10]) != 0;
+            starboard_configs_cache_[cfg.server_id][cfg.board_name] = cfg;
+          }
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    // Load starboard_messages into cache
+    if (mysql_query(mysql_, "SELECT server_id, board_name, original_message_id, starboard_message_id FROM starboard_messages") == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> lock(starboard_messages_cache_mutex_);
+        while ((row = mysql_fetch_row(res))) {
+          if (row[0] && row[1] && row[2] && row[3]) {
+            starboard_messages_cache_[row[0]][row[1]][row[2]] = row[3];
+          }
+        }
+        mysql_free_result(res);
+      }
+    }
+
     std::cout << "[bronx db] database successfully initialized.\n";
     return true;
   }
@@ -2611,7 +2972,8 @@ public:
   }
 
   void upsert_server(const std::string &server_id, const std::string &name,
-                     const std::string &icon_id = "") {
+                     const std::string &icon_id = "",
+                     const std::string &banner_id = "") {
     std::lock_guard<std::mutex> lock(db_mutex_);
     if (!mysql_ || server_id.empty())
       return;
@@ -2619,12 +2981,13 @@ public:
     std::string esc_id = escape_string(server_id);
     std::string esc_name = escape_string(name);
     std::string esc_icon = escape_string(icon_id);
+    std::string esc_banner = escape_string(banner_id);
 
     std::string sql =
-        "INSERT INTO servers (server_id, name, icon_id) VALUES ('" + esc_id +
-        "', '" + esc_name + "', '" + esc_icon +
+        "INSERT INTO servers (server_id, name, icon_id, banner_id) VALUES ('" + esc_id +
+        "', '" + esc_name + "', '" + esc_icon + "', '" + esc_banner +
         "') "
-        "ON DUPLICATE KEY UPDATE name=VALUES(name), icon_id=VALUES(icon_id)";
+        "ON DUPLICATE KEY UPDATE name=VALUES(name), icon_id=VALUES(icon_id), banner_id=VALUES(banner_id)";
     mysql_query(mysql_, sql.c_str());
   }
 
@@ -6461,18 +6824,220 @@ public:
                                 const std::string &moderator_id,
                                 const std::string &target_id,
                                 const std::string &reason,
-                                const std::string &extra_details = "") {
+                                const std::string &extra_details = "",
+                                const std::string &channel_id = "") {
     std::lock_guard<std::mutex> lock(db_mutex_);
     if (!mysql_)
       return false;
     std::string sql =
         "INSERT INTO moderation_logs (server_id, action, moderator_id, "
-        "target_id, reason, extra_details) VALUES ('" +
+        "target_id, reason, extra_details, channel_id) VALUES ('" +
         escape_string(server_id) + "', '" + escape_string(action) + "', '" +
         escape_string(moderator_id) + "', '" + escape_string(target_id) +
         "', '" + escape_string(reason) + "', '" + escape_string(extra_details) +
-        "')";
+        "', " + (channel_id.empty() ? "NULL" : "'" + escape_string(channel_id) + "'") + ")";
     return mysql_query(mysql_, sql.c_str()) == 0;
+  }
+
+  bool record_command_usage(const std::string &server_id,
+                            const std::string &command_name,
+                            const std::string &user_id,
+                            const std::string &channel_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return false;
+    std::string sql =
+        "INSERT INTO command_usage_history (server_id, command_name, user_id, "
+        "channel_id) VALUES ('" +
+        escape_string(server_id) + "', '" + escape_string(command_name) +
+        "', '" + escape_string(user_id) + "', '" + escape_string(channel_id) + "')";
+    return mysql_query(mysql_, sql.c_str()) == 0;
+  }
+
+  struct CmdHistoryEntry {
+    int id;
+    std::string command_name;
+    std::string user_id;
+    std::string channel_id;
+    uint64_t created_at; // unix timestamp
+  };
+
+  struct ModHistoryEntry {
+    int id;
+    std::string action;
+    std::string moderator_id;
+    std::string target_id;
+    std::string reason;
+    std::string extra_details;
+    std::string channel_id;
+    uint64_t created_at; // unix timestamp
+  };
+
+  std::vector<CmdHistoryEntry> get_server_command_history_by_user(const std::string &server_id,
+                                                                   const std::string &user_id,
+                                                                   int offset,
+                                                                   int limit,
+                                                                   int &total_count) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    std::vector<CmdHistoryEntry> entries;
+    if (!mysql_) {
+      total_count = 0;
+      return entries;
+    }
+
+    std::string esc_srv = escape_string(server_id);
+    std::string esc_usr = escape_string(user_id);
+    std::string where_clause = "WHERE server_id = '" + esc_srv + "' AND user_id = '" + esc_usr + "'";
+
+    // 1. Get count
+    std::string count_sql = "SELECT COUNT(*) FROM command_usage_history " + where_clause;
+    if (mysql_query(mysql_, count_sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          total_count = std::stoi(row[0]);
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    // 2. Get entries
+    std::string sql = "SELECT id, command_name, user_id, channel_id, UNIX_TIMESTAMP(created_at) FROM command_usage_history " +
+                      where_clause + " ORDER BY id DESC LIMIT " + std::to_string(offset) + ", " + std::to_string(limit);
+
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          CmdHistoryEntry e;
+          e.id = row[0] ? std::stoi(row[0]) : 0;
+          e.command_name = row[1] ? row[1] : "";
+          e.user_id = row[2] ? row[2] : "";
+          e.channel_id = row[3] ? row[3] : "";
+          e.created_at = row[4] ? std::stoull(row[4]) : 0;
+          entries.push_back(e);
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    return entries;
+  }
+
+  std::vector<CmdHistoryEntry> get_server_command_history_by_command(const std::string &server_id,
+                                                                      const std::string &command_name,
+                                                                      int offset,
+                                                                      int limit,
+                                                                      int &total_count) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    std::vector<CmdHistoryEntry> entries;
+    if (!mysql_) {
+      total_count = 0;
+      return entries;
+    }
+
+    std::string esc_srv = escape_string(server_id);
+    std::string esc_cmd = escape_string(command_name);
+    std::string where_clause = "WHERE server_id = '" + esc_srv + "' AND command_name = '" + esc_cmd + "'";
+
+    // 1. Get count
+    std::string count_sql = "SELECT COUNT(*) FROM command_usage_history " + where_clause;
+    if (mysql_query(mysql_, count_sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          total_count = std::stoi(row[0]);
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    // 2. Get entries
+    std::string sql = "SELECT id, command_name, user_id, channel_id, UNIX_TIMESTAMP(created_at) FROM command_usage_history " +
+                      where_clause + " ORDER BY id DESC LIMIT " + std::to_string(offset) + ", " + std::to_string(limit);
+
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          CmdHistoryEntry e;
+          e.id = row[0] ? std::stoi(row[0]) : 0;
+          e.command_name = row[1] ? row[1] : "";
+          e.user_id = row[2] ? row[2] : "";
+          e.channel_id = row[3] ? row[3] : "";
+          e.created_at = row[4] ? std::stoull(row[4]) : 0;
+          entries.push_back(e);
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    return entries;
+  }
+
+  std::vector<ModHistoryEntry> get_server_mod_history(const std::string &server_id,
+                                                      const std::string &user_id,
+                                                      int offset,
+                                                      int limit,
+                                                      int &total_count) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    std::vector<ModHistoryEntry> entries;
+    if (!mysql_) {
+      total_count = 0;
+      return entries;
+    }
+
+    std::string esc_srv = escape_string(server_id);
+    std::string where_clause = "WHERE server_id = '" + esc_srv + "'";
+    if (!user_id.empty()) {
+      std::string esc_usr = escape_string(user_id);
+      where_clause += " AND (moderator_id = '" + esc_usr + "' OR target_id = '" + esc_usr + "')";
+    }
+
+    // 1. Get count
+    std::string count_sql = "SELECT COUNT(*) FROM moderation_logs " + where_clause;
+    if (mysql_query(mysql_, count_sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          total_count = std::stoi(row[0]);
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    // 2. Get entries
+    std::string sql = "SELECT id, action, moderator_id, target_id, COALESCE(reason,''), "
+                      "COALESCE(extra_details,''), COALESCE(channel_id,''), "
+                      "UNIX_TIMESTAMP(created_at) FROM moderation_logs " +
+                      where_clause + " ORDER BY id DESC LIMIT " + std::to_string(offset) + ", " + std::to_string(limit);
+
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          ModHistoryEntry e;
+          e.id = row[0] ? std::stoi(row[0]) : 0;
+          e.action = row[1] ? row[1] : "";
+          e.moderator_id = row[2] ? row[2] : "";
+          e.target_id = row[3] ? row[3] : "";
+          e.reason = row[4] ? row[4] : "";
+          e.extra_details = row[5] ? row[5] : "";
+          e.channel_id = row[6] ? row[6] : "";
+          e.created_at = row[7] ? std::stoull(row[7]) : 0;
+          entries.push_back(e);
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    return entries;
   }
 
   bool delete_moderation_action(const std::string &server_id, int id) {
@@ -7480,6 +8045,29 @@ public:
     return true;
   }
 
+  bool delete_ticket_config(const std::string &server_id, const std::string &name) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_srv = escape_string(server_id);
+    std::string esc_name = escape_string(name);
+    std::string query =
+        "DELETE FROM ticket_configs WHERE server_id = '" + esc_srv + "' AND name = '" + esc_name + "'";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to delete ticket config: " << mysql_error(mysql_)
+                << "\n";
+      return false;
+    }
+
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(ticket_config_cache_mutex_);
+      std::string key = server_id + ":" + name;
+      ticket_config_cache_.erase(key);
+    }
+    return true;
+  }
+
   std::optional<Ticket> get_ticket(const std::string &channel_id) {
     std::shared_lock<std::shared_mutex> lock(ticket_cache_mutex_);
     auto it = ticket_cache_.find(channel_id);
@@ -7611,6 +8199,525 @@ public:
     std::vector<Ticket> results;
     for (const auto &[ch_id, t] : ticket_cache_) {
       results.push_back(t);
+    }
+    return results;
+  }
+
+  // --- Application/Form System DB functions ---
+
+  std::optional<ApplicationPanel> get_application_panel(const std::string &server_id, const std::string &name) {
+    std::shared_lock<std::shared_mutex> lock(app_panel_cache_mutex_);
+    std::string key = server_id + ":" + name;
+    auto it = app_panel_cache_.find(key);
+    if (it != app_panel_cache_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool save_application_panel(const ApplicationPanel &panel) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_srv = escape_string(panel.server_id);
+    std::string esc_name = escape_string(panel.name);
+    std::string esc_cmd = escape_string(panel.trigger_command);
+    std::string esc_emoji = escape_string(panel.trigger_emoji);
+    std::string esc_m_chan = escape_string(panel.modal_channel_id);
+    std::string esc_m_msg = escape_string(panel.modal_message_id);
+    std::string esc_content = escape_string(panel.modal_content);
+    std::string esc_embed = escape_string(panel.modal_embed_json);
+    std::string esc_o_chan = escape_string(panel.output_channel_id);
+    std::string esc_mode = escape_string(panel.mode);
+    std::string esc_roles = escape_string(panel.view_roles);
+    std::string esc_users = escape_string(panel.view_users);
+    std::string esc_perms = escape_string(panel.view_permissions);
+    std::string esc_m_role = escape_string(panel.member_role_id);
+    std::string esc_scheme = escape_string(panel.naming_scheme);
+    std::string esc_welcome = escape_string(panel.welcome_content);
+    std::string esc_close = escape_string(panel.close_emoji);
+    int req_role = panel.require_role ? 1 : 0;
+    std::string esc_req_role_id = escape_string(panel.require_role_id);
+    int give_role = panel.role_to_give ? 1 : 0;
+    std::string esc_give_role_id = escape_string(panel.role_to_give_id);
+    std::string esc_end_msg = escape_string(panel.end_message);
+
+    nlohmann::json q_arr = nlohmann::json::array();
+    for (const auto &q : panel.questions) {
+      q_arr.push_back(q);
+    }
+    std::string esc_questions = escape_string(q_arr.dump());
+    int counter = panel.app_counter;
+
+    std::string query =
+        "INSERT INTO application_panels (server_id, name, trigger_command, "
+        "trigger_emoji, modal_channel_id, modal_message_id, modal_content, "
+        "modal_embed_json, output_channel_id, mode, view_roles, view_users, "
+        "view_permissions, member_role_id, naming_scheme, welcome_content, "
+        "close_emoji, require_role, require_role_id, questions, app_counter, "
+        "role_to_give, role_to_give_id, end_message) "
+        "VALUES ('" +
+        esc_srv + "', '" + esc_name + "', '" + esc_cmd + "', '" + esc_emoji +
+        "', '" + esc_m_chan + "', '" + esc_m_msg + "', '" + esc_content + "', '" +
+        esc_embed + "', '" + esc_o_chan + "', '" + esc_mode + "', '" + esc_roles +
+        "', '" + esc_users + "', '" + esc_perms + "', '" + esc_m_role + "', '" +
+        esc_scheme + "', '" + esc_welcome + "', '" + esc_close + "', " +
+        std::to_string(req_role) + ", '" + esc_req_role_id + "', '" + esc_questions +
+        "', " + std::to_string(counter) + ", " + std::to_string(give_role) + ", '" +
+        esc_give_role_id + "', '" + esc_end_msg + "') "
+        "ON DUPLICATE KEY UPDATE "
+        "trigger_command = '" + esc_cmd + "', "
+        "trigger_emoji = '" + esc_emoji + "', "
+        "modal_channel_id = '" + esc_m_chan + "', "
+        "modal_message_id = '" + esc_m_msg + "', "
+        "modal_content = '" + esc_content + "', "
+        "modal_embed_json = '" + esc_embed + "', "
+        "output_channel_id = '" + esc_o_chan + "', "
+        "mode = '" + esc_mode + "', "
+        "view_roles = '" + esc_roles + "', "
+        "view_users = '" + esc_users + "', "
+        "view_permissions = '" + esc_perms + "', "
+        "member_role_id = '" + esc_m_role + "', "
+        "naming_scheme = '" + esc_scheme + "', "
+        "welcome_content = '" + esc_welcome + "', "
+        "close_emoji = '" + esc_close + "', "
+        "require_role = " + std::to_string(req_role) + ", "
+        "require_role_id = '" + esc_req_role_id + "', "
+        "role_to_give = " + std::to_string(give_role) + ", "
+        "role_to_give_id = '" + esc_give_role_id + "', "
+        "end_message = '" + esc_end_msg + "', "
+        "questions = '" + esc_questions + "', "
+        "app_counter = " + std::to_string(counter);
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save application panel: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(app_panel_cache_mutex_);
+      std::string key = panel.server_id + ":" + panel.name;
+      app_panel_cache_[key] = panel;
+    }
+    return true;
+  }
+
+  bool delete_application_panel(const std::string &server_id, const std::string &name) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_srv = escape_string(server_id);
+    std::string esc_name = escape_string(name);
+    std::string query =
+        "DELETE FROM application_panels WHERE server_id = '" + esc_srv + "' AND name = '" + esc_name + "'";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to delete application panel: " << mysql_error(mysql_)
+                << "\n";
+      return false;
+    }
+
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(app_panel_cache_mutex_);
+      std::string key = server_id + ":" + name;
+      app_panel_cache_.erase(key);
+    }
+    return true;
+  }
+
+  std::vector<ApplicationPanel> get_application_panels_for_server(const std::string &server_id) {
+    std::shared_lock<std::shared_mutex> lock(app_panel_cache_mutex_);
+    std::vector<ApplicationPanel> results;
+    for (const auto &[key, cfg] : app_panel_cache_) {
+      if (cfg.server_id == server_id) {
+        results.push_back(cfg);
+      }
+    }
+    return results;
+  }
+
+  std::vector<ApplicationPanel> get_all_application_panels() {
+    std::shared_lock<std::shared_mutex> lock(app_panel_cache_mutex_);
+    std::vector<ApplicationPanel> results;
+    for (const auto &[key, cfg] : app_panel_cache_) {
+      results.push_back(cfg);
+    }
+    return results;
+  }
+
+  bool save_application_submission(ApplicationSubmission &sub) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_srv = escape_string(sub.server_id);
+    std::string esc_panel = escape_string(sub.panel_name);
+    std::string esc_user = escape_string(sub.user_id);
+    std::string esc_answers = escape_string(sub.answers_json);
+    std::string esc_status = escape_string(sub.status);
+    std::string esc_out_msg = escape_string(sub.output_message_id);
+    std::string esc_t_chan = escape_string(sub.ticket_channel_id);
+
+    std::string query;
+    if (sub.id == 0) {
+      query =
+          "INSERT INTO application_submissions (server_id, panel_name, user_id, "
+          "submitted_at, answers_json, status, output_message_id, "
+          "ticket_channel_id) "
+          "VALUES ('" +
+          esc_srv + "', '" + esc_panel + "', '" + esc_user + "', " +
+          std::to_string(sub.submitted_at) + ", '" + esc_answers + "', '" +
+          esc_status + "', '" + esc_out_msg + "', '" + esc_t_chan + "')";
+    } else {
+      query =
+          "UPDATE application_submissions SET server_id = '" + esc_srv + "', "
+          "panel_name = '" + esc_panel + "', user_id = '" + esc_user + "', "
+          "submitted_at = " + std::to_string(sub.submitted_at) + ", "
+          "answers_json = '" + esc_answers + "', status = '" + esc_status + "', "
+          "output_message_id = '" + esc_out_msg + "', ticket_channel_id = '" +
+          esc_t_chan + "' WHERE id = " + std::to_string(sub.id);
+    }
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save application submission: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    if (sub.id == 0) {
+      sub.id = static_cast<int>(mysql_insert_id(mysql_));
+    }
+    return true;
+  }
+
+  std::optional<ApplicationSubmission> get_application_submission_by_message_id(const std::string &message_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_ || message_id.empty())
+      return std::nullopt;
+
+    std::string query =
+        "SELECT id, server_id, panel_name, user_id, submitted_at, answers_json, "
+        "status, output_message_id, ticket_channel_id FROM application_submissions "
+        "WHERE output_message_id = '" +
+        escape_string(message_id) + "'";
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        std::optional<ApplicationSubmission> sub_opt;
+        if ((row = mysql_fetch_row(res))) {
+          ApplicationSubmission sub;
+          sub.id = row[0] ? std::stoi(row[0]) : 0;
+          sub.server_id = row[1] ? row[1] : "";
+          sub.panel_name = row[2] ? row[2] : "";
+          sub.user_id = row[3] ? row[3] : "";
+          sub.submitted_at = row[4] ? std::stoull(row[4]) : 0;
+          sub.answers_json = row[5] ? row[5] : "";
+          sub.status = row[6] ? row[6] : "pending";
+          sub.output_message_id = row[7] ? row[7] : "";
+          sub.ticket_channel_id = row[8] ? row[8] : "";
+          sub_opt = sub;
+        }
+        mysql_free_result(res);
+        return sub_opt;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<ApplicationSubmission> get_application_submission_by_id(int id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return std::nullopt;
+
+    std::string query =
+        "SELECT id, server_id, panel_name, user_id, submitted_at, answers_json, "
+        "status, output_message_id, ticket_channel_id FROM application_submissions "
+        "WHERE id = " +
+        std::to_string(id);
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        std::optional<ApplicationSubmission> sub_opt;
+        if ((row = mysql_fetch_row(res))) {
+          ApplicationSubmission sub;
+          sub.id = row[0] ? std::stoi(row[0]) : 0;
+          sub.server_id = row[1] ? row[1] : "";
+          sub.panel_name = row[2] ? row[2] : "";
+          sub.user_id = row[3] ? row[3] : "";
+          sub.submitted_at = row[4] ? std::stoull(row[4]) : 0;
+          sub.answers_json = row[5] ? row[5] : "";
+          sub.status = row[6] ? row[6] : "pending";
+          sub.output_message_id = row[7] ? row[7] : "";
+          sub.ticket_channel_id = row[8] ? row[8] : "";
+          sub_opt = sub;
+        }
+        mysql_free_result(res);
+        return sub_opt;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::vector<ApplicationSubmission> get_application_submissions(const std::string &server_id, const std::string &panel_name = "", int limit = 50) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<ApplicationSubmission> results;
+    if (!mysql_)
+      return results;
+
+    std::string query =
+        "SELECT id, server_id, panel_name, user_id, submitted_at, answers_json, "
+        "status, output_message_id, ticket_channel_id FROM application_submissions "
+        "WHERE server_id = '" +
+        escape_string(server_id) + "'";
+    if (!panel_name.empty()) {
+      query += " AND panel_name = '" + escape_string(panel_name) + "'";
+    }
+    query += " ORDER BY id DESC LIMIT " + std::to_string(limit);
+
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          ApplicationSubmission sub;
+          sub.id = row[0] ? std::stoi(row[0]) : 0;
+          sub.server_id = row[1] ? row[1] : "";
+          sub.panel_name = row[2] ? row[2] : "";
+          sub.user_id = row[3] ? row[3] : "";
+          sub.submitted_at = row[4] ? std::stoull(row[4]) : 0;
+          sub.answers_json = row[5] ? row[5] : "";
+          sub.status = row[6] ? row[6] : "pending";
+          sub.output_message_id = row[7] ? row[7] : "";
+          sub.ticket_channel_id = row[8] ? row[8] : "";
+          results.push_back(sub);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return results;
+  }
+
+  std::vector<ApplicationSubmission> get_user_application_submissions(const std::string &user_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<ApplicationSubmission> results;
+    if (!mysql_)
+      return results;
+
+    std::string query =
+        "SELECT id, server_id, panel_name, user_id, submitted_at, answers_json, "
+        "status, output_message_id, ticket_channel_id FROM application_submissions "
+        "WHERE user_id = '" +
+        escape_string(user_id) + "' ORDER BY id DESC";
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          ApplicationSubmission sub;
+          sub.id = row[0] ? std::stoi(row[0]) : 0;
+          sub.server_id = row[1] ? row[1] : "";
+          sub.panel_name = row[2] ? row[2] : "";
+          sub.user_id = row[3] ? row[3] : "";
+          sub.submitted_at = row[4] ? std::stoull(row[4]) : 0;
+          sub.answers_json = row[5] ? row[5] : "";
+          sub.status = row[6] ? row[6] : "pending";
+          sub.output_message_id = row[7] ? row[7] : "";
+          sub.ticket_channel_id = row[8] ? row[8] : "";
+          results.push_back(sub);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return results;
+  }
+
+  bool update_application_submission_status(int id, const std::string &status) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string query = "UPDATE application_submissions SET status = '" + escape_string(status) + "' WHERE id = " + std::to_string(id);
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to update application submission status: " << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  std::optional<ServerListing> get_server_listing(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_ || server_id.empty())
+      return std::nullopt;
+
+    std::string query =
+        "SELECT server_id, name, mode, tags, description, embed_json, invite_url, "
+        "advertising_channel_id, status, last_bumped_at, created_at, bump_count "
+        "FROM server_listings WHERE server_id = '" +
+        escape_string(server_id) + "'";
+
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        std::optional<ServerListing> listing_opt;
+        if ((row = mysql_fetch_row(res))) {
+          ServerListing listing;
+          listing.server_id = row[0] ? row[0] : "";
+          listing.name = row[1] ? row[1] : "";
+          listing.mode = row[2] ? row[2] : "disabled";
+          listing.tags = row[3] ? row[3] : "";
+          listing.description = row[4] ? row[4] : "";
+          listing.embed_json = row[5] ? row[5] : "";
+          listing.invite_url = row[6] ? row[6] : "";
+          listing.advertising_channel_id = row[7] ? row[7] : "";
+          listing.status = row[8] ? row[8] : "pending";
+          listing.last_bumped_at = row[9] ? std::stoull(row[9]) : 0;
+          listing.created_at = row[10] ? std::stoull(row[10]) : 0;
+          listing.bump_count = row[11] ? std::stoi(row[11]) : 0;
+          listing_opt = listing;
+        }
+        mysql_free_result(res);
+        return listing_opt;
+      }
+    }
+    return std::nullopt;
+  }
+
+  bool save_server_listing(const ServerListing &listing) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_srv = escape_string(listing.server_id);
+    std::string esc_name = escape_string(listing.name);
+    std::string esc_mode = escape_string(listing.mode);
+    std::string esc_tags = escape_string(listing.tags);
+    std::string esc_desc = escape_string(listing.description);
+    std::string esc_embed = escape_string(listing.embed_json);
+    std::string esc_invite = escape_string(listing.invite_url);
+    std::string esc_ad_chan = escape_string(listing.advertising_channel_id);
+    std::string esc_status = escape_string(listing.status);
+
+    std::string query =
+        "INSERT INTO server_listings (server_id, name, mode, tags, description, "
+        "embed_json, invite_url, advertising_channel_id, status, last_bumped_at, "
+        "created_at, bump_count) "
+        "VALUES ('" +
+        esc_srv + "', '" + esc_name + "', '" + esc_mode + "', '" + esc_tags +
+        "', '" + esc_desc + "', '" + esc_embed + "', '" + esc_invite + "', '" +
+        esc_ad_chan + "', '" + esc_status + "', " +
+        std::to_string(listing.last_bumped_at) + ", " +
+        std::to_string(listing.created_at) + ", " +
+        std::to_string(listing.bump_count) + ") "
+        "ON DUPLICATE KEY UPDATE "
+        "name = '" + esc_name + "', "
+        "mode = '" + esc_mode + "', "
+        "tags = '" + esc_tags + "', "
+        "description = '" + esc_desc + "', "
+        "embed_json = '" + esc_embed + "', "
+        "invite_url = '" + esc_invite + "', "
+        "advertising_channel_id = '" + esc_ad_chan + "', "
+        "status = '" + esc_status + "', "
+        "last_bumped_at = " + std::to_string(listing.last_bumped_at) + ", "
+        "bump_count = " + std::to_string(listing.bump_count);
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save server listing: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  bool delete_server_listing(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string query =
+        "DELETE FROM server_listings WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to delete server listing: " << mysql_error(mysql_)
+                << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  std::vector<ServerListing> get_approved_server_listings() {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<ServerListing> results;
+    if (!mysql_)
+      return results;
+
+    std::string query =
+        "SELECT server_id, name, mode, tags, description, embed_json, invite_url, "
+        "advertising_channel_id, status, last_bumped_at, created_at, bump_count "
+        "FROM server_listings WHERE status = 'approved' ORDER BY last_bumped_at DESC";
+
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          ServerListing listing;
+          listing.server_id = row[0] ? row[0] : "";
+          listing.name = row[1] ? row[1] : "";
+          listing.mode = row[2] ? row[2] : "disabled";
+          listing.tags = row[3] ? row[3] : "";
+          listing.description = row[4] ? row[4] : "";
+          listing.embed_json = row[5] ? row[5] : "";
+          listing.invite_url = row[6] ? row[6] : "";
+          listing.advertising_channel_id = row[7] ? row[7] : "";
+          listing.status = row[8] ? row[8] : "pending";
+          listing.last_bumped_at = row[9] ? std::stoull(row[9]) : 0;
+          listing.created_at = row[10] ? std::stoull(row[10]) : 0;
+          listing.bump_count = row[11] ? std::stoi(row[11]) : 0;
+          results.push_back(listing);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return results;
+  }
+
+  std::vector<ServerListing> get_all_server_listings() {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<ServerListing> results;
+    if (!mysql_)
+      return results;
+
+    std::string query =
+        "SELECT server_id, name, mode, tags, description, embed_json, invite_url, "
+        "advertising_channel_id, status, last_bumped_at, created_at, bump_count "
+        "FROM server_listings ORDER BY created_at DESC";
+
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          ServerListing listing;
+          listing.server_id = row[0] ? row[0] : "";
+          listing.name = row[1] ? row[1] : "";
+          listing.mode = row[2] ? row[2] : "disabled";
+          listing.tags = row[3] ? row[3] : "";
+          listing.description = row[4] ? row[4] : "";
+          listing.embed_json = row[5] ? row[5] : "";
+          listing.invite_url = row[6] ? row[6] : "";
+          listing.advertising_channel_id = row[7] ? row[7] : "";
+          listing.status = row[8] ? row[8] : "pending";
+          listing.last_bumped_at = row[9] ? std::stoull(row[9]) : 0;
+          listing.created_at = row[10] ? std::stoull(row[10]) : 0;
+          listing.bump_count = row[11] ? std::stoi(row[11]) : 0;
+          results.push_back(listing);
+        }
+        mysql_free_result(res);
+      }
     }
     return results;
   }
@@ -9116,6 +10223,197 @@ public:
       }
     }
     return 0;
+  }
+
+  // --- Starboards CRUD ---
+  bool create_starboard(const std::string &server_id, const std::string &board_name, const std::string &channel_id = "") {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string q = "INSERT INTO starboards (server_id, board_name, channel_id, threshold, emojis, allow_self, use_embed, message_content, embed_title, embed_description, delete_below_threshold) "
+                    "VALUES ('" + escape_string(server_id) + "', '" + escape_string(board_name) + "', '" + escape_string(channel_id) + "', 3, '⭐', 1, 1, "
+                    "'{emoji} **{count}** | {channel} (ID: {message_id})', '', '{content}\\n\\n[Jump to message]({jump_url})', 1) "
+                    "ON DUPLICATE KEY UPDATE channel_id='" + escape_string(channel_id) + "'";
+    if (mysql_query(mysql_, q.c_str())) {
+      std::cerr << "[bronx db] create_starboard failed: " << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    auto& cfg = starboard_configs_cache_[server_id][board_name];
+    cfg.server_id = server_id;
+    cfg.board_name = board_name;
+    cfg.channel_id = channel_id;
+    cfg.threshold = 3;
+    cfg.emojis = "⭐";
+    cfg.allow_self = true;
+    cfg.delete_below_threshold = true;
+    cfg.use_embed = true;
+    cfg.message_content = "{emoji} **{count}** | {channel} (ID: {message_id})";
+    cfg.embed_title = "";
+    cfg.embed_description = "{content}\n\n[Jump to message]({jump_url})";
+    return true;
+  }
+
+  bool delete_starboard(const std::string &server_id, const std::string &board_name) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string q = "DELETE FROM starboards WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    mysql_query(mysql_, q.c_str());
+    
+    std::string q2 = "DELETE FROM starboard_messages WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    mysql_query(mysql_, q2.c_str());
+
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    starboard_configs_cache_[server_id].erase(board_name);
+    
+    std::lock_guard<std::shared_mutex> msg_cache_lock(starboard_messages_cache_mutex_);
+    starboard_messages_cache_[server_id].erase(board_name);
+    return true;
+  }
+
+  bool set_starboard_threshold(const std::string &server_id, const std::string &board_name, int threshold) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string q = "UPDATE starboards SET threshold=" + std::to_string(threshold) + " WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+    
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    starboard_configs_cache_[server_id][board_name].threshold = threshold;
+    return true;
+  }
+
+  bool set_starboard_channel(const std::string &server_id, const std::string &board_name, const std::string &channel_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string q = "UPDATE starboards SET channel_id='" + escape_string(channel_id) + "' WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+    
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    starboard_configs_cache_[server_id][board_name].channel_id = channel_id;
+    return true;
+  }
+
+  bool set_starboard_emojis(const std::string &server_id, const std::string &board_name, const std::string &emojis) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string q = "UPDATE starboards SET emojis='" + escape_string(emojis) + "' WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+    
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    starboard_configs_cache_[server_id][board_name].emojis = emojis;
+    return true;
+  }
+
+  bool set_starboard_self(const std::string &server_id, const std::string &board_name, bool allow_self) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string val = allow_self ? "1" : "0";
+    std::string q = "UPDATE starboards SET allow_self=" + val + " WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+    
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    starboard_configs_cache_[server_id][board_name].allow_self = allow_self;
+    return true;
+  }
+
+  bool set_starboard_delete_below_threshold(const std::string &server_id, const std::string &board_name, bool enabled) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string val = enabled ? "1" : "0";
+    std::string q = "UPDATE starboards SET delete_below_threshold=" + val + " WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    starboard_configs_cache_[server_id][board_name].delete_below_threshold = enabled;
+    return true;
+  }
+
+  bool set_starboard_message_config(const std::string &server_id, const std::string &board_name, const std::string &field, const std::string &value) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string col;
+    if (field == "content") col = "message_content";
+    else if (field == "title") col = "embed_title";
+    else if (field == "description") col = "embed_description";
+    else return false;
+
+    std::string q = "UPDATE starboards SET " + col + "='" + escape_string(value) + "' WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    if (field == "content") starboard_configs_cache_[server_id][board_name].message_content = value;
+    else if (field == "title") starboard_configs_cache_[server_id][board_name].embed_title = value;
+    else if (field == "description") starboard_configs_cache_[server_id][board_name].embed_description = value;
+    return true;
+  }
+
+  bool set_starboard_embed_enabled(const std::string &server_id, const std::string &board_name, bool enabled) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string val = enabled ? "1" : "0";
+    std::string q = "UPDATE starboards SET use_embed=" + val + " WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_configs_cache_mutex_);
+    starboard_configs_cache_[server_id][board_name].use_embed = enabled;
+    return true;
+  }
+
+  std::vector<StarboardConfig> get_starboards(const std::string &server_id) {
+    std::shared_lock<std::shared_mutex> lock(starboard_configs_cache_mutex_);
+    std::vector<StarboardConfig> res;
+    auto it = starboard_configs_cache_.find(server_id);
+    if (it != starboard_configs_cache_.end()) {
+      for (const auto &[name, cfg] : it->second) {
+        res.push_back(cfg);
+      }
+    }
+    return res;
+  }
+
+  std::optional<StarboardConfig> get_starboard(const std::string &server_id, const std::string &board_name) {
+    std::shared_lock<std::shared_mutex> lock(starboard_configs_cache_mutex_);
+    auto it = starboard_configs_cache_.find(server_id);
+    if (it != starboard_configs_cache_.end()) {
+      auto bit = it->second.find(board_name);
+      if (bit != it->second.end()) {
+        return bit->second;
+      }
+    }
+    return std::nullopt;
+  }
+
+  bool add_starboard_message(const std::string &server_id, const std::string &board_name, const std::string &orig_msg_id, const std::string &star_msg_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string q = "INSERT INTO starboard_messages (server_id, board_name, original_message_id, starboard_message_id) VALUES ('" +
+                    escape_string(server_id) + "','" + escape_string(board_name) + "','" + escape_string(orig_msg_id) + "','" + escape_string(star_msg_id) + "') "
+                    "ON DUPLICATE KEY UPDATE starboard_message_id='" + escape_string(star_msg_id) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+    
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_messages_cache_mutex_);
+    starboard_messages_cache_[server_id][board_name][orig_msg_id] = star_msg_id;
+    return true;
+  }
+
+  std::string get_starboard_message(const std::string &server_id, const std::string &board_name, const std::string &orig_msg_id) {
+    std::shared_lock<std::shared_mutex> lock(starboard_messages_cache_mutex_);
+    auto it = starboard_messages_cache_.find(server_id);
+    if (it != starboard_messages_cache_.end()) {
+      auto bit = it->second.find(board_name);
+      if (bit != it->second.end()) {
+        auto mit = bit->second.find(orig_msg_id);
+        if (mit != bit->second.end()) {
+          return mit->second;
+        }
+      }
+    }
+    return "";
+  }
+
+  bool delete_starboard_message(const std::string &server_id, const std::string &board_name, const std::string &orig_msg_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string q = "DELETE FROM starboard_messages WHERE server_id='" + escape_string(server_id) + "' AND board_name='" + escape_string(board_name) + "' AND original_message_id='" + escape_string(orig_msg_id) + "'";
+    if (mysql_query(mysql_, q.c_str())) return false;
+    
+    std::lock_guard<std::shared_mutex> cache_lock(starboard_messages_cache_mutex_);
+    auto it = starboard_messages_cache_.find(server_id);
+    if (it != starboard_messages_cache_.end()) {
+      auto bit = it->second.find(board_name);
+      if (bit != it->second.end()) {
+        bit->second.erase(orig_msg_id);
+      }
+    }
+    return true;
   }
 };
 

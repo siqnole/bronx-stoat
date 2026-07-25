@@ -87,7 +87,13 @@ public:
                 }
 
                 std::string query = args[0];
-                std::string reason = args.size() > 1 ? args[1] : "no reason provided";
+                std::string reason = "no reason provided";
+                if (args.size() > 1) {
+                    reason = "";
+                    for (size_t i = 1; i < args.size(); ++i) {
+                        reason += args[i] + (i + 1 < args.size() ? " " : "");
+                    }
+                }
 
                 helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
@@ -127,7 +133,7 @@ public:
                                         {"{modname}", msg.author.username}
                                     };
                                     send_action_response(bot, msg.server_id, msg.channel_id, "ban", tokens, "successfully banned **" + target_user.username + "**.");
-                                    log_moderation_action(bot, msg.server_id, "Ban", msg.author.id, target_user.id, reason);
+                                    log_moderation_action(bot, msg.server_id, "Ban", msg.author.id, target_user.id, reason, "", msg.channel_id);
                                 } else {
                                     bot.send_message(msg.channel_id, "failed to ban user. do i have target permissions?");
                                 }
@@ -145,29 +151,36 @@ public:
             {},
             "kick a member from the server.",
             "",
-            {"<@user|id>"},
+            {"<@user|id>", "[reason]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling kick...\n";
                 if (args.empty()) {
-                    bot.send_message(msg.channel_id, "usage: `!kick <@user|id>`");
+                    bot.send_message(msg.channel_id, "usage: `!kick <@user|id> [reason]`");
                     return;
                 }
 
                 std::string query = args[0];
+                std::string reason = "no reason provided";
+                if (args.size() > 1) {
+                    reason = "";
+                    for (size_t i = 1; i < args.size(); ++i) {
+                        reason += args[i] + (i + 1 < args.size() ? " " : "");
+                    }
+                }
 
-                helpers::resolve_user(bot, msg.server_id, query, [&bot, msg](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
+                helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
                         bot.send_message(msg.channel_id, "could not resolve target user for kick.");
                         return;
                     }
 
-                    bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, target_user](stoatpp::models::Member exec_member, bool exec_ok) {
+                    bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, target_user, reason](stoatpp::models::Member exec_member, bool exec_ok) {
                         if (!exec_ok) {
                             bot.send_message(msg.channel_id, "failed to verify executor member settings.");
                             return;
                         }
 
-                        bot.fetch_member(msg.server_id, bot.current_user().id, [&bot, msg, target_member, target_user, exec_member](stoatpp::models::Member bot_member, bool bot_ok) {
+                        bot.fetch_member(msg.server_id, bot.current_user().id, [&bot, msg, target_member, target_user, exec_member, reason](stoatpp::models::Member bot_member, bool bot_ok) {
                             if (!bot_ok) {
                                 bot.send_message(msg.channel_id, "failed to verify bot member settings.");
                                 return;
@@ -183,16 +196,17 @@ public:
                                 return;
                             }
 
-                            bot.kick_member(msg.server_id, target_user.id, [&bot, msg, target_user](bool action_success) {
+                            bot.kick_member(msg.server_id, target_user.id, [&bot, msg, target_user, reason](bool action_success) {
                                 if (action_success) {
                                     std::unordered_map<std::string, std::string> tokens = {
                                         {"{user}", "<@" + target_user.id + ">"},
                                         {"{username}", target_user.username},
+                                        {"{reason}", reason},
                                         {"{moderator}", "<@" + msg.author.id + ">"},
                                         {"{modname}", msg.author.username}
                                     };
                                     send_action_response(bot, msg.server_id, msg.channel_id, "kick", tokens, "successfully kicked **" + target_user.username + "**.");
-                                    log_moderation_action(bot, msg.server_id, "Kick", msg.author.id, target_user.id, "");
+                                    log_moderation_action(bot, msg.server_id, "Kick", msg.author.id, target_user.id, reason, "", msg.channel_id);
                                 } else {
                                     bot.send_message(msg.channel_id, "failed to kick user.");
                                 }
@@ -210,11 +224,11 @@ public:
             {},
             "timeout a member (mute/restrict).",
             "",
-            {"<@user|id>", "<seconds>"},
+            {"<@user|id>", "<seconds>", "[reason]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling timeout...\n";
                 if (args.size() < 2) {
-                    bot.send_message(msg.channel_id, "usage: `!timeout <@user|id> <seconds>`");
+                    bot.send_message(msg.channel_id, "usage: `!timeout <@user|id> <seconds> [reason]`");
                     return;
                 }
 
@@ -227,19 +241,27 @@ public:
                     return;
                 }
 
-                helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, seconds](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
+                std::string reason = "no reason provided";
+                if (args.size() > 2) {
+                    reason = "";
+                    for (size_t i = 2; i < args.size(); ++i) {
+                        reason += args[i] + (i + 1 < args.size() ? " " : "");
+                    }
+                }
+
+                helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, seconds, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
                         bot.send_message(msg.channel_id, "could not resolve target user.");
                         return;
                     }
 
-                    bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, target_user, seconds](stoatpp::models::Member exec_member, bool exec_ok) {
+                    bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, target_user, seconds, reason](stoatpp::models::Member exec_member, bool exec_ok) {
                         if (!exec_ok) {
                             bot.send_message(msg.channel_id, "failed to verify executor member settings.");
                             return;
                         }
 
-                        bot.fetch_member(msg.server_id, bot.current_user().id, [&bot, msg, target_member, target_user, exec_member, seconds](stoatpp::models::Member bot_member, bool bot_ok) {
+                        bot.fetch_member(msg.server_id, bot.current_user().id, [&bot, msg, target_member, target_user, exec_member, seconds, reason](stoatpp::models::Member bot_member, bool bot_ok) {
                             if (!bot_ok) {
                                 bot.send_message(msg.channel_id, "failed to verify bot member settings.");
                                 return;
@@ -256,20 +278,21 @@ public:
                             }
 
                              std::string iso_duration = helpers::get_future_iso_timestamp(seconds);
-                             bot.timeout_member(msg.server_id, target_user.id, iso_duration, [&bot, msg, target_user, seconds](bool action_success) {
+                             bot.timeout_member(msg.server_id, target_user.id, iso_duration, [&bot, msg, target_user, seconds, reason](bool action_success) {
                                  if (action_success) {
                                      auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
                                      auto expires_unix = now_unix + seconds;
                                      std::unordered_map<std::string, std::string> tokens = {
                                          {"{user}", "<@" + target_user.id + ">"},
                                          {"{username}", target_user.username},
+                                         {"{reason}", reason},
                                          {"{duration}", std::to_string(seconds) + " seconds"},
                                          {"{expires}", stoatpp::utils::format_timestamp(expires_unix, "R")},
                                          {"{moderator}", "<@" + msg.author.id + ">"},
                                          {"{modname}", msg.author.username}
                                      };
                                      send_action_response(bot, msg.server_id, msg.channel_id, "timeout", tokens, "successfully timed out **" + target_user.username + "** until " + stoatpp::utils::format_timestamp(expires_unix, "R") + ".");
-                                     log_moderation_action(bot, msg.server_id, "Timeout", msg.author.id, target_user.id, "", "Duration: " + std::to_string(seconds) + " seconds");
+                                     log_moderation_action(bot, msg.server_id, "Timeout", msg.author.id, target_user.id, reason, "Duration: " + std::to_string(seconds) + " seconds", msg.channel_id);
                                  } else {
                                      bot.send_message(msg.channel_id, "failed to set timeout.");
                                  }
@@ -296,7 +319,13 @@ public:
                 }
 
                 std::string query = args[0];
-                std::string reason = args.size() > 1 ? args[1] : "no reason provided";
+                std::string reason = "no reason provided";
+                if (args.size() > 1) {
+                    reason = "";
+                    for (size_t i = 1; i < args.size(); ++i) {
+                        reason += args[i] + (i + 1 < args.size() ? " " : "");
+                    }
+                }
 
                 helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
@@ -323,7 +352,7 @@ public:
                             {"{modname}", msg.author.username}
                         };
                         send_action_response(bot, msg.server_id, msg.channel_id, "warn", tokens, "successfully warned **" + target_user.username + "**.");
-                        log_moderation_action(bot, msg.server_id, "Warn", msg.author.id, target_user.id, reason);
+                        log_moderation_action(bot, msg.server_id, "Warn", msg.author.id, target_user.id, reason, "", msg.channel_id);
                     });
                 });
             },
@@ -418,7 +447,7 @@ public:
 
                 if (cmd_arg == "role") {
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "usage: `.jail role <@role|role_id>`");
+                        bot.send_message(msg.channel_id, "usage: `.jail role <%role|role_id>`");
                         return;
                     }
                     std::string role_query = args[1];
@@ -572,7 +601,7 @@ public:
                             send_action_response(bot, msg.server_id, msg.channel_id, "jail_invoke", tokens, "successfully jailed **" + target_user.username + "**.");
 
                             // Log mod log
-                            log_moderation_action(bot, msg.server_id, "Jail", msg.author.id, target_user.id, reason, "Duration: " + duration_str);
+                            log_moderation_action(bot, msg.server_id, "Jail", msg.author.id, target_user.id, reason, "Duration: " + duration_str, msg.channel_id);
                         }).detach();
                     });
                 });
@@ -595,7 +624,13 @@ public:
                 }
 
                 std::string target_query = args[0];
-                std::string reason = args.size() > 1 ? args[1] : "no reason provided";
+                std::string reason = "no reason provided";
+                if (args.size() > 1) {
+                    reason = "";
+                    for (size_t i = 1; i < args.size(); ++i) {
+                        reason += args[i] + (i + 1 < args.size() ? " " : "");
+                    }
+                }
 
                 helpers::resolve_user(bot, msg.server_id, target_query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
@@ -633,13 +668,14 @@ public:
                         std::unordered_map<std::string, std::string> tokens = {
                             {"{user}", "<@" + target_user.id + ">"},
                             {"{username}", target_user.username},
+                            {"{reason}", reason},
                             {"{moderator}", "<@" + msg.author.id + ">"},
                             {"{modname}", msg.author.username}
                         };
                         send_action_response(bot, msg.server_id, msg.channel_id, "unjail", tokens, "successfully unjailed **" + target_user.username + "**.");
 
                         // 4. Log to modlogs
-                        log_moderation_action(bot, msg.server_id, "Unjail", msg.author.id, target_user.id, reason);
+                        log_moderation_action(bot, msg.server_id, "Unjail", msg.author.id, target_user.id, reason, "", msg.channel_id);
                     }).detach();
                 });
             },
@@ -704,6 +740,9 @@ public:
                         std::vector<std::string> ids;
                         for (const auto& item : res.body) {
                             auto m = stoatpp::models::Message::from_json(item);
+                            if (m.raw.value("pinned", false)) {
+                                continue;
+                            }
                             if (target_user_id.empty() || m.author == target_user_id) {
                                 ids.push_back(m.id);
                                 if (!target_user_id.empty() && ids.size() >= static_cast<size_t>(amount)) {
@@ -950,13 +989,13 @@ public:
                         "• `list` — List all customized action responses.\n\n"
                         "**Supported Actions & Tokens:**\n"
                         "• **Ban (`ban`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
-                        "• **Kick (`kick`):** `{user}`, `{username}`, `{moderator}`, `{modname}`\n"
-                        "• **Timeout (`timeout`):** `{user}`, `{username}`, `{duration}`, `{expires}`, `{moderator}`, `{modname}`\n"
+                        "• **Kick (`kick`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
+                        "• **Timeout (`timeout`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{expires}`, `{moderator}`, `{modname}`\n"
                         "• **Purge (`purge`):** `{amount}`, `{moderator}`, `{modname}`\n"
                         "• **Warn (`warn`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
                         "• **Jail (`jail`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{moderator}`, `{modname}`\n"
                         "• **Jail Invoke (`jail_invoke`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{moderator}`, `{modname}`\n"
-                        "• **Unjail (`unjail`):** `{user}`, `{username}`, `{moderator}`, `{modname}`\n\n"
+                        "• **Unjail (`unjail`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n\n"
                         "**Examples:**\n"
                         "• `" + pfx + "message ban {user} was sent into the stratosphere! Reason: {reason}`\n"
                         "• `" + pfx + "message edit ban title:🔨 Banned! color:#ff0000 description:{user} was banned by {moderator}`"

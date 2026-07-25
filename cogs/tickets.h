@@ -712,9 +712,10 @@ public:
                                                      "• `" + pfx + "ticket edit [panel] [key:val ...]` — Edit panel settings (omit keys to list all).\n"
                                                      "• `" + pfx + "ticket panel [panel] [#channel]` — Send the ticket creation panel.\n"
                                                      "• `" + pfx + "ticket list` — List all configured panels.\n"
+                                                     "• `" + pfx + "ticket delete [panel]` — Delete a configured ticket panel.\n"
                                                      "• `" + pfx + "ticket close` — Close the current ticket.\n"
-                                                     "• `" + pfx + "ticket add <@user>` — Add a user to the current ticket.\n"
-                                                     "• `" + pfx + "ticket remove <@user>` — Remove a user from the current ticket.\n"
+                                                     "• `" + pfx + "ticket add <@&role>` — Add a role to the current ticket.\n"
+                                                     "• `" + pfx + "ticket remove <@&role>` — Remove a role from the current ticket.\n"
                                                      "• `" + pfx + "ticket config [panel]` — Show full panel configuration.");
                     return;
                 }
@@ -739,14 +740,15 @@ public:
                         return;
                     }
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "usage: `" + pfx + "ticket add <@user|userID>`");
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "ticket add <@&role|roleID>`");
                         return;
                     }
                     std::string target = args[1];
-                    std::string target_user_id = target;
-                    if (target.rfind("<@", 0) == 0 && target.back() == '>') {
-                        target_user_id = target.substr(2, target.size() - 3);
-                        if (target_user_id.rfind("!", 0) == 0) target_user_id = target_user_id.substr(1);
+                    std::string target_role_id = target;
+                    if (target.rfind("<%", 0) == 0 && target.back() == '>') {
+                        target_role_id = target.substr(2, target.size() - 3);
+                    } else if (target.rfind("<@&", 0) == 0 && target.back() == '>') {
+                        target_role_id = target.substr(3, target.size() - 4);
                     }
 
                     int64_t creator_allow = stoatpp::permissions::ViewChannel | 
@@ -754,8 +756,8 @@ public:
                                             stoatpp::permissions::EmbedLinks | 
                                             stoatpp::permissions::UploadFiles | 
                                             stoatpp::permissions::AddReactions;
-                    bot.rest().set_channel_permission(msg.channel_id, target_user_id, creator_allow, 0);
-                    bot.send_message(msg.channel_id, "✅ Added <@" + target_user_id + "> to the ticket.");
+                    bot.rest().set_channel_permission(msg.channel_id, target_role_id, creator_allow, 0);
+                    bot.send_message(msg.channel_id, "✅ Added role <%" + target_role_id + "> to the ticket.");
                     return;
                 }
 
@@ -766,18 +768,19 @@ public:
                         return;
                     }
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "usage: `" + pfx + "ticket remove <@user|userID>`");
+                        bot.send_message(msg.channel_id, "usage: `" + pfx + "ticket remove <@&role|roleID>`");
                         return;
                     }
                     std::string target = args[1];
-                    std::string target_user_id = target;
-                    if (target.rfind("<@", 0) == 0 && target.back() == '>') {
-                        target_user_id = target.substr(2, target.size() - 3);
-                        if (target_user_id.rfind("!", 0) == 0) target_user_id = target_user_id.substr(1);
+                    std::string target_role_id = target;
+                    if (target.rfind("<%", 0) == 0 && target.back() == '>') {
+                        target_role_id = target.substr(2, target.size() - 3);
+                    } else if (target.rfind("<@&", 0) == 0 && target.back() == '>') {
+                        target_role_id = target.substr(3, target.size() - 4);
                     }
 
-                    bot.rest().delete_channel_permission(msg.channel_id, target_user_id);
-                    bot.send_message(msg.channel_id, "✅ Removed <@" + target_user_id + "> from the ticket.");
+                    bot.rest().delete_channel_permission(msg.channel_id, target_role_id);
+                    bot.send_message(msg.channel_id, "✅ Removed role <%" + target_role_id + "> from the ticket.");
                     return;
                 }
 
@@ -810,6 +813,25 @@ public:
                         embed["description"] = desc;
                         payload.embeds.push_back(embed);
                         bot.send_message(msg.channel_id, payload);
+                        return;
+                    }
+
+                    if (subcommand == "delete") {
+                        if (args.size() < 2) {
+                            bot.send_message(msg.channel_id, "usage: `" + pfx + "ticket delete [panel]`");
+                            return;
+                        }
+                        std::string target_panel = args[1];
+                        auto tc_opt = g_db->get_ticket_config(msg.server_id, target_panel);
+                        if (!tc_opt) {
+                            bot.send_message(msg.channel_id, "⚠️ Ticket panel `" + target_panel + "` not found.");
+                            return;
+                        }
+                        if (g_db->delete_ticket_config(msg.server_id, target_panel)) {
+                            bot.send_message(msg.channel_id, "✅ Ticket panel `" + target_panel + "` successfully deleted.");
+                        } else {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to delete ticket panel `" + target_panel + "`.");
+                        }
                         return;
                     }
 
@@ -1398,7 +1420,7 @@ public:
                         return;
                     }
 
-                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, panel, list, close, add, remove, config.");
+                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, panel, list, delete, close, add, remove, config.");
                 });
             },
             "Tickets"

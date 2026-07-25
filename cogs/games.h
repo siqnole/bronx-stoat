@@ -15,6 +15,7 @@
 #include <thread>
 #include <cctype>
 #include <atomic>
+#include <httplib.h>
 
 namespace bronx::cogs {
 
@@ -69,6 +70,19 @@ public:
         std::string category;
     };
 
+    struct WordleGame {
+        std::string channel_id;
+        std::string user_id;
+        std::string message_id;
+        std::string secret;              // lowercase target word
+        int word_len = 5;
+        int max_guesses = 6;
+        std::vector<std::string> guesses; // each guess (lowercase)
+        // Per-letter state: 2=in-spot(green), 1=in-word(yellow), 0=not-in-word(grey), -1=unused
+        std::unordered_map<char, int> keyboard;
+        bool active = false;
+    };
+
 private:
     std::unordered_map<std::string, DuelChallenge> active_challenges_; // message_id -> challenge
     std::mutex duel_mutex_;
@@ -78,6 +92,9 @@ private:
 
     std::unordered_map<std::string, TeaGame> active_tea_games_; // channel_id -> game
     std::mutex tea_mutex_;
+
+    std::unordered_map<std::string, WordleGame> active_wordle_games_; // channel_id -> game
+    std::mutex wordle_mutex_;
 
     struct ConwayGame {
         std::string channel_id;
@@ -909,6 +926,36 @@ public:
             },
             "Games"
         });
+
+        // wordle command
+        bot.register_command({
+            "wordle",
+            {"wrd"},
+            "play wordle — guess a hidden word in 6 tries.",
+            "wordle [letters]",
+            {"[letters]"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                int word_len = 5;
+                if (!args.empty()) {
+                    try { word_len = std::stoi(args[0]); } catch (...) {}
+                }
+                if (word_len < 3) word_len = 3;
+                if (word_len > 10) word_len = 10;
+
+                {
+                    std::lock_guard<std::mutex> lock(wordle_mutex_);
+                    if (active_wordle_games_.count(msg.channel_id)) {
+                        bot.send_message(msg.channel_id, "⚠️ There is already an active Wordle game in this channel. Finish it first!");
+                        return;
+                    }
+                }
+
+                std::thread([this, &bot, msg, word_len]() {
+                    run_wordle(bot, msg, word_len);
+                }).detach();
+            },
+            "Games"
+        });
     }
 
     void run_roulette_spin(stoatpp::cluster& bot, const std::string& channel_id) {
@@ -1148,7 +1195,317 @@ public:
         }
     }
 
-private:
+    // ---- Wordle helpers ----
+
+    // Returns true if the word is a real English word (checks dictionaryapi.dev)
+    static bool validate_word_online(const std::string& word) {
+        try {
+            httplib::Client cli("https://api.dictionaryapi.dev");
+            cli.set_connection_timeout(5, 0);
+            cli.set_read_timeout(5, 0);
+            auto res = cli.Get("/api/v2/entries/en/" + word);
+            if (res && res->status == 200) return true;
+        } catch (...) {}
+        return false;
+    }
+
+    // Pick a random word of exactly `len` letters from the word_salad_list_, or fall back to a
+    // small built-in list of common words.
+    std::string pick_wordle_word(int len) {
+        static const std::vector<std::string> fallback_5 = {
+            "crane", "slate", "trace", "audio", "louie", "raise", "light",
+            "words", "plant", "black", "shark", "stone", "brick", "flame",
+            "chess", "blaze", "swift", "drink", "frost", "grain", "groan",
+            "sport", "stare", "three", "place", "story", "still", "stead",
+            "steam", "steel", "stark", "stale", "shard", "shall", "reach"
+        };
+        static const std::vector<std::string> fallback_4 = {
+            "cake", "drop", "frog", "grab", "harp", "lamp", "mask", "nest",
+            "oven", "palm", "quip", "road", "salt", "tent", "ugly", "vine",
+            "wand", "yell", "zero", "arch", "band", "corn", "dust", "farm"
+        };
+        static const std::vector<std::string> fallback_6 = {
+            "planet", "bridge", "castle", "finger", "garden", "harbor",
+            "island", "jungle", "kitten", "lantern", "magnet", "narrow",
+            "orange", "pillow", "quartz", "rhythm", "silver", "throne"
+        };
+
+        std::random_device rd;
+        std::mt19937 gen(rd());
+
+        // Try from word_salad_list_
+        std::vector<std::string> candidates;
+        for (const auto& e : word_salad_list_) {
+            if ((int)e.word.size() == len) candidates.push_back(e.word);
+        }
+        if (!candidates.empty()) {
+            std::uniform_int_distribution<> dis(0, (int)candidates.size() - 1);
+            return candidates[dis(gen)];
+        }
+
+        // Fallback per length
+        const std::vector<std::string>* fb = &fallback_5;
+        if (len == 4) fb = &fallback_4;
+        else if (len == 6) fb = &fallback_6;
+
+        std::uniform_int_distribution<> dis(0, (int)fb->size() - 1);
+        return (*fb)[dis(gen)];
+    }
+
+    // Build the display board as a single formatted string.
+    // In-spot  => **X** (bold)
+    // In-word  => *X*  (italic)
+    // Not-in   => ~~X~~ (strikethrough)
+    std::string render_wordle_board(const WordleGame& game) const {
+        std::string out;
+        for (const auto& guess : game.guesses) {
+            // Compute per-letter result against secret
+            std::vector<int> result(game.word_len, 0); // 0=grey,1=yellow,2=green
+            std::string secret_remaining = game.secret;
+
+            // First pass: mark greens
+            for (int i = 0; i < game.word_len; ++i) {
+                if (guess[i] == game.secret[i]) {
+                    result[i] = 2;
+                    secret_remaining[i] = '\0'; // consume
+                }
+            }
+            // Second pass: mark yellows
+            for (int i = 0; i < game.word_len; ++i) {
+                if (result[i] == 2) continue;
+                auto pos = secret_remaining.find(guess[i]);
+                if (pos != std::string::npos) {
+                    result[i] = 1;
+                    secret_remaining[pos] = '\0';
+                }
+            }
+
+            for (int i = 0; i < game.word_len; ++i) {
+                char c = (char)std::toupper((unsigned char)guess[i]);
+                if (result[i] == 2) {
+                    out += std::string("**") + c + "** ";
+                } else if (result[i] == 1) {
+                    out += std::string("*") + c + "* ";
+                } else {
+                    out += std::string("~~") + c + "~~ ";
+                }
+            }
+            out += "\n";
+        }
+
+        // Empty remaining rows
+        int remaining = game.max_guesses - (int)game.guesses.size();
+        for (int r = 0; r < remaining; ++r) {
+            for (int i = 0; i < game.word_len; ++i) {
+                out += "\U00002B1C "; // ⬜ empty slot
+            }
+            out += "\n";
+        }
+        return out;
+    }
+
+    // Keyboard row display
+    std::string render_wordle_keyboard(const WordleGame& game) const {
+        static const std::vector<std::string> rows = {
+            "qwertyuiop",
+            "asdfghjkl",
+            "zxcvbnm"
+        };
+        std::string out = "\n";
+        for (const auto& row : rows) {
+            for (char c : row) {
+                auto it = game.keyboard.find(c);
+                int state = (it != game.keyboard.end()) ? it->second : -1;
+                char up = (char)std::toupper((unsigned char)c);
+                if (state == 2) {
+                    out += std::string("**") + up + "** ";
+                } else if (state == 1) {
+                    out += std::string("*") + up + "* ";
+                } else if (state == 0) {
+                    out += std::string("~~") + up + "~~ ";
+                } else {
+                    out += up;
+                    out += " ";
+                }
+            }
+            out += "\n";
+        }
+        return out;
+    }
+
+    void run_wordle(stoatpp::cluster& bot, const stoatpp::events::Message& msg, int word_len) {
+        std::string secret = pick_wordle_word(word_len);
+        if (secret.empty()) {
+            bot.send_message(msg.channel_id, "⚠️ Could not find a word of length " + std::to_string(word_len) + ". Try 5.");
+            return;
+        }
+
+        WordleGame game;
+        game.channel_id = msg.channel_id;
+        game.user_id = msg.author.id;
+        game.secret = secret;
+        game.word_len = word_len;
+        game.max_guesses = 6;
+        game.active = true;
+
+        // Register game
+        {
+            std::lock_guard<std::mutex> lock(wordle_mutex_);
+            active_wordle_games_[msg.channel_id] = game;
+        }
+
+        // Build initial board
+        auto make_payload = [&](const WordleGame& g, bool finished, bool won) -> stoatpp::models::MessagePayload {
+            stoatpp::models::MessagePayload payload;
+            payload.content = " ";
+            stoatpp::models::Embed embed;
+
+            if (!finished) {
+                embed.set_colour(0x5865F2);
+                embed.set_title("🟩 Wordle — " + std::to_string(word_len) + " letters");
+                embed.set_description(
+                    render_wordle_board(g) +
+                    render_wordle_keyboard(g) +
+                    "\n**Guess " + std::to_string((int)g.guesses.size() + 1) +
+                    "/" + std::to_string(g.max_guesses) + "** — type your guess!"
+                );
+            } else if (won) {
+                embed.set_colour(0x57F287);
+                embed.set_title("🏆 Wordle — You won!");
+                embed.set_description(
+                    render_wordle_board(g) +
+                    "\nThe word was **" + g.secret + "**. Solved in **" +
+                    std::to_string((int)g.guesses.size()) + "/" + std::to_string(g.max_guesses) + "** guesses!"
+                );
+            } else {
+                embed.set_colour(0xED4245);
+                embed.set_title("💀 Wordle — Game Over");
+                embed.set_description(
+                    render_wordle_board(g) +
+                    "\nThe word was **" + g.secret + "**. Better luck next time!"
+                );
+            }
+            payload.add_embed(embed);
+            return payload;
+        };
+
+        // Send the initial board
+        std::string board_msg_id;
+        {
+            auto payload = make_payload(game, false, false);
+            auto promise = std::make_shared<std::promise<std::string>>();
+            bot.send_message(msg.channel_id, payload, [promise](stoatpp::models::Message res, bool ok) {
+                promise->set_value(ok ? res.id : "");
+            });
+            board_msg_id = promise->get_future().get();
+        }
+
+        if (board_msg_id.empty()) {
+            std::lock_guard<std::mutex> lock(wordle_mutex_);
+            active_wordle_games_.erase(msg.channel_id);
+            return;
+        }
+
+        game.message_id = board_msg_id;
+        {
+            std::lock_guard<std::mutex> lock(wordle_mutex_);
+            if (active_wordle_games_.count(msg.channel_id))
+                active_wordle_games_[msg.channel_id].message_id = board_msg_id;
+        }
+
+        bool won = false;
+        while ((int)game.guesses.size() < game.max_guesses) {
+            // Await a valid guess
+            std::string guess;
+            while (true) {
+                auto promise = std::make_shared<std::promise<std::optional<stoatpp::events::Message>>>();
+                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30),
+                    [promise](std::optional<stoatpp::events::Message> res) {
+                        promise->set_value(res);
+                    });
+                auto response = promise->get_future().get();
+
+                if (!response) {
+                    // Timed out
+                    bot.edit_message(msg.channel_id, board_msg_id,
+                        "⏱️ Wordle timed out! The word was **" + game.secret + "**.");
+                    std::lock_guard<std::mutex> lock(wordle_mutex_);
+                    active_wordle_games_.erase(msg.channel_id);
+                    return;
+                }
+
+                std::string raw = sanitize_word(response->content);
+                if ((int)raw.size() != word_len) {
+                    bot.send_message(msg.channel_id,
+                        "⚠️ Your guess must be exactly " + std::to_string(word_len) + " letters. Try again!",
+                        [&bot, cid = msg.channel_id](stoatpp::models::Message m, bool ok) {
+                            if (ok) {
+                                std::this_thread::sleep_for(std::chrono::seconds(4));
+                                bot.delete_message(cid, m.id);
+                            }
+                        });
+                    continue;
+                }
+
+                // Sanity check: must be all alphabetic
+                bool all_alpha = true;
+                for (char c : raw) { if (!std::isalpha((unsigned char)c)) { all_alpha = false; break; } }
+                if (!all_alpha) {
+                    bot.send_message(msg.channel_id,
+                        "⚠️ Guess must contain only letters. Try again!",
+                        [&bot, cid = msg.channel_id](stoatpp::models::Message m, bool ok) {
+                            if (ok) {
+                                std::this_thread::sleep_for(std::chrono::seconds(4));
+                                bot.delete_message(cid, m.id);
+                            }
+                        });
+                    continue;
+                }
+
+                guess = raw;
+                break;
+            }
+
+            game.guesses.push_back(guess);
+
+            // Update keyboard state
+            std::string secret_remaining = game.secret;
+            std::vector<int> result(word_len, 0);
+            for (int i = 0; i < word_len; ++i) {
+                if (guess[i] == game.secret[i]) {
+                    result[i] = 2;
+                    secret_remaining[i] = '\0';
+                }
+            }
+            for (int i = 0; i < word_len; ++i) {
+                if (result[i] == 2) continue;
+                auto pos = secret_remaining.find(guess[i]);
+                if (pos != std::string::npos) {
+                    result[i] = 1;
+                    secret_remaining[pos] = '\0';
+                }
+            }
+            for (int i = 0; i < word_len; ++i) {
+                char c = guess[i];
+                int cur = (game.keyboard.count(c) ? game.keyboard.at(c) : -1);
+                if (result[i] > cur) game.keyboard[c] = result[i];
+            }
+
+            // Check win
+            won = (guess == game.secret);
+            bool finished = won || ((int)game.guesses.size() >= game.max_guesses);
+
+            // Update the board message
+            auto payload = make_payload(game, finished, won);
+            bot.edit_message(msg.channel_id, board_msg_id, payload);
+
+            if (finished) break;
+        }
+
+        std::lock_guard<std::mutex> lock(wordle_mutex_);
+        active_wordle_games_.erase(msg.channel_id);
+    }
+
     void handle_conway_interaction(stoatpp::cluster& bot, const std::string& message_id, const std::string& emoji) {
         ConwayGame game;
         bool found = false;

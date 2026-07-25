@@ -52,9 +52,14 @@
 #include "cogs/social.h"
 #include "cogs/stats.h"
 #include "cogs/tickets.h"
+#include "cogs/applications.h"
+#include "cogs/serverlist.h"
 #include "cogs/tupper.h"
 #include "cogs/users.h"
 #include "cogs/welcome_leave.h"
+#include "cogs/starboard.h"
+#include "cogs/history.h"
+
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string &filepath = ".env") {
@@ -203,20 +208,30 @@ int main(int argc, char *argv[]) {
   load_env();
 
   bool verbose = false;
+  bool staging = false;
   for (int i = 1; i < argc; ++i) {
     std::string arg = argv[i];
     if (arg == "--verbose" || arg == "-v") {
       verbose = true;
+    } else if (arg == "--staging" || arg == "-staging") {
+      staging = true;
     }
   }
   g_verbose_logging.store(verbose);
 
-  const char *token_env = std::getenv("BOT_TOKEN");
+  const char *token_env = std::getenv(staging ? "STAGING_BOT_TOKEN" : "BOT_TOKEN");
   std::string token = token_env ? token_env : "";
   if (token.empty() || token == "token") {
-    std::cerr << "[bronx error] bot_token is empty or not set. please update "
-                 "your .env file.\n";
+    if (staging) {
+      std::cerr << "[bronx error] staging bot token (STAGING_BOT_TOKEN) is empty or not set. please update your .env file.\n";
+    } else {
+      std::cerr << "[bronx error] bot_token is empty or not set. please update your .env file.\n";
+    }
     return 1;
+  }
+
+  if (staging) {
+    std::cout << "[bronx] running in staging mode using STAGING_BOT_TOKEN.\n";
   }
 
   // DB configuration
@@ -229,8 +244,20 @@ int main(int argc, char *argv[]) {
   const char *db_pass_env = std::getenv("DB_PASSWORD");
   std::string db_pass = db_pass_env ? db_pass_env : "";
 
-  const char *db_name_env = std::getenv("DB_DATABASE");
-  std::string db_name = db_name_env ? db_name_env : "bronx";
+  const char *db_name_env = nullptr;
+  std::string db_name;
+  if (staging) {
+    db_name_env = std::getenv("STAGING_DB_DATABASE");
+    if (db_name_env) {
+      db_name = db_name_env;
+    } else {
+      const char *base_db_name = std::getenv("DB_DATABASE");
+      db_name = base_db_name ? std::string(base_db_name) + "_staging" : "bronx_staging";
+    }
+  } else {
+    db_name_env = std::getenv("DB_DATABASE");
+    db_name = db_name_env ? db_name_env : "bronx";
+  }
 
   int db_port = 3306;
   if (const char *db_port_env = std::getenv("DB_PORT")) {
@@ -444,6 +471,8 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
   bot.use(std::make_unique<bronx::cogs::AutoModule>());
   bot.use(std::make_unique<bronx::cogs::TicketsModule>());
+  bot.use(std::make_unique<bronx::cogs::ApplicationsModule>());
+  bot.use(std::make_unique<bronx::cogs::ServerListModule>());
   bot.use(std::make_unique<bronx::cogs::CountingModule>());
   bot.use(std::make_unique<bronx::cogs::AFKModule>());
   bot.use(std::make_unique<bronx::cogs::RobloxModule>());
@@ -457,6 +486,9 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::LevelingModule>());
   bot.use(std::make_unique<bronx::cogs::FishingModule>());
   bot.use(std::make_unique<bronx::cogs::OwnerModule>());
+  bot.use(std::make_unique<bronx::cogs::StarboardModule>());
+  bot.use(std::make_unique<bronx::cogs::HistoryModule>());
+
 
   bot.on_ready([&bot](const stoatpp::events::Ready &e) {
     std::cout << "\033[1;32m[bronx event]\033[0m ready! logged in as: " << e.user.username
@@ -469,7 +501,8 @@ int main(int argc, char *argv[]) {
     if (bronx::g_db) {
       for (const auto& srv : e.servers) {
         std::string icon = srv.icon ? *srv.icon : "";
-        bronx::g_db->upsert_server(srv.id, srv.name, icon);
+        std::string banner = srv.banner ? *srv.banner : "";
+        bronx::g_db->upsert_server(srv.id, srv.name, icon, banner);
         if (!srv.owner.empty()) {
           bronx::g_db->upsert_server_member(srv.id, srv.owner, true, true);
         }
@@ -969,6 +1002,8 @@ int main(int argc, char *argv[]) {
             if (!is_disabled) {
               bronx::g_db->increment_command_usage(msg.server_id, normalized_name,
                                                    msg.channel_id);
+              bronx::g_db->record_command_usage(msg.server_id, normalized_name,
+                                                msg.author.id, msg.channel_id);
               bronx::g_db->increment_user_daily_commands(
                   msg.server_id, msg.author.id, msg.author.bot);
               if (!msg.server_id.empty()) {
@@ -1057,6 +1092,15 @@ int main(int argc, char *argv[]) {
   bot.on_server_create([&bot](const stoatpp::events::ServerCreate &e) {
     std::cout << "[bronx event] server added: " << e.server.name
               << " (id: " << e.server.id << ")\n";
+
+    if (bronx::g_db) {
+      std::string icon = e.server.icon ? *e.server.icon : "";
+      std::string banner = e.server.banner ? *e.server.banner : "";
+      bronx::g_db->upsert_server(e.server.id, e.server.name, icon, banner);
+      if (!e.server.owner.empty()) {
+        bronx::g_db->upsert_server_member(e.server.id, e.server.owner, true, true);
+      }
+    }
 
     stoatpp::models::MessagePayload payload;
     nlohmann::json embed = nlohmann::json::object();
@@ -1246,7 +1290,14 @@ int main(int argc, char *argv[]) {
           }
 
           if (!user_msg.empty()) {
-            bot.send_message(channel_id, user_msg);
+            if (error_msg == "NotFound" || status_code == 404) {
+              stoatpp::models::MessagePayload payload;
+              payload.content = user_msg;
+              payload.delete_after = 5; // delete after 5 seconds
+              bot.send_message(channel_id, payload);
+            } else {
+              bot.send_message(channel_id, user_msg);
+            }
           }
         }
       }

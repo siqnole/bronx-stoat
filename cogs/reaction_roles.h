@@ -1483,7 +1483,7 @@ public:
                             if (existing_rr && !existing_rr->rules.empty()) {
                                 reply_msg += "\n\n⚙️ **Note**: This message already has reaction roles configured in my database:\n";
                                 for (const auto& r : existing_rr->rules) {
-                                    reply_msg += display_emoji(r.emoji_id) + " ➔ <@&" + r.role_id + ">\n";
+                                    reply_msg += display_emoji(r.emoji_id) + " ➔ <%" + r.role_id + ">\n";
                                 }
                             } else if (!physical_reactions.empty()) {
                                 reply_msg += "\n\n⚠️ **Note**: This message has the following existing reactions on it:\n";

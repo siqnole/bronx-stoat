@@ -116,6 +116,8 @@ struct PaginationSession {
     int max_pages = 3;
     std::string user_id;
     std::string type = "general";
+    std::string target_query = "";
+    std::string server_id = "";
 };
 
 inline std::map<std::string, PaginationSession> g_pages;
@@ -310,8 +312,25 @@ inline std::string upload_avatar(stoatpp::cluster& bot, const std::string& input
     return input_url;
 }
 
+inline std::string get_raw_args(const stoatpp::events::Message& msg, const std::string& command_name) {
+    std::string prefix = msg.prefix;
+    size_t start_pos = prefix.length() + command_name.length();
+    if (start_pos >= msg.content.length()) return "";
+    
+    size_t idx = start_pos;
+    while (idx < msg.content.length()) {
+        char c = msg.content[idx];
+        if (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
+            break;
+        }
+        idx++;
+    }
+    return msg.content.substr(idx);
+}
+
 } // namespace bronx::helpers
 
 namespace bronx::cogs {
     using helpers::parse_duration;
+    using helpers::get_raw_args;
 }
