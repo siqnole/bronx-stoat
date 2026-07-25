@@ -16,6 +16,17 @@ namespace bronx::cogs {
 
 class ServerListModule : public stoatpp::bot_module {
 public:
+    std::string get_staff_channel_id() const {
+        const char* env_chan = std::getenv("STAFF_CHANNEL_ID");
+        if (!env_chan || std::string(env_chan).empty()) {
+            env_chan = std::getenv("SERVERLIST_STAFF_CHANNEL_ID");
+        }
+        if (env_chan && !std::string(env_chan).empty()) {
+            return std::string(env_chan);
+        }
+        return "01KYBC5KZG865D8BNYA2CTW7XS";
+    }
+
     void register_handlers(stoatpp::cluster& bot) override {
         bot.register_command({
             "list",
@@ -206,7 +217,12 @@ public:
                                 } catch(...) {}
                             }
                             
-                            bot.send_message("01KYBC5KZG865D8BNYA2CTW7XS", staff_payload);
+                            std::string staff_chan = get_staff_channel_id();
+                            if (!staff_chan.empty()) {
+                                try {
+                                    bot.send_message(staff_chan, staff_payload);
+                                } catch (...) {}
+                            }
                             bot.send_message(msg.channel_id, "✅ **Submission received!** Staff will review it shortly.");
                             return;
                         }
@@ -329,7 +345,16 @@ public:
                                         }
 
                                         if (!final_img.empty()) {
-                                            embed["media"] = final_img;
+                                            if (final_img.rfind("http://", 0) == 0 || final_img.rfind("https://", 0) == 0) {
+                                                std::string uploaded_id = bot.rest().upload_from_url(final_img);
+                                                if (!uploaded_id.empty()) {
+                                                    embed["media"] = uploaded_id;
+                                                } else {
+                                                    embed["icon_url"] = final_img;
+                                                }
+                                            } else {
+                                                embed["media"] = final_img;
+                                            }
                                         }
 
                                         if (embed.empty()) {
@@ -570,7 +595,16 @@ public:
                                                         }
 
                                                         if (!final_img.empty()) {
-                                                            embed["media"] = final_img;
+                                                            if (final_img.rfind("http://", 0) == 0 || final_img.rfind("https://", 0) == 0) {
+                                                                std::string uploaded_id = bot.rest().upload_from_url(final_img);
+                                                                if (!uploaded_id.empty()) {
+                                                                    embed["media"] = uploaded_id;
+                                                                } else {
+                                                                    embed["icon_url"] = final_img;
+                                                                }
+                                                            } else {
+                                                                embed["media"] = final_img;
+                                                            }
                                                         }
 
                                                         if (!embed.empty()) {
@@ -598,7 +632,8 @@ public:
 
                 // ── Review Commands (Staff only) ──
                 if (subcommand == "approve" || subcommand == "deny") {
-                    if (msg.channel_id != "01KYBC5KZG865D8BNYA2CTW7XS" && !bot.is_owner(msg.author.id)) {
+                    std::string staff_chan = get_staff_channel_id();
+                    if (!staff_chan.empty() && msg.channel_id != staff_chan && !bot.is_owner(msg.author.id)) {
                         bot.send_message(msg.channel_id, "⚠️ Review commands can only be run by staff in the designated review channel.");
                         return;
                     }
