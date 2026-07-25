@@ -422,6 +422,23 @@ public:
                             }
 
                             if (has_custom_embed) {
+                                // If media field is an HTTP URL, upload it to Autumn CDN now
+                                if (custom_embed.contains("media") && custom_embed["media"].is_string()) {
+                                    std::string m = custom_embed["media"].get<std::string>();
+                                    if (m.rfind("http://", 0) == 0 || m.rfind("https://", 0) == 0) {
+                                        std::string uploaded_id = bot.rest().upload_from_url(m);
+                                        if (!uploaded_id.empty()) {
+                                            custom_embed["media"] = uploaded_id;
+                                            listing.embed_json = custom_embed.dump();
+                                            g_db->save_server_listing(listing);
+                                        } else {
+                                            custom_embed.erase("media");
+                                            if (!custom_embed.contains("icon_url")) {
+                                                custom_embed["icon_url"] = m;
+                                            }
+                                        }
+                                    }
+                                }
                                 // Append invite URL to the custom embed so the join card always appears
                                 if (!listing.invite_url.empty()) {
                                     // Add a URL field — Revolt renders this as a clickable server invite card
