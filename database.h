@@ -1601,7 +1601,7 @@ public:
         "  description TEXT DEFAULT NULL,"
         "  embed_json TEXT DEFAULT NULL,"
         "  invite_url TEXT DEFAULT NULL,"
-        "  advertising_channel_id VARCHAR(30) DEFAULT NULL,"
+        "  advertising_channel_id VARCHAR(100) DEFAULT NULL,"
         "  status VARCHAR(20) NOT NULL DEFAULT 'pending',"
         "  last_bumped_at BIGINT UNSIGNED NOT NULL DEFAULT 0,"
         "  created_at BIGINT UNSIGNED NOT NULL DEFAULT 0,"
@@ -1612,6 +1612,8 @@ public:
                 << mysql_error(mysql_) << "\n";
       return false;
     }
+
+    mysql_query(mysql_, "ALTER TABLE server_listings MODIFY COLUMN advertising_channel_id VARCHAR(100) DEFAULT NULL");
 
     // Migration: add active_preset to user_afk table
     mysql_query(mysql_, "ALTER TABLE user_afk ADD COLUMN IF NOT EXISTS "

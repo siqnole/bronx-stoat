@@ -253,9 +253,11 @@ public:
                                 listing.mode = val;
                             } else if (key == "channel") {
                                 std::string chan_id = val;
-                                if (val.rfind("<#", 0) == 0 && val.back() == '>') {
-                                    chan_id = val.substr(2, val.size() - 3);
-                                } else if (val == "none" || val == "clear") {
+                                chan_id.erase(0, chan_id.find_first_not_of(" \t\r\n"));
+                                chan_id.erase(chan_id.find_last_not_of(" \t\r\n") + 1);
+                                if (chan_id.rfind("<#", 0) == 0 && chan_id.back() == '>') {
+                                    chan_id = chan_id.substr(2, chan_id.size() - 3);
+                                } else if (chan_id == "none" || chan_id == "clear") {
                                     chan_id = "";
                                 }
                                 listing.advertising_channel_id = chan_id;
@@ -503,6 +505,8 @@ public:
                                     }
                                     if (r2->content != "skip") {
                                         std::string raw_chan = r2->content;
+                                        raw_chan.erase(0, raw_chan.find_first_not_of(" \t\r\n"));
+                                        raw_chan.erase(raw_chan.find_last_not_of(" \t\r\n") + 1);
                                         std::string chan_id = raw_chan;
                                         if (raw_chan.rfind("<#", 0) == 0 && raw_chan.back() == '>') {
                                             chan_id = raw_chan.substr(2, raw_chan.size() - 3);
