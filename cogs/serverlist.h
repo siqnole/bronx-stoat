@@ -397,6 +397,20 @@ public:
                             }
 
                             if (has_custom_embed) {
+                                // Append invite URL to the custom embed so the join card always appears
+                                if (!listing.invite_url.empty()) {
+                                    // Add a URL field — Revolt renders this as a clickable server invite card
+                                    if (!custom_embed.contains("url") || custom_embed["url"].is_null() || custom_embed["url"].get<std::string>().empty()) {
+                                        custom_embed["url"] = listing.invite_url;
+                                    }
+                                    // Also append a "👉 Join here:" line at the end of description if not already present
+                                    std::string cur_desc = custom_embed.contains("description") && custom_embed["description"].is_string()
+                                        ? custom_embed["description"].get<std::string>() : "";
+                                    if (cur_desc.find(listing.invite_url) == std::string::npos) {
+                                        cur_desc += "\n\n👉 **Join here:** " + listing.invite_url;
+                                        custom_embed["description"] = cur_desc;
+                                    }
+                                }
                                 ad_payload.embeds.push_back(custom_embed);
                             } else {
                                 nlohmann::json embed = nlohmann::json::object();
