@@ -260,6 +260,12 @@ public:
                                 } else if (chan_id == "none" || chan_id == "clear") {
                                     chan_id = "";
                                 }
+                                // Validate: must be empty (clear) or a 26-char ULID
+                                if (!chan_id.empty() && !(chan_id.size() == 26 &&
+                                    chan_id.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos)) {
+                                    bot.send_message(msg.channel_id, "⚠️ Invalid channel. Please **mention** the channel (e.g. `<#channel_id>`), or use `none` to clear it.");
+                                    return;
+                                }
                                 listing.advertising_channel_id = chan_id;
                             } else if (key == "tags") {
                                 listing.tags = val;
@@ -510,6 +516,13 @@ public:
                                         std::string chan_id = raw_chan;
                                         if (raw_chan.rfind("<#", 0) == 0 && raw_chan.back() == '>') {
                                             chan_id = raw_chan.substr(2, raw_chan.size() - 3);
+                                        }
+                                        // Validate the resolved ID is a proper ULID
+                                        bool valid_chan = (chan_id.size() == 26 &&
+                                            chan_id.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
+                                        if (!valid_chan) {
+                                            bot.send_message(msg.channel_id, "⚠️ That doesn't look like a valid channel. Please **mention** the channel (e.g. `<#channel_id>`). Setup canceled.");
+                                            return;
                                         }
                                         listing.advertising_channel_id = chan_id;
                                     }

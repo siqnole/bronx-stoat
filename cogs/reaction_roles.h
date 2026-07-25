@@ -402,6 +402,18 @@ public:
                         if (chan_arg.rfind("<#", 0) == 0 && chan_arg.back() == '>') {
                             target_channel = chan_arg.substr(2, chan_arg.size() - 3);
                         } else {
+                            // Strip a leading '#' if someone typed a channel name instead of mentioning it
+                            if (!chan_arg.empty() && chan_arg[0] == '#') {
+                                chan_arg = chan_arg.substr(1);
+                            }
+                            // Validate: must look like a ULID (26 alphanumeric chars)
+                            bool looks_like_id = (chan_arg.size() == 26 &&
+                                chan_arg.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
+                            if (!looks_like_id) {
+                                std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                                bot.send_message(msg.channel_id, "⚠️ invalid channel: `" + args[2] + "`. please mention the channel with `<#channel_id>` (e.g. `" + pfx + "rr send " + modalname + " <#channel_id>`).");
+                                return;
+                            }
                             target_channel = chan_arg;
                         }
                     }
