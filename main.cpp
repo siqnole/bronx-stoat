@@ -325,15 +325,31 @@ int main(int argc, char *argv[]) {
       if (!avatar_str) return std::nullopt;
       std::string s = *avatar_str;
       if (s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0) {
-        size_t pos = s.rfind('/');
-        if (pos != std::string::npos && pos + 1 < s.size()) {
-          std::string id = s.substr(pos + 1);
-          size_t q = id.find_first_of("?#");
-          if (q != std::string::npos) {
-            id = id.substr(0, q);
-          }
-          return id;
+        size_t q = s.find_first_of("?#");
+        if (q != std::string::npos) s = s.substr(0, q);
+
+        std::vector<std::string> parts;
+        std::stringstream ss(s);
+        std::string item;
+        while (std::getline(ss, item, '/')) {
+          if (!item.empty()) parts.push_back(item);
         }
+
+        if (!parts.empty()) {
+          std::string file_id = parts.back();
+          if (parts.size() >= 2 && file_id.find('.') != std::string::npos) {
+            file_id = parts[parts.size() - 2];
+          }
+          if (!file_id.empty() && file_id.find('.') == std::string::npos &&
+              file_id != "attachments" && file_id != "avatars" &&
+              file_id != "backgrounds" && file_id != "icons") {
+            return file_id;
+          }
+        }
+        return std::nullopt;
+      }
+      if (s.find('.') != std::string::npos) {
+        return std::nullopt;
       }
       return s;
     };
