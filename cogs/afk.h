@@ -214,7 +214,7 @@ public:
                         sub == "title" || sub == "description" || sub == "desc" || 
                         sub == "color" || sub == "image" || sub == "json" || 
                         sub == "test" || sub == "template" || sub == "status" ||
-                        sub == "delete" || sub == "set") {
+                        sub == "delete" || sub == "set" || sub == "list") {
                         is_subcommand = true;
                     }
                 }
@@ -785,6 +785,76 @@ public:
                         } else {
                             bot.send_message(msg.channel_id, "⚠️ Failed to delete preset.");
                         }
+                        return;
+                    }
+
+                    if (sub == "list") {
+                        auto afk_opt = g_db->get_user_afk(msg.author.id);
+                        Database::UserAFK afk;
+                        if (afk_opt) afk = *afk_opt;
+                        std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
+
+                        auto presets = g_db->get_user_afk_presets_list(msg.author.id);
+
+                        // Always include "default" even if not saved yet
+                        bool has_default = (std::find(presets.begin(), presets.end(), "default") != presets.end());
+                        if (!has_default) {
+                            presets.insert(presets.begin(), "default");
+                        }
+
+                        // Sort so default is first, rest alphabetically
+                        std::sort(presets.begin(), presets.end(), [](const std::string& a, const std::string& b) {
+                            if (a == "default") return true;
+                            if (b == "default") return false;
+                            return a < b;
+                        });
+
+                        stoatpp::models::MessagePayload payload;
+                        nlohmann::json embed = nlohmann::json::object();
+                        embed["title"] = "🎭 Your AFK Presets";
+                        embed["colour"] = "#6C5CE7";
+
+                        std::string desc = "";
+                        for (const auto& pname : presets) {
+                            AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, pname));
+
+                            // Build a short preview string
+                            std::string preview = "";
+                            if (tmpl.type == "embed") {
+                                if (!tmpl.title.empty()) {
+                                    preview = tmpl.title;
+                                } else if (!tmpl.description.empty()) {
+                                    preview = tmpl.description;
+                                }
+                            } else {
+                                preview = tmpl.content;
+                            }
+                            // Truncate long previews
+                            if (preview.size() > 60) {
+                                preview = preview.substr(0, 57) + "...";
+                            }
+
+                            bool is_active = (pname == active);
+                            desc += (is_active ? "**▶ " : "• ");
+                            desc += "`" + pname + "`";
+                            desc += " — *" + tmpl.type + "*";
+                            if (!preview.empty()) {
+                                desc += ": " + preview;
+                            }
+                            if (is_active) desc += " *(active)*";
+                            if (is_active) desc += "**";
+                            desc += "\n";
+                        }
+
+                        if (desc.empty()) {
+                            desc = "*(no presets configured)*";
+                        }
+
+                        desc += "\n*Use `" + pfx + "afk set <preset>` to switch, `" + pfx + "afk setup <preset>` to create/edit, or `" + pfx + "afk delete <preset>` to remove.*";
+
+                        embed["description"] = desc;
+                        payload.embeds.push_back(embed);
+                        bot.send_message(msg.channel_id, payload);
                         return;
                     }
 
