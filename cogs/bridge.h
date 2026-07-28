@@ -313,7 +313,11 @@ public:
                 std::string subcommand = args[0];
                 if (subcommand == "add") {
                     bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg, args](stoatpp::models::Member member, bool success) {
-                        if (!success || !is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
+                        if (!success) {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                            return;
+                        }
+                        if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
                             bot.send_message(msg.channel_id, "⚠️ Permission error: you must be an administrator or trusted user to manage bridges.");
                             return;
                         }
@@ -360,7 +364,11 @@ public:
                 }
                 else if (subcommand == "remove") {
                     bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg](stoatpp::models::Member member, bool success) {
-                        if (!success || !is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
+                        if (!success) {
+                            bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                            return;
+                        }
+                        if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
                             bot.send_message(msg.channel_id, "⚠️ Permission error: you must be an administrator or trusted user to manage bridges.");
                             return;
                         }
