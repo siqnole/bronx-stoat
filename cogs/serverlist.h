@@ -396,8 +396,8 @@ public:
                                 bot.send_message(msg.channel_id, "⚠️ Your server listing is not approved yet. Use `.list submit` to submit it for review.");
                                 return;
                             }
-                            if (listing.mode != "bump" && listing.mode != "both") {
-                                bot.send_message(msg.channel_id, "⚠️ Bumping is not enabled for your server. Set your listing mode to `bump` or `both` using `.list set mode both`.");
+                            if (listing.mode != "bump" && listing.mode != "both" && listing.mode != "website") {
+                                bot.send_message(msg.channel_id, "⚠️ Bumping is not enabled for your server. Set your listing mode to `website`, `bump`, or `both` using `.list set mode both`.");
                                 return;
                             }
 
@@ -418,6 +418,11 @@ public:
                             listing.last_bumped_at = now_secs;
                             listing.bump_count += 1;
                             g_db->save_server_listing(listing);
+
+                            if (listing.mode == "website") {
+                                bot.send_message(msg.channel_id, "✅ **Bumped!** Your server listing has been bumped on the website.");
+                                return;
+                            }
 
                             stoatpp::models::MessagePayload ad_payload;
                             nlohmann::json custom_embed;
@@ -475,10 +480,47 @@ public:
 
                             auto all_approved = g_db->get_approved_server_listings();
                             int sent = 0;
+                            stoatpp::models::MessageQuery query;
+                            query.limit = 1;
+
                             for (const auto& other : all_approved) {
                                 if (other.server_id == msg.server_id) continue;
                                 if (other.mode != "bump" && other.mode != "both") continue;
                                 if (other.advertising_channel_id.empty()) continue;
+
+                                // Check for consecutive bumps
+                                auto res = bot.rest().get_messages(other.advertising_channel_id, query);
+                                if (!res.success()) {
+                                    continue;
+                                }
+
+                                bool is_consecutive = false;
+                                if (res.body.is_array() && !res.body.empty()) {
+                                    const auto& last_msg = res.body[0];
+                                    if (last_msg.contains("embeds") && last_msg["embeds"].is_array()) {
+                                        for (const auto& embed : last_msg["embeds"]) {
+                                            if (embed.contains("url") && embed["url"].is_string() && 
+                                                embed["url"].get<std::string>() == listing.invite_url) {
+                                                is_consecutive = true;
+                                                break;
+                                            }
+                                            if (embed.contains("description") && embed["description"].is_string() && 
+                                                embed["description"].get<std::string>().find(listing.invite_url) != std::string::npos) {
+                                                is_consecutive = true;
+                                                break;
+                                            }
+                                            if (embed.contains("title") && embed["title"].is_string() && 
+                                                embed["title"].get<std::string>().find(listing.name) != std::string::npos) {
+                                                is_consecutive = true;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (is_consecutive) {
+                                    continue;
+                                }
 
                                 bot.send_message(other.advertising_channel_id, ad_payload);
                                 sent++;
