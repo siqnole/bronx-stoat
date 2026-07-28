@@ -17,7 +17,8 @@ endif()
 # Add the parent directory containing the stoatpp library
 add_subdirectory(.. stoatpp_build)
 
-add_executable(bronx main.cpp)
+file(GLOB DATABASE_SOURCES database/*.cpp)
+add_executable(bronx main.cpp ${DATABASE_SOURCES})
 
 find_path(MARIADB_INCLUDE_DIR mysql.h
     PATHS
