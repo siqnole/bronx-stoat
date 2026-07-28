@@ -545,6 +545,163 @@ public:
             },
             "Owner"
         });
+
+        // 15. listdelete
+        bot.register_command({
+            "listdelete",
+            {"ownerlistdelete"},
+            "deletes a server listing by server ID.",
+            "listdelete <server_id>",
+            {"<server_id>"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!check_owner(bot, msg) || !g_db) return;
+
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "invalid syntax. use `ownerlistdelete <server_id>`.");
+                    return;
+                }
+
+                std::string srv_id = args[0];
+                auto listing_opt = g_db->get_server_listing(srv_id);
+                if (!listing_opt) {
+                    bot.send_message(msg.channel_id, "❌ No server listing found with ID `" + srv_id + "`.");
+                    return;
+                }
+
+                if (g_db->delete_server_listing(srv_id)) {
+                    bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully deleted server listing for `" + listing_opt->name + "` (`" + srv_id + "`).");
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Failed to delete server listing from database.");
+                }
+            },
+            "Owner"
+        });
+
+        // 16. listedit
+        bot.register_command({
+            "listedit",
+            {"ownerlistedit"},
+            "edits a field on a server listing.",
+            "listedit <server_id> <field> <value...>",
+            {"<server_id>", "<field>", "<value>"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!check_owner(bot, msg) || !g_db) return;
+
+                if (args.size() < 3) {
+                    bot.send_message(msg.channel_id, "invalid syntax. use `listedit <server_id> <field> <value...>`\nFields: `name`, `mode`, `tags`, `description`, `invite_url`, `channel_id`, `status`.");
+                    return;
+                }
+
+                std::string srv_id = args[0];
+                std::string field = args[1];
+                std::transform(field.begin(), field.end(), field.begin(), ::tolower);
+
+                std::string val = "";
+                for (size_t i = 2; i < args.size(); ++i) {
+                    val += args[i] + (i + 1 < args.size() ? " " : "");
+                }
+
+                auto listing_opt = g_db->get_server_listing(srv_id);
+                if (!listing_opt) {
+                    bot.send_message(msg.channel_id, "❌ No server listing found with ID `" + srv_id + "`.");
+                    return;
+                }
+
+                auto listing = *listing_opt;
+
+                if (field == "name") {
+                    listing.name = val;
+                } else if (field == "mode") {
+                    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
+                    if (val != "website" && val != "bump" && val != "both" && val != "disabled") {
+                        bot.send_message(msg.channel_id, "❌ Invalid mode. Must be one of: `website`, `bump`, `both`, `disabled`.");
+                        return;
+                    }
+                    listing.mode = val;
+                } else if (field == "tags") {
+                    listing.tags = val;
+                } else if (field == "description" || field == "desc") {
+                    listing.description = val;
+                } else if (field == "invite_url" || field == "invite") {
+                    listing.invite_url = val;
+                } else if (field == "channel_id" || field == "channel" || field == "advertising_channel_id") {
+                    listing.advertising_channel_id = val;
+                } else if (field == "status") {
+                    std::transform(val.begin(), val.end(), val.begin(), ::tolower);
+                    if (val != "pending" && val != "approved" && val != "rejected") {
+                        bot.send_message(msg.channel_id, "❌ Invalid status. Must be one of: `pending`, `approved`, `rejected`.");
+                        return;
+                    }
+                    listing.status = val;
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Unknown field `" + field + "`. Fields: `name`, `mode`, `tags`, `description`, `invite_url`, `channel_id`, `status`.");
+                    return;
+                }
+
+                if (g_db->save_server_listing(listing)) {
+                    bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully updated field `" + field + "` for server listing `" + listing.name + "` (`" + srv_id + "`).");
+                } else {
+                    bot.send_message(msg.channel_id, "❌ Failed to save updated server listing to database.");
+                }
+            },
+            "Owner"
+        });
+
+        // 17. listall
+        bot.register_command({
+            "listall",
+            {"listsall", "alllistings"},
+            "lists all server listings with their IDs, names, statuses and modes.",
+            "listall [page]",
+            {"[page]"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!check_owner(bot, msg) || !g_db) return;
+
+                auto listings = g_db->get_all_server_listings();
+                if (listings.empty()) {
+                    bot.send_message(msg.channel_id, "📋 No server listings found in the database.");
+                    return;
+                }
+
+                // Paginate — 10 per page
+                constexpr int PAGE_SIZE = 10;
+                int page = 1;
+                if (!args.empty()) {
+                    try { page = std::stoi(args[0]); } catch (...) {}
+                }
+                int total_pages = ((int)listings.size() + PAGE_SIZE - 1) / PAGE_SIZE;
+                if (page < 1) page = 1;
+                if (page > total_pages) page = total_pages;
+
+                int start = (page - 1) * PAGE_SIZE;
+                int end   = std::min(start + PAGE_SIZE, (int)listings.size());
+
+                std::string out = "### 📋 Server Listings (page " + std::to_string(page) + "/" + std::to_string(total_pages) + ")\n";
+                out += "```\n";
+                out += "SERVER ID                  STATUS     MODE       NAME\n";
+                out += "─────────────────────────────────────────────────────────────────\n";
+                for (int i = start; i < end; ++i) {
+                    const auto& l = listings[i];
+                    // Pad columns for alignment
+                    auto pad = [](std::string s, int width) {
+                        if ((int)s.size() < width) s.resize(width, ' ');
+                        else if ((int)s.size() > width) s = s.substr(0, width - 1) + "…";
+                        return s;
+                    };
+                    out += pad(l.server_id, 27)
+                         + pad(l.status,    11)
+                         + pad(l.mode,      11)
+                         + l.name + "\n";
+                }
+                out += "```";
+                if (total_pages > 1) {
+                    out += "*Use `listall <page>` to navigate.*";
+                }
+
+                bot.send_message(msg.channel_id, out);
+            },
+            "Owner"
+        });
     }
 };
 
