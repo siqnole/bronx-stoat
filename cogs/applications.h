@@ -305,10 +305,63 @@ private:
         }).detach();
     }
 
-    static void execute_close_app_channel(stoatpp::cluster& bot, const std::string& channel_id) {
+    static void execute_close_app_channel(stoatpp::cluster& bot, const std::string& channel_id, const std::string& server_id, const std::string& user_id) {
         bot.send_message(channel_id, "🔒 **Closing application channel...**\nThis channel will be deleted in 5 seconds.");
 
-        std::thread([&bot, channel_id]() {
+        std::thread([&bot, channel_id, server_id, user_id]() {
+            // Extract counter from channel name: app-<username>-<counter>
+            auto chan_res = bot.rest().get_channel(channel_id);
+            if (chan_res.success() && chan_res.body.contains("name") && chan_res.body["name"].is_string()) {
+                std::string chan_name = chan_res.body["name"].get<std::string>();
+                auto last_dash = chan_name.rfind('-');
+                if (last_dash != std::string::npos) {
+                    std::string counter_str = chan_name.substr(last_dash + 1);
+
+                    // Try to get exact role name via username
+                    std::string target_role_name = "";
+                    if (!user_id.empty()) {
+                        auto ures = bot.rest().get_user(user_id);
+                        if (ures.success() && ures.body.is_object()) {
+                            std::string username = ures.body.value("username", "user");
+                            target_role_name = "app-" + username + "-" + counter_str;
+                        }
+                    }
+
+                    std::string matched_role_id = "";
+                    auto srv_res = bot.rest().get_server(server_id);
+                    if (srv_res.success()) {
+                        if (srv_res.body.contains("roles") && srv_res.body["roles"].is_object()) {
+                            for (auto& [role_id, role_json] : srv_res.body["roles"].items()) {
+                                if (role_json.contains("name") && role_json["name"].is_string()) {
+                                    std::string rn = role_json["name"].get<std::string>();
+                                    // Match by exact name if available, otherwise match by counter suffix
+                                    if (!target_role_name.empty()) {
+                                        if (rn == target_role_name) {
+                                            matched_role_id = role_id;
+                                            break;
+                                        }
+                                    } else if (rn.rfind("app-", 0) == 0) {
+                                        auto rlast = rn.rfind('-');
+                                        if (rlast != std::string::npos && rn.substr(rlast + 1) == counter_str) {
+                                            matched_role_id = role_id;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (!matched_role_id.empty()) {
+                        if (!user_id.empty()) {
+                            bot.remove_role_from_member(server_id, user_id, matched_role_id);
+                            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                        }
+                        bot.rest().delete_role(server_id, matched_role_id);
+                    }
+                }
+            }
+
             std::this_thread::sleep_for(std::chrono::seconds(5));
             bot.rest().delete_channel(channel_id);
         }).detach();
@@ -386,14 +439,33 @@ public:
                 std::transform(subcommand.begin(), subcommand.end(), subcommand.begin(), ::tolower);
 
                 if (subcommand == "close") {
-                    // Try to delete channel if it is a private application channel
-                    // We check if the channel name starts with "app-"
                     auto chan_opt = bot.get_channel(msg.channel_id);
-                    if (chan_opt && chan_opt->name && chan_opt->name->rfind("app-", 0) == 0) {
-                        execute_close_app_channel(bot, msg.channel_id);
-                    } else {
+                    if (!chan_opt || !chan_opt->name || chan_opt->name->rfind("app-", 0) != 0) {
                         bot.send_message(msg.channel_id, "⚠️ This is not a registered application channel.");
+                        return;
                     }
+                    // Allow the applicant (channel is named "app-<username>-<n>") or a trusted/owner member
+                    const std::string& chan_name = *chan_opt->name;
+                    bool is_applicant = (chan_name.find("-" + msg.author.username + "-") != std::string::npos);
+                    if (is_applicant) {
+                        execute_close_app_channel(bot, msg.channel_id, msg.server_id, msg.author.id);
+                        return;
+                    }
+                    // Otherwise require Manage Server / trusted role
+                    bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg](stoatpp::models::Member member, bool ok) {
+                        if (!ok || (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member) &&
+                                    !is_user_command_allowed(bot, msg.server_id, "app", "applications", member))) {
+                            bot.send_message(msg.channel_id, "⚠️ Permission error: only the applicant or staff can close this channel.");
+                            return;
+                        }
+                        // Look up the applicant from the submission record
+                        std::string applicant_user_id = "";
+                        auto sub_opt = g_db->get_application_submission_by_channel_id(msg.channel_id);
+                        if (sub_opt) {
+                            applicant_user_id = sub_opt->user_id;
+                        }
+                        execute_close_app_channel(bot, msg.channel_id, msg.server_id, applicant_user_id);
+                    });
                     return;
                 }
 
@@ -402,7 +474,8 @@ public:
                         bot.send_message(msg.channel_id, "⚠️ Failed to verify permissions.");
                         return;
                     }
-                    if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
+                    if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member) &&
+                        !is_user_command_allowed(bot, msg.server_id, "app", "applications", member)) {
                         bot.send_message(msg.channel_id, "⚠️ Permission error: you need Manage Server permission to configure the application system.");
                         return;
                     }
@@ -1089,11 +1162,30 @@ public:
                 }
             }
 
-            // Close reactions on application channels
+            // Close reactions on application channels — requires trust/owner or being the applicant
             auto chan_opt = bot.get_channel(e.channel_id);
             if (chan_opt && chan_opt->name && chan_opt->name->rfind("app-", 0) == 0) {
-                if (cleaned_emoji == "🔒") {
-                    execute_close_app_channel(bot, e.channel_id);
+                std::string server_id = chan_opt->server ? *chan_opt->server : "";
+                if (cleaned_emoji == "🔒" && !server_id.empty()) {
+                    const std::string& chan_name = *chan_opt->name;
+                    bool is_applicant = !e.user_id.empty() && [&]() {
+                        auto u = bot.get_user(e.user_id);
+                        return u && chan_name.find("-" + u->username + "-") != std::string::npos;
+                    }();
+                    if (is_applicant) {
+                        execute_close_app_channel(bot, e.channel_id, server_id, e.user_id);
+                    } else {
+                        bot.fetch_member(server_id, e.user_id, [&bot, e, server_id](stoatpp::models::Member member, bool ok) {
+                            if (ok && is_user_trusted_or_owner(bot, server_id, e.user_id, member)) {
+                                std::string applicant_user_id = "";
+                                auto sub_opt = g_db->get_application_submission_by_channel_id(e.channel_id);
+                                if (sub_opt) {
+                                    applicant_user_id = sub_opt->user_id;
+                                }
+                                execute_close_app_channel(bot, e.channel_id, server_id, applicant_user_id);
+                            }
+                        });
+                    }
                 }
             }
         });
@@ -1130,7 +1222,7 @@ public:
                             g_active_apps.erase(msg.author.id);
                         }
                         if (!session.in_dm) {
-                            execute_close_app_channel(bot, session.current_channel_id);
+                            execute_close_app_channel(bot, session.current_channel_id, session.server_id, session.user_id);
                         }
                         return;
                     }
