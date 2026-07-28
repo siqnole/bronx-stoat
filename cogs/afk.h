@@ -905,8 +905,14 @@ public:
                 afk.active_preset = preset;
 
                 if (g_db->save_user_afk(afk)) {
-                    std::string preset_info = (preset == "default") ? "" : " (Preset: `" + preset + "`)";
-                    bot.send_message(msg.channel_id, "✅ <@" + msg.author.id + "> is now AFK: " + reason + preset_info);
+                    std::string preset_info = (preset == "default") ? "" : " (Preset: `" + preset + "`)";                    
+                    std::string pfx2 = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
+                    std::string setup_hint = "";
+                    // Show hint if using the default uncustomized template
+                    if (preset == "default" && g_db->get_user_afk_preset(msg.author.id, "default").empty()) {
+                        setup_hint = "\n###### customize your afk with " + pfx2 + "afk setup !";
+                    }
+                    bot.send_message(msg.channel_id, "✅ <@" + msg.author.id + "> is now AFK: " + reason + preset_info + setup_hint);
                 } else {
                     bot.send_message(msg.channel_id, "⚠️ Failed to set AFK status.");
                 }
@@ -1061,7 +1067,9 @@ public:
                     std::string time_str = format_elapsed_time(elapsed);
 
                     std::string active = target_afk_opt->active_preset.empty() ? "default" : target_afk_opt->active_preset;
-                    AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(mentioned_id, active));
+                    std::string raw_preset = g_db->get_user_afk_preset(mentioned_id, active);
+                    bool is_default_template = (active == "default" && raw_preset.empty());
+                    AFKTemplate tmpl = AFKTemplate::parse(raw_preset);
 
                     if (tmpl.type == "embed") {
                         stoatpp::models::MessagePayload payload;
@@ -1102,6 +1110,15 @@ public:
                         bot.send_message(msg.channel_id, payload);
                     } else {
                         std::string out = format_afk_placeholders(tmpl.content, mentioned_id, reason, time_str);
+                        if (is_default_template) {
+                            // Determine the prefix the bot uses in this context
+                            std::string hint_pfx = bot.config().command_prefix;
+                            if (!msg.server_id.empty()) {
+                                auto s_pfx = g_db->get_prefixes("server", msg.server_id);
+                                if (!s_pfx.empty()) hint_pfx = s_pfx[0];
+                            }
+                            out += "\n###### customize your afk with " + hint_pfx + "afk setup !";
+                        }
                         bot.send_message(msg.channel_id, out);
                     }
                 }
