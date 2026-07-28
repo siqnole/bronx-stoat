@@ -1,6 +1,7 @@
 #pragma once
 #include "../database.h"
 #include "helpers.h"
+#include "command_config.h"
 #include "stoatpp/bot_module.h"
 #include <algorithm>
 #include <deque>
@@ -1354,9 +1355,8 @@ public:
                                "failed to verify your server member settings.");
               return;
             }
-            if (!bot.is_owner(msg.author.id) &&
-                !bot.has_permission(*server_opt, member,
-                                    stoatpp::permissions::ManageServer)) {
+            if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member) &&
+                !is_user_command_allowed(bot, msg.server_id, "log", "logging", member)) {
               bot.send_message(msg.channel_id,
                                "permission error: you need the Manage Server "
                                "permission to configure event logging.");

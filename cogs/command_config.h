@@ -65,17 +65,64 @@ inline bool is_user_trusted_or_owner(stoatpp::cluster& bot, const std::string& s
     if (bot.is_owner(user_id)) return true;
     if (bot.is_server_owner(server_id, user_id)) return true;
     
-    // Check ManageServer permission
     auto server_opt = bot.get_server(server_id);
     if (server_opt) {
         if (bot.has_permission(*server_opt, member, stoatpp::permissions::ManageServer)) {
             return true;
         }
+    } else if (g_db && g_db->is_server_owner(server_id, user_id)) {
+        return true;
     }
     
     if (g_db) {
         return g_db->is_trusted(server_id, user_id, member.roles);
     }
+    return false;
+}
+
+// Returns true if the user has been explicitly allowed to run a command via
+// `.command allow <cmd> <role/permission>`, regardless of trusted/ManageServer status.
+inline bool is_user_command_allowed(stoatpp::cluster& bot, const std::string& server_id,
+                                    const std::string& cmd_name, const std::string& mod_name,
+                                    const stoatpp::models::Member& member) {
+    if (!g_db) return false;
+
+    auto rules = g_db->get_restrictions(server_id, "command", cmd_name);
+    auto mod_rules = g_db->get_restrictions(server_id, "module", mod_name);
+    rules.insert(rules.end(), mod_rules.begin(), mod_rules.end());
+
+    // Collect whitelist entries only
+    std::vector<std::string> whitelist_roles;
+    std::vector<int64_t> whitelist_permissions;
+    bool has_whitelist = false;
+
+    for (const auto& re : rules) {
+        if (re.restriction_type == "allow") {
+            has_whitelist = true;
+            if (re.entity_type == "role")
+                whitelist_roles.push_back(re.entity_id);
+            else if (re.entity_type == "permission")
+                whitelist_permissions.push_back(parse_permission_name(re.entity_id));
+        }
+    }
+
+    if (!has_whitelist) return false;
+
+    // Check if member has a whitelisted role
+    for (const auto& r : member.roles) {
+        if (std::find(whitelist_roles.begin(), whitelist_roles.end(), r) != whitelist_roles.end())
+            return true;
+    }
+
+    // Check if member has a whitelisted permission
+    auto server_opt = bot.get_server(server_id);
+    if (server_opt) {
+        for (auto mask : whitelist_permissions) {
+            if (bot.has_permission(*server_opt, member, mask))
+                return true;
+        }
+    }
+
     return false;
 }
 
