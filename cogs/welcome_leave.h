@@ -194,6 +194,11 @@ public:
                         target += args[i];
                     }
 
+                    // Strip <%roleId> mention wrapper if present (Stoat role mention format)
+                    if (target.rfind("<%", 0) == 0 && target.back() == '>') {
+                        target = target.substr(2, target.size() - 3);
+                    }
+
                     auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
 
                     if (target == "none" || target == "clear" || target == "null") {
