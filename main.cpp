@@ -59,6 +59,7 @@
 #include "cogs/welcome_leave.h"
 #include "cogs/starboard.h"
 #include "cogs/history.h"
+#include "cogs/snipe.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -504,6 +505,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::OwnerModule>());
   bot.use(std::make_unique<bronx::cogs::StarboardModule>());
   bot.use(std::make_unique<bronx::cogs::HistoryModule>());
+  bot.use(std::make_unique<bronx::cogs::SnipeModule>());
 
 
   bot.on_ready([&bot](const stoatpp::events::Ready &e) {
@@ -1163,6 +1165,14 @@ int main(int argc, char *argv[]) {
     payload.embeds.push_back(embed);
 
     bot.send_message("01KWJBMZFEW97D3VM09TDADRPN", payload);
+
+    // Purge all server-scoped data from the database on a background thread
+    if (bronx::g_db) {
+      std::string purge_id = e.id;
+      std::thread([purge_id]() {
+        bronx::g_db->purge_server_data(purge_id);
+      }).detach();
+    }
   });
 
   bot.on_error([](const stoatpp::events::Error &e) {
