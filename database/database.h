@@ -365,6 +365,14 @@ public:
 
   bool save_user_masquerade(const UserMasquerade &um);
 
+  std::optional<std::string> get_user_timezone(const std::string &user_id);
+
+  bool save_user_timezone(const std::string &user_id, const std::string &timezone);
+
+  bool is_user_ignored(const std::string &user_id);
+
+  bool toggle_user_ignored(const std::string &user_id, bool &is_now_ignored);
+
   std::optional<UserRankCard>
   get_user_rank_card(const std::string &user_id);
 
@@ -1080,6 +1088,12 @@ private:
 
   std::unordered_map<std::string, UserMasquerade> user_masq_cache_;
   std::shared_mutex user_masq_cache_mutex_;
+
+  std::unordered_map<std::string, std::string> user_timezones_cache_;
+  std::shared_mutex user_timezones_cache_mutex_;
+
+  std::unordered_set<std::string> ignored_users_cache_;
+  std::shared_mutex ignored_users_cache_mutex_;
 
   std::unordered_map<std::string, UserRankCard> user_rank_card_cache_;
   std::shared_mutex user_rank_card_cache_mutex_;

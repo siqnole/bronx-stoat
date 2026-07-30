@@ -17,6 +17,7 @@
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include "command_config.h"
+#include "helpers.h"
 
 namespace bronx::cogs {
 
@@ -324,12 +325,24 @@ public:
 
                         if (args.size() < 2) {
                             std::string user_id = msg.author.id;
+                            std::string channel_id = msg.channel_id;
                             {
                                 std::lock_guard<std::mutex> lock(pending_bridge_gens_mutex_);
-                                pending_bridge_gens_[user_id] = [&bot, msg](const std::string& code, const std::string& /*channel_id*/) {
-                                    bot.send_message(msg.channel_id, "🔑 **Bridge Verification Code**\n"
-                                                                     "Run `.bridge add " + code + "` in the target channel on another platform to bridge them.\n"
-                                                                     "⏳ This code will expire in 5 minutes.");
+                                pending_bridge_gens_[user_id] = [&bot, user_id, channel_id](const std::string& code, const std::string&) {
+                                    auto dm_res = bot.rest().open_dm(user_id);
+                                    std::string dm_channel_id;
+                                    if (dm_res.body.contains("_id") && dm_res.body["_id"].is_string())
+                                        dm_channel_id = dm_res.body["_id"].get<std::string>();
+                                    else if (dm_res.body.contains("id") && dm_res.body["id"].is_string())
+                                        dm_channel_id = dm_res.body["id"].get<std::string>();
+                                    if (!dm_channel_id.empty()) {
+                                        bot.send_message(dm_channel_id, "🔑 **Bridge Verification Code**\n"
+                                                                         "Run `.bridge add " + code + "` in the target channel on another platform to bridge them.\n"
+                                                                         "⏳ This code will expire in 5 minutes.");
+                                        bot.send_message(channel_id, "📩 **Bridge Code Sent!** Check your DMs (<@" + user_id + ">) for the verification code.");
+                                    } else {
+                                        bot.send_message(channel_id, "⚠️ Could not open a DM. Please enable DMs from server members.");
+                                    }
                                 };
                             }
                             nlohmann::json req = {
@@ -655,7 +668,20 @@ private:
             payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
             payload.masquerade->name = author_name;
             if (!author_avatar.empty()) {
-                payload.masquerade->avatar = author_avatar;
+                std::string url_to_upload = author_avatar;
+                {
+                    static const std::string fluxer_prefix = "https://cdn.fluxer.app/assets/avatars/";
+                    static const std::string fluxer_replacement = "https://fluxerusercontent.com/avatars/";
+                    if (url_to_upload.rfind(fluxer_prefix, 0) == 0) {
+                        url_to_upload = fluxer_replacement + url_to_upload.substr(fluxer_prefix.size());
+                        size_t dot = url_to_upload.rfind('.');
+                        if (dot != std::string::npos) url_to_upload = url_to_upload.substr(0, dot) + ".webp?size=160";
+                    }
+                }
+                std::string uploaded = bronx::helpers::upload_avatar(bot, url_to_upload);
+                if (!uploaded.empty() && uploaded.rfind(bot.config().autumn_url, 0) == 0) {
+                    payload.masquerade->avatar = uploaded;
+                }
             }
             if (!reply_to_message_id.empty()) {
                 payload.add_reply(reply_to_message_id);

@@ -702,6 +702,47 @@ public:
             },
             "Owner"
         });
+
+        // 13. ignore
+        bot.register_command({
+            "ignore",
+            {},
+            "globally ignore or unignore a user from bot interactions.",
+            "ignore <user>",
+            {"<user>"},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                if (!check_owner(bot, msg) || !g_db) return;
+
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id, "invalid syntax. use `ignore <user>`.");
+                    return;
+                }
+
+                std::string target_uid = resolve_user_id(args[0]);
+
+                if (bot.is_owner(target_uid)) {
+                    bot.send_message(msg.channel_id, "⚠️ You cannot ignore the bot owner.");
+                    return;
+                }
+
+                if (target_uid == bot.current_user().id) {
+                    bot.send_message(msg.channel_id, "⚠️ You cannot ignore the bot itself.");
+                    return;
+                }
+
+                bool is_now_ignored = false;
+                if (g_db->toggle_user_ignored(target_uid, is_now_ignored)) {
+                    if (is_now_ignored) {
+                        bot.send_message(msg.channel_id, "✅ User <@" + target_uid + "> is now globally ignored.");
+                    } else {
+                        bot.send_message(msg.channel_id, "✅ User <@" + target_uid + "> is no longer globally ignored.");
+                    }
+                } else {
+                    bot.send_message(msg.channel_id, "⚠️ Failed to toggle ignore status in database.");
+                }
+            },
+            "Owner"
+        });
     }
 };
 

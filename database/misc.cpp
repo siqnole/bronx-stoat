@@ -138,6 +138,77 @@ namespace bronx {
     return true;
   }
 
+  std::optional<std::string>
+  Database::get_user_timezone(const std::string &user_id) {
+    std::shared_lock<std::shared_mutex> lock(user_timezones_cache_mutex_);
+    auto it = user_timezones_cache_.find(user_id);
+    if (it != user_timezones_cache_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool Database::save_user_timezone(const std::string &user_id, const std::string &timezone) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+    std::string esc_uid = escape_string(user_id);
+    std::string esc_tz = escape_string(timezone);
+
+    std::string query =
+        "INSERT INTO user_timezones (user_id, timezone) "
+        "VALUES ('" + esc_uid + "', '" + esc_tz + "') "
+        "ON DUPLICATE KEY UPDATE timezone = '" + esc_tz + "'";
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save user_timezone: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(user_timezones_cache_mutex_);
+      user_timezones_cache_[user_id] = timezone;
+    }
+    return true;
+  }
+
+  bool Database::is_user_ignored(const std::string &user_id) {
+    std::shared_lock<std::shared_mutex> lock(ignored_users_cache_mutex_);
+    return ignored_users_cache_.find(user_id) != ignored_users_cache_.end();
+  }
+
+  bool Database::toggle_user_ignored(const std::string &user_id, bool &is_now_ignored) {
+    bool ignored = is_user_ignored(user_id);
+
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::string esc_uid = escape_string(user_id);
+
+    std::string query;
+    if (ignored) {
+      query = "DELETE FROM bot_ignored_users WHERE user_id = '" + esc_uid + "'";
+    } else {
+      query = "INSERT INTO bot_ignored_users (user_id) VALUES ('" + esc_uid + "')";
+    }
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to toggle user ignored: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(ignored_users_cache_mutex_);
+      if (ignored) {
+        ignored_users_cache_.erase(user_id);
+        is_now_ignored = false;
+      } else {
+        ignored_users_cache_.insert(user_id);
+        is_now_ignored = true;
+      }
+    }
+    return true;
+  }
+
   bool Database::delete_user_masquerade(const std::string &user_id) {
     std::lock_guard<std::mutex> db_lock(db_mutex_);
 

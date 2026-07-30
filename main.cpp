@@ -60,6 +60,7 @@
 #include "cogs/starboard.h"
 #include "cogs/history.h"
 #include "cogs/snipe.h"
+#include "cogs/timezone.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -277,6 +278,13 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  stoatpp::event_dispatcher::should_ignore_user = [](const std::string &user_id) -> bool {
+    if (bronx::g_db) {
+      return bronx::g_db->is_user_ignored(user_id);
+    }
+    return false;
+  };
+
   stoatpp::ClientConfig cfg;
   cfg.log_level = verbose ? stoatpp::LogLevel::TRACE : stoatpp::LogLevel::INFO;
   cfg.enable_default_help = false;
@@ -321,40 +329,6 @@ int main(int argc, char *argv[]) {
       return;
     }
 
-    // Helper to extract Autumn File ID from URL if stored as a URL
-    auto extract_file_id = [](const std::optional<std::string>& avatar_str) -> std::optional<std::string> {
-      if (!avatar_str) return std::nullopt;
-      std::string s = *avatar_str;
-      if (s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0) {
-        size_t q = s.find_first_of("?#");
-        if (q != std::string::npos) s = s.substr(0, q);
-
-        std::vector<std::string> parts;
-        std::stringstream ss(s);
-        std::string item;
-        while (std::getline(ss, item, '/')) {
-          if (!item.empty()) parts.push_back(item);
-        }
-
-        if (!parts.empty()) {
-          std::string file_id = parts.back();
-          if (parts.size() >= 2 && file_id.find('.') != std::string::npos) {
-            file_id = parts[parts.size() - 2];
-          }
-          if (!file_id.empty() && file_id.find('.') == std::string::npos &&
-              file_id != "attachments" && file_id != "avatars" &&
-              file_id != "backgrounds" && file_id != "icons") {
-            return file_id;
-          }
-        }
-        return std::nullopt;
-      }
-      if (s.find('.') != std::string::npos) {
-        return std::nullopt;
-      }
-      return s;
-    };
-
     // 1. Check server config — if masquerades are completely disabled for this server,
     // apply nothing
     auto server_cfg = bronx::g_db->get_masquerade_config(server_id);
@@ -381,7 +355,7 @@ int main(int argc, char *argv[]) {
         if (user_masq->name && !payload.masquerade->name && (!server_cfg || !server_cfg->disable_user_name))
           payload.masquerade->name = user_masq->name;
         if (user_masq->avatar && !payload.masquerade->avatar && (!server_cfg || !server_cfg->disable_user_avatar))
-          payload.masquerade->avatar = extract_file_id(user_masq->avatar);
+          payload.masquerade->avatar = user_masq->avatar;
         if (user_masq->colour && !payload.masquerade->colour && (!server_cfg || !server_cfg->disable_user_colour))
           payload.masquerade->colour = user_masq->colour;
       }
@@ -395,7 +369,7 @@ int main(int argc, char *argv[]) {
       if (server_cfg->name)
         payload.masquerade->name = server_cfg->name;
       if (server_cfg->avatar)
-        payload.masquerade->avatar = extract_file_id(server_cfg->avatar);
+        payload.masquerade->avatar = server_cfg->avatar;
       if (server_cfg->colour)
         payload.masquerade->colour = server_cfg->colour;
     }
@@ -506,6 +480,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::StarboardModule>());
   bot.use(std::make_unique<bronx::cogs::HistoryModule>());
   bot.use(std::make_unique<bronx::cogs::SnipeModule>());
+  bot.use(std::make_unique<bronx::cogs::TimezoneModule>());
 
 
   bot.on_ready([&bot](const stoatpp::events::Ready &e) {

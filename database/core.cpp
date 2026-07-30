@@ -526,6 +526,29 @@ namespace bronx {
       return false;
     }
 
+    // Create Table user_timezones
+    std::string create_user_tz =
+        "CREATE TABLE IF NOT EXISTS user_timezones ("
+        "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+        "  timezone VARCHAR(100) NOT NULL"
+        ")";
+    if (mysql_query(mysql_, create_user_tz.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'user_timezones': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    // Create Table bot_ignored_users
+    std::string create_bot_ignored =
+        "CREATE TABLE IF NOT EXISTS bot_ignored_users ("
+        "  user_id VARCHAR(30) NOT NULL PRIMARY KEY"
+        ")";
+    if (mysql_query(mysql_, create_bot_ignored.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'bot_ignored_users': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     // Create Table user_rank_card
     std::string create_urc = 
         "CREATE TABLE IF NOT EXISTS user_rank_card ("
@@ -2125,6 +2148,39 @@ namespace bronx {
           user_masq_cache_[u_id] = um;
         }
         mysql_free_result(um_res);
+      }
+    }
+
+    // Load user_timezones
+    std::string select_user_tzs =
+        "SELECT user_id, timezone FROM user_timezones";
+    if (mysql_query(mysql_, select_user_tzs.c_str()) == 0) {
+      MYSQL_RES *tz_res = mysql_store_result(mysql_);
+      if (tz_res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> tz_lock(user_timezones_cache_mutex_);
+        while ((row = mysql_fetch_row(tz_res))) {
+          std::string u_id = row[0] ? row[0] : "";
+          std::string tz = row[1] ? row[1] : "";
+          user_timezones_cache_[u_id] = tz;
+        }
+        mysql_free_result(tz_res);
+      }
+    }
+
+    // Load bot_ignored_users
+    std::string select_bot_ignored =
+        "SELECT user_id FROM bot_ignored_users";
+    if (mysql_query(mysql_, select_bot_ignored.c_str()) == 0) {
+      MYSQL_RES *ignored_res = mysql_store_result(mysql_);
+      if (ignored_res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> ignored_lock(ignored_users_cache_mutex_);
+        while ((row = mysql_fetch_row(ignored_res))) {
+          std::string u_id = row[0] ? row[0] : "";
+          ignored_users_cache_.insert(u_id);
+        }
+        mysql_free_result(ignored_res);
       }
     }
 

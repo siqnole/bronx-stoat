@@ -224,27 +224,26 @@ public:
             {},
             "timeout a member (mute/restrict).",
             "",
-            {"<@user|id>", "<seconds>", "[reason]"},
+            {"<@user|id>", "<duration>", "[reason]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling timeout...\n";
                 if (args.size() < 2) {
-                    bot.send_message(msg.channel_id, "usage: `!timeout <@user|id> <seconds> [reason]`");
+                    bot.send_message(msg.channel_id, "usage: `!timeout <@user|id> <duration> [reason]`");
                     return;
                 }
 
                 std::string query = args[0];
-                int seconds = 0;
-                try {
-                    seconds = std::stoi(args[1]);
-                } catch (...) {
-                    bot.send_message(msg.channel_id, "invalid duration. please specify duration in seconds.");
+                uint64_t seconds = 0;
+                size_t consumed = 0;
+                if (!helpers::parse_duration_from_args(args, 1, seconds, consumed, true)) {
+                    bot.send_message(msg.channel_id, "invalid duration. please specify a duration (e.g. `5m`, `1d`, `24h`, `5h 3s` or raw seconds).");
                     return;
                 }
 
                 std::string reason = "no reason provided";
-                if (args.size() > 2) {
+                if (args.size() > 1 + consumed) {
                     reason = "";
-                    for (size_t i = 2; i < args.size(); ++i) {
+                    for (size_t i = 1 + consumed; i < args.size(); ++i) {
                         reason += args[i] + (i + 1 < args.size() ? " " : "");
                     }
                 }
@@ -277,7 +276,7 @@ public:
                                 return;
                             }
 
-                             std::string iso_duration = helpers::get_future_iso_timestamp(seconds);
+                             std::string iso_duration = helpers::get_future_iso_timestamp(static_cast<int>(seconds));
                              bot.timeout_member(msg.server_id, target_user.id, iso_duration, [&bot, msg, target_user, seconds, reason](bool action_success) {
                                  if (action_success) {
                                      auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -286,13 +285,13 @@ public:
                                          {"{user}", "<@" + target_user.id + ">"},
                                          {"{username}", target_user.username},
                                          {"{reason}", reason},
-                                         {"{duration}", std::to_string(seconds) + " seconds"},
+                                         {"{duration}", helpers::format_duration(seconds)},
                                          {"{expires}", stoatpp::utils::format_timestamp(expires_unix, "R")},
                                          {"{moderator}", "<@" + msg.author.id + ">"},
                                          {"{modname}", msg.author.username}
                                      };
                                      send_action_response(bot, msg.server_id, msg.channel_id, "timeout", tokens, "successfully timed out **" + target_user.username + "** until " + stoatpp::utils::format_timestamp(expires_unix, "R") + ".");
-                                     log_moderation_action(bot, msg.server_id, "Timeout", msg.author.id, target_user.id, reason, "Duration: " + std::to_string(seconds) + " seconds", msg.channel_id);
+                                     log_moderation_action(bot, msg.server_id, "Timeout", msg.author.id, target_user.id, reason, "Duration: " + helpers::format_duration(seconds), msg.channel_id);
                                  } else {
                                      bot.send_message(msg.channel_id, "failed to set timeout.");
                                  }
