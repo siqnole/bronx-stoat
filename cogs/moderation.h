@@ -1627,23 +1627,27 @@ private:
                 int end_idx = std::min(start_idx + PAGE_SIZE, total_entries);
 
                 std::string desc;
+                desc += "| ID | Action | Invoker | Duration/Reason |\n";
+                desc += "| :--- | :--- | :--- | :--- |\n";
                 for (int i = start_idx; i < end_idx; ++i) {
                     const auto& e = entries[i];
-                    desc += action_emoji(e.action) + " **" + e.action + "** `#" + std::to_string(e.id) + "`";
-                    desc += " | **Invoker:** <@" + e.moderator_id + ">";
-                    if (!e.reason.empty()) {
-                        std::string r = e.reason;
-                        if (r.size() > 100) r = r.substr(0, 100) + "...";
-                        desc += " | **Reason:** " + r;
-                    }
+                    std::string reason_val = e.reason;
                     if (!e.extra_details.empty()) {
-                        std::string d = e.extra_details;
-                        if (d.size() > 100) d = d.substr(0, 100) + "...";
-                        desc += " | **Details:** " + d;
+                        reason_val = e.extra_details + ": " + reason_val;
                     }
-                    desc += "\n";
+                    if (reason_val.empty()) {
+                        reason_val = "none";
+                    }
+                    if (reason_val.size() > 50) {
+                        reason_val = reason_val.substr(0, 50) + "...";
+                    }
+
+                    desc += "| `#" + std::to_string(e.id) + "` | ";
+                    desc += action_emoji(e.action) + " " + e.action + " | ";
+                    desc += "<@" + e.moderator_id + "> | ";
+                    desc += reason_val + " |\n";
                 }
-                desc += "-# Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
+                desc += "\n-# Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
                 embed.set_description(desc);
             }
         } else {
@@ -1662,23 +1666,27 @@ private:
                 int end_idx = std::min(start_idx + PAGE_SIZE, total_entries);
 
                 std::string desc;
+                desc += "| ID | Action | Target | Duration/Reason |\n";
+                desc += "| :--- | :--- | :--- | :--- |\n";
                 for (int i = start_idx; i < end_idx; ++i) {
                     const auto& e = entries[i];
-                    desc += action_emoji(e.action) + " **" + e.action + "** `#" + std::to_string(e.id) + "`";
-                    desc += " | **Target:** <@" + e.target_id + ">";
-                    if (!e.reason.empty()) {
-                        std::string r = e.reason;
-                        if (r.size() > 100) r = r.substr(0, 100) + "...";
-                        desc += " | **Reason:** " + r;
-                    }
+                    std::string reason_val = e.reason;
                     if (!e.extra_details.empty()) {
-                        std::string d = e.extra_details;
-                        if (d.size() > 100) d = d.substr(0, 100) + "...";
-                        desc += " | **Details:** " + d;
+                        reason_val = e.extra_details + ": " + reason_val;
                     }
-                    desc += "\n";
+                    if (reason_val.empty()) {
+                        reason_val = "none";
+                    }
+                    if (reason_val.size() > 50) {
+                        reason_val = reason_val.substr(0, 50) + "...";
+                    }
+
+                    desc += "| `#" + std::to_string(e.id) + "` | ";
+                    desc += action_emoji(e.action) + " " + e.action + " | ";
+                    desc += "<@" + e.target_id + "> | ";
+                    desc += reason_val + " |\n";
                 }
-                desc += "-# Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
+                desc += "\n-# Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
                 embed.set_description(desc);
             }
         }
