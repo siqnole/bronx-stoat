@@ -564,6 +564,12 @@ public:
                                         const std::string &target_id = "",
                                         int limit = 50);
 
+  int get_warn_count(const std::string &server_id,
+                     const std::string &target_id);
+
+  int get_timeout_count(const std::string &server_id,
+                        const std::string &target_id);
+
   std::vector<ModLogEntry> get_mod_actions(const std::string &server_id,
                                            const std::string &action,
                                            int limit = 50);
@@ -761,6 +767,15 @@ public:
                         const std::string &roblox_username);
 
   bool delete_roblox_link(const std::string &user_id);
+
+  std::optional<LastfmLink> get_lastfm_link(const std::string &user_id);
+
+  bool save_lastfm_link(const std::string &user_id,
+                        const std::string &lastfm_username);
+
+  bool delete_lastfm_link(const std::string &user_id);
+
+  std::vector<LastfmLink> get_all_lastfm_links();
 
   bool save_account_link(const std::string &stoat_id,
                          const std::string &fluxer_id,

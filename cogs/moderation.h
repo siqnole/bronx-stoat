@@ -281,6 +281,20 @@ public:
                                  if (action_success) {
                                      auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
                                      auto expires_unix = now_unix + seconds;
+                                     log_moderation_action(bot, msg.server_id, "Timeout", msg.author.id, target_user.id, reason, "Duration: " + helpers::format_duration(seconds), msg.channel_id);
+
+                                     int count = 1;
+                                     if (g_db) {
+                                         count = g_db->get_timeout_count(msg.server_id, target_user.id);
+                                     }
+
+                                     std::string count_str;
+                                     if (count == 1) {
+                                         count_str = "this is their first timeout";
+                                     } else {
+                                         count_str = "timeout " + std::to_string(count);
+                                     }
+
                                      std::unordered_map<std::string, std::string> tokens = {
                                          {"{user}", "<@" + target_user.id + ">"},
                                          {"{username}", target_user.username},
@@ -288,10 +302,10 @@ public:
                                          {"{duration}", helpers::format_duration(seconds)},
                                          {"{expires}", stoatpp::utils::format_timestamp(expires_unix, "R")},
                                          {"{moderator}", "<@" + msg.author.id + ">"},
-                                         {"{modname}", msg.author.username}
+                                         {"{modname}", msg.author.username},
+                                         {"{timeouts}", count_str}
                                      };
-                                     send_action_response(bot, msg.server_id, msg.channel_id, "timeout", tokens, "successfully timed out **" + target_user.username + "** until " + stoatpp::utils::format_timestamp(expires_unix, "R") + ".");
-                                     log_moderation_action(bot, msg.server_id, "Timeout", msg.author.id, target_user.id, reason, "Duration: " + helpers::format_duration(seconds), msg.channel_id);
+                                     send_action_response(bot, msg.server_id, msg.channel_id, "timeout", tokens, "successfully timed out **" + target_user.username + "** until " + stoatpp::utils::format_timestamp(expires_unix, "R") + " (" + count_str + ").");
                                  } else {
                                      bot.send_message(msg.channel_id, "failed to set timeout.");
                                  }
@@ -343,15 +357,29 @@ public:
                             return;
                         }
 
+                        log_moderation_action(bot, msg.server_id, "Warn", msg.author.id, target_user.id, reason, "", msg.channel_id);
+
+                        int count = 1;
+                        if (g_db) {
+                            count = g_db->get_warn_count(msg.server_id, target_user.id);
+                        }
+
+                        std::string count_str;
+                        if (count == 1) {
+                            count_str = "this is their first warning";
+                        } else {
+                            count_str = "warning " + std::to_string(count);
+                        }
+
                         std::unordered_map<std::string, std::string> tokens = {
                             {"{user}", "<@" + target_user.id + ">"},
                             {"{username}", target_user.username},
                             {"{reason}", reason},
                             {"{moderator}", "<@" + msg.author.id + ">"},
-                            {"{modname}", msg.author.username}
+                            {"{modname}", msg.author.username},
+                            {"{warns}", count_str}
                         };
-                        send_action_response(bot, msg.server_id, msg.channel_id, "warn", tokens, "successfully warned **" + target_user.username + "**.");
-                        log_moderation_action(bot, msg.server_id, "Warn", msg.author.id, target_user.id, reason, "", msg.channel_id);
+                        send_action_response(bot, msg.server_id, msg.channel_id, "warn", tokens, "successfully warned **" + target_user.username + "** (" + count_str + ").");
                     });
                 });
             },
@@ -989,9 +1017,9 @@ public:
                         "**Supported Actions & Tokens:**\n"
                         "• **Ban (`ban`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
                         "• **Kick (`kick`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
-                        "• **Timeout (`timeout`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{expires}`, `{moderator}`, `{modname}`\n"
+                        "• **Timeout (`timeout`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{expires}`, `{moderator}`, `{modname}`, `{timeouts}`\n"
                         "• **Purge (`purge`):** `{amount}`, `{moderator}`, `{modname}`\n"
-                        "• **Warn (`warn`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n"
+                        "• **Warn (`warn`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`, `{warns}`\n"
                         "• **Jail (`jail`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{moderator}`, `{modname}`\n"
                         "• **Jail Invoke (`jail_invoke`):** `{user}`, `{username}`, `{reason}`, `{duration}`, `{moderator}`, `{modname}`\n"
                         "• **Unjail (`unjail`):** `{user}`, `{username}`, `{reason}`, `{moderator}`, `{modname}`\n\n"

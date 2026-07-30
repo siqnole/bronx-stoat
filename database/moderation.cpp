@@ -1271,4 +1271,50 @@ namespace bronx {
     return entries;
   }
 
+  int Database::get_warn_count(const std::string &server_id,
+                               const std::string &target_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return 0;
+    std::string sql = "SELECT COUNT(*) FROM moderation_logs WHERE server_id = '" +
+                      escape_string(server_id) + "' AND target_id = '" +
+                      escape_string(target_id) + "' AND action = 'Warn'";
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          int count = std::stoi(row[0]);
+          mysql_free_result(res);
+          return count;
+        }
+        mysql_free_result(res);
+      }
+    }
+    return 0;
+  }
+
+  int Database::get_timeout_count(const std::string &server_id,
+                                  const std::string &target_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return 0;
+    std::string sql = "SELECT COUNT(*) FROM moderation_logs WHERE server_id = '" +
+                      escape_string(server_id) + "' AND target_id = '" +
+                      escape_string(target_id) + "' AND action = 'Timeout'";
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          int count = std::stoi(row[0]);
+          mysql_free_result(res);
+          return count;
+        }
+        mysql_free_result(res);
+      }
+    }
+    return 0;
+  }
+
 } // namespace bronx

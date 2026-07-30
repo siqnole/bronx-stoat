@@ -400,6 +400,11 @@ struct RobloxLink {
     std::string roblox_username;
 };
 
+struct LastfmLink {
+    std::string user_id;
+    std::string lastfm_username;
+};
+
 struct RssFeed {
     int id = 0;
     std::string server_id;

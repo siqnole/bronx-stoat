@@ -36,6 +36,7 @@
 #include "cogs/games.h"
 #include "cogs/general.h"
 #include "cogs/help.h"
+#include "cogs/lastfm.h"
 #include "cogs/leveling.h"
 #include "cogs/logging.h"
 #include "cogs/masquerade.h"
@@ -467,6 +468,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::CountingModule>());
   bot.use(std::make_unique<bronx::cogs::AFKModule>());
   bot.use(std::make_unique<bronx::cogs::RobloxModule>());
+  bot.use(std::make_unique<bronx::cogs::LastfmModule>());
   bot.use(std::make_unique<bronx::cogs::RSSModule>());
   bot.use(std::make_unique<bronx::cogs::MasqueradeModule>());
   bot.use(std::make_unique<bronx::cogs::TupperModule>());

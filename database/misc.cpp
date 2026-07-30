@@ -1479,4 +1479,88 @@ namespace bronx {
     return true;
   }
 
+  std::optional<LastfmLink> Database::get_lastfm_link(const std::string &user_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return std::nullopt;
+
+    std::string esc_user_id = escape_string(user_id);
+    std::string query = "SELECT lastfm_username FROM lastfm_links WHERE user_id = '" + esc_user_id + "'";
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          LastfmLink link;
+          link.user_id = user_id;
+          link.lastfm_username = row[0] ? row[0] : "";
+          mysql_free_result(res);
+          return link;
+        }
+        mysql_free_result(res);
+      }
+    }
+    return std::nullopt;
+  }
+
+  bool Database::save_lastfm_link(const std::string &user_id,
+                        const std::string &lastfm_username) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_user_id = escape_string(user_id);
+    std::string esc_username = escape_string(lastfm_username);
+
+    std::string query =
+        "INSERT INTO lastfm_links (user_id, lastfm_username) "
+        "VALUES ('" + esc_user_id + "', '" + esc_username + "') "
+        "ON DUPLICATE KEY UPDATE lastfm_username = '" + esc_username + "'";
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save lastfm link: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  bool Database::delete_lastfm_link(const std::string &user_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_user_id = escape_string(user_id);
+    std::string query = "DELETE FROM lastfm_links WHERE user_id = '" + esc_user_id + "'";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to delete lastfm link: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  std::vector<LastfmLink> Database::get_all_lastfm_links() {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<LastfmLink> out;
+    if (!mysql_)
+      return out;
+
+    std::string query = "SELECT user_id, lastfm_username FROM lastfm_links";
+    if (mysql_query(mysql_, query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          LastfmLink link;
+          link.user_id = row[0] ? row[0] : "";
+          link.lastfm_username = row[1] ? row[1] : "";
+          out.push_back(std::move(link));
+        }
+        mysql_free_result(res);
+      }
+    }
+    return out;
+  }
+
 } // namespace bronx

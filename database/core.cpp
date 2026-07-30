@@ -1081,6 +1081,19 @@ namespace bronx {
       return false;
     }
 
+    // Create Table lastfm_links
+    std::string create_lastfm_links =
+        "CREATE TABLE IF NOT EXISTS lastfm_links ("
+        "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+        "  lastfm_username VARCHAR(100) NOT NULL,"
+        "  linked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+        ")";
+    if (mysql_query(mysql_, create_lastfm_links.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'lastfm_links': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     // Create Table account_links
     std::string create_account_links =
         "CREATE TABLE IF NOT EXISTS account_links ("
