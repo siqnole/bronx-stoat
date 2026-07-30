@@ -604,39 +604,32 @@ namespace bronx {
   bool Database::disable_item(const std::string &server_id,
                     const std::string &target_type,
                     const std::string &target_name) {
-    {
-      std::unique_lock<std::shared_mutex> lock(disabled_cache_mutex_);
-      disabled_cache_[server_id].insert(target_type + ":" + target_name);
-    }
-
-    std::lock_guard<std::mutex> db_lock(db_mutex_);
     std::string esc_srv = escape_string(server_id);
     std::string esc_type = escape_string(target_type);
     std::string esc_name = escape_string(target_name);
 
-    std::string query = "INSERT INTO disabled_commands (server_id, "
+    std::string query = "INSERT IGNORE INTO disabled_commands (server_id, "
                         "target_type, target_name) VALUES "
                         "('" +
                         esc_srv + "', '" + esc_type + "', '" + esc_name + "')";
-    if (mysql_query(mysql_, query.c_str())) {
-      std::cerr << "[bronx db] failed to disable command/module: "
-                << mysql_error(mysql_) << "\n";
-      return false;
+    {
+      std::lock_guard<std::mutex> db_lock(db_mutex_);
+      if (mysql_query(mysql_, query.c_str())) {
+        std::cerr << "[bronx db] failed to disable command/module: "
+                  << mysql_error(mysql_) << "\n";
+        return false;
+      }
+    }
+
+    {
+      std::unique_lock<std::shared_mutex> lock(disabled_cache_mutex_);
+      disabled_cache_[server_id].insert(target_type + ":" + target_name);
     }
     return true;
   }
 
   bool Database::enable_item(const std::string &server_id, const std::string &target_type,
                    const std::string &target_name) {
-    {
-      std::unique_lock<std::shared_mutex> lock(disabled_cache_mutex_);
-      auto it = disabled_cache_.find(server_id);
-      if (it != disabled_cache_.end()) {
-        it->second.erase(target_type + ":" + target_name);
-      }
-    }
-
-    std::lock_guard<std::mutex> db_lock(db_mutex_);
     std::string esc_srv = escape_string(server_id);
     std::string esc_type = escape_string(target_type);
     std::string esc_name = escape_string(target_name);
@@ -646,10 +639,21 @@ namespace bronx {
                         "' "
                         "AND target_type = '" +
                         esc_type + "' AND target_name = '" + esc_name + "'";
-    if (mysql_query(mysql_, query.c_str())) {
-      std::cerr << "[bronx db] failed to enable command/module: "
-                << mysql_error(mysql_) << "\n";
-      return false;
+    {
+      std::lock_guard<std::mutex> db_lock(db_mutex_);
+      if (mysql_query(mysql_, query.c_str())) {
+        std::cerr << "[bronx db] failed to enable command/module: "
+                  << mysql_error(mysql_) << "\n";
+        return false;
+      }
+    }
+
+    {
+      std::unique_lock<std::shared_mutex> lock(disabled_cache_mutex_);
+      auto it = disabled_cache_.find(server_id);
+      if (it != disabled_cache_.end()) {
+        it->second.erase(target_type + ":" + target_name);
+      }
     }
     return true;
   }

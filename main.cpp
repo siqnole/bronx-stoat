@@ -734,6 +734,10 @@ int main(int argc, char *argv[]) {
                 t.name + " [" + msg.author.username + "]";
             payload.masquerade->avatar = t.avatar_url;
 
+            for (const auto &reply_id : msg.replies) {
+              payload.add_reply(reply_id, false);
+            }
+
             std::string author_id = msg.author.id;
             std::string tupper_name = t.name;
             bot.send_message(msg.channel_id, payload,
@@ -1426,23 +1430,21 @@ int main(int argc, char *argv[]) {
       return stoatpp::CommandRunResult::Deny;
     }
 
-    // Emergency Override: Bot Owner always bypasses. Server Owner and
-    // ManageServer users only bypass config commands
-    bool bypass = bot.is_owner(msg.author.id);
-    if (!bypass) {
-      bool is_admin = bot.is_server_owner(msg.server_id, msg.author.id);
-      if (!is_admin && mem_opt) {
-        auto server_opt = bot.get_server(msg.server_id);
-        if (server_opt &&
-            bot.has_permission(*server_opt, *mem_opt,
-                               stoatpp::permissions::ManageServer)) {
-          is_admin = true;
-        }
+    // Emergency Override: Server Owner, Bot Owner, and ManageServer users
+    // only bypass config commands.
+    bool bypass = false;
+    bool is_admin = bot.is_server_owner(msg.server_id, msg.author.id) || bot.is_owner(msg.author.id);
+    if (!is_admin && mem_opt) {
+      auto server_opt = bot.get_server(msg.server_id);
+      if (server_opt &&
+          bot.has_permission(*server_opt, *mem_opt,
+                             stoatpp::permissions::ManageServer)) {
+        is_admin = true;
       }
-      if (is_admin &&
-          (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd")) {
-        bypass = true;
-      }
+    }
+    if (is_admin &&
+        (cmd_name == "command" || cmd_name == "trust" || cmd_name == "cmd")) {
+      bypass = true;
     }
 
     bool explicitly_allowed_by_role = false;

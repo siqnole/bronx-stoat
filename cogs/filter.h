@@ -216,15 +216,44 @@ public:
                             return;
                         }
 
+                        auto resolve_whitelist_entry = [&](const std::string& input_entry) -> std::string {
+                            std::string cleaned = trim_quotes(input_entry);
+                            if (cleaned.size() > 3 && cleaned.front() == '<' && cleaned[1] == '#' && cleaned.back() == '>') {
+                                return "#" + cleaned.substr(2, cleaned.size() - 3);
+                            }
+                            if (cleaned.size() > 3 && cleaned.front() == '<' && cleaned[1] == '%' && cleaned.back() == '>') {
+                                return "%" + cleaned.substr(2, cleaned.size() - 3);
+                            }
+                            
+                            std::string name_to_check = cleaned;
+                            if (!name_to_check.empty() && (name_to_check[0] == '#' || name_to_check[0] == '%')) {
+                                name_to_check = name_to_check.substr(1);
+                            }
+
+                            auto srv_opt = bot.get_server(msg.server_id);
+                            if (srv_opt) {
+                                for (const auto& ch_id : srv_opt->channels) {
+                                    auto c_opt = bot.get_channel(ch_id);
+                                    if (c_opt && c_opt->name && *c_opt->name == name_to_check) {
+                                        return "#" + c_opt->id;
+                                    }
+                                }
+                                for (const auto& r : srv_opt->roles) {
+                                    if (r.name == name_to_check || r.id == name_to_check) {
+                                        return "%" + r.id;
+                                    }
+                                }
+                            }
+                            return cleaned;
+                        };
+
                         // ── whitelist ─────────────────────────────────────────
                         if (sub == "whitelist") {
                             std::string entry = args.size() > 1 ? args[1] : "";
                             if (entry.empty()) { reply("usage: `" + pfx + "filter whitelist <word|#channel|%role>`"); return; }
-                            // Normalise <#ID> → #ID
-                            if (entry.size() > 3 && entry.front() == '<' && entry[1] == '#' && entry.back() == '>')
-                                entry = "#" + entry.substr(2, entry.size() - 3);
-                            if (bronx::g_db->filter_whitelist_add(msg.server_id, entry))
-                                reply("✅ added `" + entry + "` to the server whitelist.");
+                            std::string resolved = resolve_whitelist_entry(entry);
+                            if (bronx::g_db->filter_whitelist_add(msg.server_id, resolved))
+                                reply("✅ added `" + entry + "` (resolved: `" + resolved + "`) to the server whitelist.");
                             else
                                 reply("❌ failed to update whitelist.");
                             return;
@@ -234,12 +263,11 @@ public:
                         if (sub == "unwhitelist") {
                             std::string entry = args.size() > 1 ? args[1] : "";
                             if (entry.empty()) { reply("usage: `" + pfx + "filter unwhitelist <word|#channel|%role>`"); return; }
-                            if (entry.size() > 3 && entry.front() == '<' && entry[1] == '#' && entry.back() == '>')
-                                entry = "#" + entry.substr(2, entry.size() - 3);
-                            if (bronx::g_db->filter_whitelist_remove(msg.server_id, entry))
-                                reply("✅ removed `" + entry + "` from the server whitelist.");
+                            std::string resolved = resolve_whitelist_entry(entry);
+                            if (bronx::g_db->filter_whitelist_remove(msg.server_id, resolved))
+                                reply("✅ removed `" + entry + "` (resolved: `" + resolved + "`) from the server whitelist.");
                             else
-                                reply("❌ `" + entry + "` was not in the whitelist.");
+                                reply("❌ `" + entry + "` (resolved: `" + resolved + "`) was not in the whitelist.");
                             return;
                         }
 
@@ -270,8 +298,30 @@ public:
 
         // Check author's roles against whitelist
         auto member = bot.get_member(msg.server_id, msg.author.id);
+        std::vector<std::string> roles;
+        stoatpp::models::Member fetched_member;
+        bool has_member = false;
         if (member) {
-            for (const auto& role_id : member->roles) {
+            fetched_member = *member;
+            has_member = true;
+            roles = member->roles;
+        } else {
+            auto res = bot.rest().get_server_member(msg.server_id, msg.author.id);
+            if (res.success()) {
+                fetched_member = stoatpp::models::Member::from_json(res.body);
+                has_member = true;
+                roles = fetched_member.roles;
+                bot.cache_member(fetched_member);
+            }
+        }
+
+        // Bypass for server owner or trusted users
+        if (has_member && is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, fetched_member)) {
+            return false;
+        }
+
+        if (has_member) {
+            for (const auto& role_id : roles) {
                 if (std::find(wl.entries.begin(), wl.entries.end(), "%" + role_id) != wl.entries.end())
                     return false;
             }

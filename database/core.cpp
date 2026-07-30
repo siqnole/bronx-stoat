@@ -29,7 +29,7 @@ namespace bronx {
     // Set connection options (prevent hanging and auto-reconnect)
     my_bool reconnect = 1;
     mysql_options(mysql_, MYSQL_OPT_RECONNECT, &reconnect);
-    unsigned int timeout_sec;
+    unsigned int timeout_sec = 10;
     mysql_options(mysql_, MYSQL_OPT_CONNECT_TIMEOUT, &timeout_sec);
     mysql_options(mysql_, MYSQL_OPT_READ_TIMEOUT, &timeout_sec);
     mysql_options(mysql_, MYSQL_OPT_WRITE_TIMEOUT, &timeout_sec);
