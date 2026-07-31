@@ -161,7 +161,7 @@ public:
             {},
             "unban a user from the server.",
             "",
-            {"<user_id>", "[reason]"},
+            {"<@user|id>", "[reason]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling unban...\n";
 
@@ -175,11 +175,11 @@ public:
                 }
 
                 if (args.empty()) {
-                    bot.send_message(msg.channel_id, "usage: `" + msg.prefix + "unban <user_id> [reason]`");
+                    bot.send_message(msg.channel_id, "usage: `" + msg.prefix + "unban <@user|id> [reason]`");
                     return;
                 }
 
-                std::string target_id = args[0];
+                std::string query = args[0];
                 std::string reason = "no reason provided";
                 if (args.size() > 1) {
                     reason = "";
@@ -188,24 +188,110 @@ public:
                     }
                 }
 
-                bot.unban_user(msg.server_id, target_id, [&bot, msg, target_id, reason](bool success) {
-                    if (success) {
-                        std::unordered_map<std::string, std::string> tokens = {
-                            {"{user}", "<@" + target_id + ">"},
-                            {"{reason}", reason},
-                            {"{moderator}", "<@" + msg.author.id + ">"},
-                            {"{modname}", msg.author.username}
-                        };
-                        send_action_response(bot, msg.server_id, msg.channel_id, "unban", tokens, "successfully unbanned user ID **" + target_id + "**.");
-                        log_moderation_action(bot, msg.server_id, "Unban", msg.author.id, target_id, reason, "", msg.channel_id);
-                    } else {
-                        bot.send_message(msg.channel_id, "failed to unban user. make sure the user ID is correct and I have ban permissions.");
+                std::thread([&bot, msg, query, reason]() {
+                    std::string target_id = query;
+                    if (target_id.rfind("<@", 0) == 0 && target_id.back() == '>') {
+                        target_id = target_id.substr(2, target_id.size() - 3);
                     }
-                });
+
+                    bool target_resolved = false;
+                    std::string resolved_id = "";
+                    std::string resolved_name = "";
+
+                    auto is_id = [](const std::string& s) {
+                        if (s.size() != 26) return false;
+                        for (char c : s) {
+                            if (!std::isalnum(c)) return false;
+                        }
+                        return true;
+                    };
+
+                    auto to_lower = [](std::string s) {
+                        for (auto& c : s) c = std::tolower(c);
+                        return s;
+                    };
+
+                    auto bans_res = bot.rest().get_server_bans(msg.server_id);
+                    if (bans_res.success() && bans_res.body.is_array()) {
+                        std::string lower_query = to_lower(target_id);
+                        for (const auto& item : bans_res.body) {
+                            std::string banned_user_id = "";
+                            if (item.contains("id") && item["id"].is_object() && item["id"].contains("user") && item["id"]["user"].is_string()) {
+                                banned_user_id = item["id"]["user"].get<std::string>();
+                            } else if (item.contains("_id") && item["_id"].is_object() && item["_id"].contains("user") && item["_id"]["user"].is_string()) {
+                                banned_user_id = item["_id"]["user"].get<std::string>();
+                            }
+
+                            if (banned_user_id.empty()) continue;
+
+                            // 1. Exact ID match
+                            if (target_id == banned_user_id) {
+                                resolved_id = banned_user_id;
+                                if (item.contains("user") && item["user"].is_object() && item["user"].contains("username") && item["user"]["username"].is_string()) {
+                                    resolved_name = item["user"]["username"].get<std::string>();
+                                } else {
+                                    resolved_name = banned_user_id;
+                                }
+                                target_resolved = true;
+                                break;
+                            }
+
+                            // 2. Username/display name/tag match
+                            if (item.contains("user") && item["user"].is_object()) {
+                                auto u_obj = item["user"];
+                                std::string username = u_obj.contains("username") && u_obj["username"].is_string() ? u_obj["username"].get<std::string>() : "";
+                                std::string display_name = u_obj.contains("display_name") && u_obj["display_name"].is_string() ? u_obj["display_name"].get<std::string>() : "";
+                                std::string discriminator = u_obj.contains("discriminator") && u_obj["discriminator"].is_string() ? u_obj["discriminator"].get<std::string>() : "";
+
+                                std::string lower_username = to_lower(username);
+                                std::string lower_display = to_lower(display_name);
+                                std::string full_tag = username;
+                                if (!discriminator.empty()) full_tag += "#" + discriminator;
+                                std::string lower_tag = to_lower(full_tag);
+
+                                if (lower_query == lower_username || (!display_name.empty() && lower_query == lower_display) || lower_query == lower_tag) {
+                                    resolved_id = banned_user_id;
+                                    resolved_name = username.empty() ? banned_user_id : username;
+                                    target_resolved = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!target_resolved) {
+                        if (is_id(target_id)) {
+                            resolved_id = target_id;
+                            resolved_name = target_id;
+                            target_resolved = true;
+                        }
+                    }
+
+                    if (!target_resolved) {
+                        bot.send_message(msg.channel_id, "could not resolve target user to unban. please make sure the username or user ID is correct.");
+                        return;
+                    }
+
+                    bot.unban_user(msg.server_id, resolved_id, [&bot, msg, resolved_id, resolved_name, reason](bool success) {
+                        if (success) {
+                            std::unordered_map<std::string, std::string> tokens = {
+                                {"{user}", "<@" + resolved_id + ">"},
+                                {"{reason}", reason},
+                                {"{moderator}", "<@" + msg.author.id + ">"},
+                                {"{modname}", msg.author.username}
+                            };
+                            send_action_response(bot, msg.server_id, msg.channel_id, "unban", tokens, "successfully unbanned **" + resolved_name + "**.");
+                            log_moderation_action(bot, msg.server_id, "Unban", msg.author.id, resolved_id, reason, "", msg.channel_id);
+                        } else {
+                            bot.send_message(msg.channel_id, "failed to unban user. make sure the user ID is correct and I have ban permissions.");
+                        }
+                    });
+                }).detach();
             },
             "Moderation",
             stoatpp::permissions::BanMembers
         });
+
 
         bot.register_command({
             "kick",
