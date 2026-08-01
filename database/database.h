@@ -887,6 +887,16 @@ public:
 
   void invalidate_guild_leveling_config_cache(const std::string &server_id);
 
+  bool reload_guild_leveling_config(const std::string &server_id);
+  bool reload_level_roles(const std::string &server_id);
+  bool reload_welcome_leave_config(const std::string &server_id);
+  bool reload_logging_config(const std::string &server_id);
+  bool reload_logging_embeds(const std::string &server_id);
+  bool reload_antiraid_config(const std::string &server_id);
+  bool reload_prefixes(const std::string &server_id);
+  bool reload_autoresponders(const std::string &server_id);
+  bool reload_autoreacts(const std::string &server_id);
+
   std::vector<LevelRole> get_level_roles(const std::string &server_id);
 
   std::optional<LevelRole> get_level_role_at_level(const std::string &server_id,

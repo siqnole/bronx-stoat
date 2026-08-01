@@ -1563,4 +1563,103 @@ namespace bronx {
     return out;
   }
 
+  bool Database::reload_prefixes(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT prefixes, default_enabled FROM prefixes WHERE target_type = 'server' AND target_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        std::lock_guard<std::shared_mutex> pfx_lock(cache_mutex_);
+        std::lock_guard<std::shared_mutex> def_pfx_lock(pfx_default_cache_mutex_);
+        if (row) {
+          std::vector<std::string> pfxs;
+          std::string raw_pfx = row[0] ? row[0] : "[\".\"]";
+          try {
+            auto parsed = nlohmann::json::parse(raw_pfx);
+            if (parsed.is_array()) {
+              for (const auto &p : parsed) pfxs.push_back(p.get<std::string>());
+            }
+          } catch (...) {}
+          cache_["server:" + server_id] = pfxs;
+          pfx_default_cache_[server_id] = row[1] && std::string(row[1]) == "1";
+        } else {
+          cache_.erase("server:" + server_id);
+          pfx_default_cache_.erase(server_id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+  bool Database::reload_autoresponders(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT id, name, keyword, match_type, message_type, content, embed_json, allow_roles, allow_users, allow_channels, ignore_roles, ignore_users, ignore_channels FROM autoresponders WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        std::lock_guard<std::shared_mutex> cache_lock(arsp_cache_mutex_);
+        auto &idx = arsp_server_index_[server_id];
+        for (int id : idx) {
+          arsp_cache_.erase(id);
+        }
+        idx.clear();
+
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          AutoresponderConfig c;
+          c.id = row[0] ? std::stoi(row[0]) : 0;
+          c.server_id = server_id;
+          c.name = row[1] ? row[1] : "";
+          c.keyword = row[2] ? row[2] : "";
+          c.match_type = row[3] ? row[3] : "contains";
+          c.message_type = row[4] ? row[4] : "text";
+          c.content = row[5] ? row[5] : "";
+          c.embed_json = row[6] ? row[6] : "";
+          
+          arsp_cache_[c.id] = c;
+          idx.push_back(c.id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+  bool Database::reload_autoreacts(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT id, name, keyword, match_type, emojis FROM autoreacts WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        std::lock_guard<std::shared_mutex> cache_lock(arct_cache_mutex_);
+        auto &idx = arct_server_index_[server_id];
+        for (int id : idx) {
+          arct_cache_.erase(id);
+        }
+        idx.clear();
+
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          AutoreactConfig c;
+          c.id = row[0] ? std::stoi(row[0]) : 0;
+          c.server_id = server_id;
+          c.name = row[1] ? row[1] : "";
+          c.keyword = row[2] ? row[2] : "";
+          c.match_type = row[3] ? row[3] : "contains";
+          c.emojis = row[4] ? row[4] : "";
+          
+          arct_cache_[c.id] = c;
+          idx.push_back(c.id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
 } // namespace bronx

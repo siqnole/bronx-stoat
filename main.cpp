@@ -18,6 +18,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 
 // Include our Cogs
 #include "cogs/afk.h"
@@ -207,6 +210,112 @@ bool bot_has_masquerade_permission(stoatpp::cluster &bot,
          stoatpp::permissions::Masquerade;
 }
 
+void start_reload_server() {
+  std::thread([]() {
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd < 0) return;
+
+    int opt = 1;
+    setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+    sockaddr_in address;
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons(3010);
+
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+      close(server_fd);
+      return;
+    }
+
+    if (listen(server_fd, 10) < 0) {
+      close(server_fd);
+      return;
+    }
+
+    std::cout << "\033[1;36m[reload server]\033[0m listening on port 3010...\n";
+
+    while (true) {
+      int new_socket = accept(server_fd, nullptr, nullptr);
+      if (new_socket < 0) continue;
+
+      char buffer[2048] = {0};
+      ssize_t valread = read(new_socket, buffer, sizeof(buffer) - 1);
+      if (valread > 0) {
+        std::string req(buffer);
+        size_t reload_pos = req.find("GET /reload");
+        if (reload_pos != std::string::npos) {
+          size_t q_pos = req.find('?', reload_pos);
+          size_t space_pos = req.find(' ', q_pos);
+          if (q_pos != std::string::npos && space_pos != std::string::npos) {
+            std::string query = req.substr(q_pos + 1, space_pos - q_pos - 1);
+            
+            auto parse_param = [](const std::string &query, const std::string &key) -> std::string {
+              size_t k_pos = query.find(key + "=");
+              if (k_pos == std::string::npos) return "";
+              size_t val_start = k_pos + key.size() + 1;
+              size_t amp_pos = query.find('&', val_start);
+              std::string enc_val = (amp_pos == std::string::npos) ? query.substr(val_start) : query.substr(val_start, amp_pos - val_start);
+              
+              std::string res;
+              for (size_t i = 0; i < enc_val.length(); ++i) {
+                if (enc_val[i] == '%' && i + 2 < enc_val.length()) {
+                  try {
+                    int hex = std::stoi(enc_val.substr(i + 1, 2), nullptr, 16);
+                    res += static_cast<char>(hex);
+                    i += 2;
+                  } catch (...) {}
+                } else if (enc_val[i] == '+') {
+                  res += ' ';
+                } else {
+                  res += enc_val[i];
+                }
+              }
+              return res;
+            };
+
+            std::string server_id = parse_param(query, "server_id");
+            std::string module = parse_param(query, "module");
+
+            if (!server_id.empty() && bronx::g_db) {
+              std::cout << "\033[1;36m[reload server]\033[0m reloading module '" << module << "' for server " << server_id << "\n";
+              if (module == "leveling" || module == "all") {
+                bronx::g_db->reload_guild_leveling_config(server_id);
+              }
+              if (module == "level_roles" || module == "leveling" || module == "all") {
+                bronx::g_db->reload_level_roles(server_id);
+              }
+              if (module == "welcome_leave" || module == "all") {
+                bronx::g_db->reload_welcome_leave_config(server_id);
+              }
+              if (module == "logging" || module == "all") {
+                bronx::g_db->reload_logging_config(server_id);
+                bronx::g_db->reload_logging_embeds(server_id);
+              }
+              if (module == "antiraid" || module == "all") {
+                bronx::g_db->reload_antiraid_config(server_id);
+              }
+              if (module == "prefixes" || module == "all") {
+                bronx::g_db->reload_prefixes(server_id);
+              }
+              if (module == "autoresponder" || module == "all") {
+                bronx::g_db->reload_autoresponders(server_id);
+              }
+              if (module == "autoreact" || module == "all") {
+                bronx::g_db->reload_autoreacts(server_id);
+              }
+            }
+          }
+        }
+
+        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"success\":true}";
+        write(new_socket, response.c_str(), response.size());
+      }
+      close(new_socket);
+    }
+  }).detach();
+}
+
 int main(int argc, char *argv[]) {
   load_env();
 
@@ -278,6 +387,8 @@ int main(int argc, char *argv[]) {
         << "[bronx error] failed to initialize database connection. exiting.\n";
     return 1;
   }
+
+  start_reload_server();
 
   stoatpp::event_dispatcher::should_ignore_user = [](const std::string &user_id) -> bool {
     if (bronx::g_db) {
@@ -793,7 +904,9 @@ int main(int argc, char *argv[]) {
 
           // 1. Check message length
           if (msg.content.size() <
-              static_cast<size_t>(cfg_opt->min_message_chars)) {
+              static_cast<size_t>(cfg_opt->min_message_chars) ||
+              msg.content.size() >
+              static_cast<size_t>(cfg_opt->max_message_chars)) {
             skip_xp = true;
           }
 

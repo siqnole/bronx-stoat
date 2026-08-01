@@ -358,7 +358,7 @@ public:
                         "total messages: **" + std::to_string(totals.total_messages) + "**\n"
                         "active users: **" + std::to_string(totals.active_users) + "**\n"
                         "commands used: **" + std::to_string(totals.total_commands) + "**\n"
-                        "\n-# use `.stats chart` to visualize message trends";
+                        "\n###### use `.stats chart` to visualize message trends";
                     embed.set_description(desc);
                 } 
                 else if (sub == "top" && global_top) {
@@ -437,7 +437,7 @@ public:
                         for (const auto& c : top_chan)
                             desc += std::to_string(rank++) + ". <#" + c.channel_id + "> — " + std::to_string(c.message_count) + " msgs\n";
                     }
-                    desc += "\n-# use `.stats top g` for the global leaderboard · `.stats chart` to visualize";
+                    desc += "\n###### use `.stats top g` for the global leaderboard · `.stats chart` to visualize";
                     embed.set_description(desc);
                 } 
                 else if (sub == "users") {
@@ -636,7 +636,7 @@ public:
                                 
                                 std::string desc = text_desc;
                                 if (!global_top) {
-                                    desc += "\n-# use `.stats command g` for global command stats";
+                                    desc += "\n###### use `.stats command g` for global command stats";
                                 }
                                 embed.set_description(desc);
 
@@ -679,7 +679,7 @@ public:
                             desc += std::to_string(rank++) + ". **." + c.command_name + "** — " + std::to_string(c.use_count) + " uses\n";
                     }
                     if (!global_top) {
-                        desc += "\n-# use `.stats command g` for global command stats";
+                        desc += "\n###### use `.stats command g` for global command stats";
                     }
                     embed.set_description(desc);
 #endif

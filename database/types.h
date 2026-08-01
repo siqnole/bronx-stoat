@@ -278,6 +278,7 @@ struct GuildLevelingConfig {
     int min_xp_per_message = 15;
     int max_xp_per_message = 25;
     int min_message_chars = 5;
+    int max_message_chars = 2000;
     int xp_cooldown_seconds = 60;
     std::optional<std::string> announcement_channel;
     bool announce_levelup = true;

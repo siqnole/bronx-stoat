@@ -369,7 +369,7 @@ inline void resolve_user(stoatpp::cluster& bot, const std::string& server_id, co
             }
             if (!server_id.empty()) {
                 bot.fetch_member(server_id, user.id, [user, callback](stoatpp::models::Member member, bool success_mem) {
-                    callback(user, member, success_mem);
+                    callback(user, member, true);
                 });
             } else {
                 callback(user, {}, true);

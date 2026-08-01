@@ -1321,4 +1321,115 @@ namespace bronx {
     return 0;
   }
 
+  bool Database::reload_welcome_leave_config(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT server_id, welcome_channel_id, welcome_type, welcome_content, welcome_embed, "
+                    "leave_channel_id, leave_type, leave_content, leave_embed, autorole_role_id, "
+                    "welcome_dm_type, welcome_dm_content, welcome_dm_embed FROM welcome_leave_configs WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        std::lock_guard<std::shared_mutex> cache_lock(wl_cache_mutex_);
+        if (row) {
+          WelcomeLeaveConfig wl;
+          wl.server_id = row[0] ? row[0] : "";
+          wl.welcome_channel_id = row[1] ? row[1] : "";
+          wl.welcome_type = row[2] ? row[2] : "text";
+          wl.welcome_content = row[3] ? row[3] : "";
+          wl.welcome_embed_json = row[4] ? row[4] : "";
+          wl.leave_channel_id = row[5] ? row[5] : "";
+          wl.leave_type = row[6] ? row[6] : "text";
+          wl.leave_content = row[7] ? row[7] : "";
+          wl.leave_embed_json = row[8] ? row[8] : "";
+          wl.autorole_role_id = row[9] ? row[9] : "";
+          wl.welcome_dm_type = row[10] ? row[10] : "none";
+          wl.welcome_dm_content = row[11] ? row[11] : "";
+          wl.welcome_dm_embed_json = row[12] ? row[12] : "";
+          wl_cache_[server_id] = wl;
+        } else {
+          wl_cache_.erase(server_id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+  bool Database::reload_logging_config(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT event_type, channel_id FROM logging_configs WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        std::lock_guard<std::shared_mutex> cache_lock(log_cache_mutex_);
+        log_cache_[server_id].clear();
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          log_cache_[server_id][row[0] ? row[0] : ""] = row[1] ? row[1] : "";
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+  bool Database::reload_logging_embeds(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT event_type, message_type, content, embed_json FROM logging_embeds WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        std::lock_guard<std::shared_mutex> cache_lock(log_embed_cache_mutex_);
+        log_embed_cache_[server_id].clear();
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          LoggingEmbed le;
+          le.server_id = server_id;
+          le.event_type = row[0] ? row[0] : "";
+          le.message_type = row[1] ? row[1] : "embed";
+          le.content = row[2] ? row[2] : "";
+          le.embed_json = row[3] ? row[3] : "";
+          log_embed_cache_[server_id][le.event_type] = le;
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+  bool Database::reload_antiraid_config(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT server_id, joins_threshold_count, joins_threshold_seconds, "
+                    "joins_action, spam_threshold_count, spam_threshold_seconds, "
+                    "spam_action, default_profile_action FROM antiraid_configs WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        std::lock_guard<std::shared_mutex> cache_lock(ar_cache_mutex_);
+        if (row) {
+          AntiRaidConfig ar;
+          ar.server_id = row[0] ? row[0] : "";
+          ar.joins_threshold_count = row[1] ? std::stoi(row[1]) : 5;
+          ar.joins_threshold_seconds = row[2] ? std::stoi(row[2]) : 60;
+          ar.joins_action = row[3] ? row[3] : "none";
+          ar.spam_threshold_count = row[4] ? std::stoi(row[4]) : 5;
+          ar.spam_threshold_seconds = row[5] ? std::stoi(row[5]) : 2;
+          ar.spam_action = row[6] ? row[6] : "none";
+          ar.default_profile_action = row[7] ? row[7] : "none";
+          ar_cache_[server_id] = ar;
+        } else {
+          ar_cache_.erase(server_id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
 } // namespace bronx

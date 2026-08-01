@@ -616,6 +616,7 @@ private:
                 "• `" + pfx + "level config preview` — Show current server config.\n"
                 "• `" + pfx + "level config cooldown <seconds>` — Message cooldown for XP (default: 60s).\n"
                 "• `" + pfx + "level config minchars <number>` — Min message characters to earn XP (default: 5).\n"
+                "• `" + pfx + "level config maxchars <number>` — Max message characters to earn XP (default: 2000).\n"
                 "• `" + pfx + "level config announce <on|off>` — Toggle level-up announcements.\n"
                 "• `" + pfx + "level config channel <#channel | here | none>` — Set level-up announcement channel.\n"
                 "• `" + pfx + "level config message <message...>` — Custom message (tokens: `{name}`, `{mention}`, `{level}`).\n"
@@ -806,7 +807,7 @@ private:
         }
         else if (sub == "config") {
             if (args.size() < 2) {
-                bot.send_message(msg.channel_id, "usage: `" + pfx + "level config <preview|cooldown|minchars|announce|channel|message|reset|resetdata>`");
+                bot.send_message(msg.channel_id, "usage: `" + pfx + "level config <preview|cooldown|minchars|maxchars|announce|channel|message|reset|resetdata>`");
                 return;
             }
             std::string cfg_sub = args[1];
@@ -829,6 +830,7 @@ private:
                                   "• **XP gain range**: " + std::to_string(cfg.min_xp_per_message) + "-" + std::to_string(cfg.max_xp_per_message) + " XP\n"
                                   "• **XP Message Cooldown**: " + std::to_string(cfg.xp_cooldown_seconds) + " seconds\n"
                                   "• **Minimum character length**: " + std::to_string(cfg.min_message_chars) + " characters\n"
+                                  "• **Maximum character length**: " + std::to_string(cfg.max_message_chars) + " characters\n"
                                   "• **Announce Level-Ups**: " + std::string(cfg.announce_levelup ? "✅ Yes" : "❌ No") + "\n"
                                   "• **Announcement Channel**: " + chan_label + "\n"
                                   "• **Announcement Message Template**: `" + cfg.announcement_message + "`\n"
@@ -872,6 +874,27 @@ private:
                     cfg.min_message_chars = mc;
                     if (g_db->update_guild_leveling_config(cfg)) {
                         bot.send_message(msg.channel_id, "✅ Minimum character length set to **" + std::to_string(mc) + "**.");
+                    } else {
+                        bot.send_message(msg.channel_id, "❌ Failed to save changes.");
+                    }
+                } catch (...) {
+                    bot.send_message(msg.channel_id, "❌ Invalid characters count.");
+                }
+            }
+            else if (cfg_sub == "maxchars") {
+                if (args.size() < 3) {
+                    bot.send_message(msg.channel_id, "usage: `" + pfx + "level config maxchars <number>`");
+                    return;
+                }
+                try {
+                    int mc = std::stoi(args[2]);
+                    if (mc < 0) {
+                        bot.send_message(msg.channel_id, "❌ Maximum characters cannot be negative.");
+                        return;
+                    }
+                    cfg.max_message_chars = mc;
+                    if (g_db->update_guild_leveling_config(cfg)) {
+                        bot.send_message(msg.channel_id, "✅ Maximum character length set to **" + std::to_string(mc) + "**.");
                     } else {
                         bot.send_message(msg.channel_id, "❌ Failed to save changes.");
                     }

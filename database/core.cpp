@@ -653,6 +653,7 @@ namespace bronx {
         "  min_xp_per_message INT NOT NULL DEFAULT 15,"
         "  max_xp_per_message INT NOT NULL DEFAULT 25,"
         "  min_message_chars INT NOT NULL DEFAULT 5,"
+        "  max_message_chars INT NOT NULL DEFAULT 2000,"
         "  xp_cooldown_seconds INT NOT NULL DEFAULT 60,"
         "  announcement_channel VARCHAR(30) DEFAULT NULL,"
         "  announce_levelup TINYINT(1) NOT NULL DEFAULT 1,"
@@ -668,6 +669,9 @@ namespace bronx {
                 << mysql_error(mysql_) << "\n";
       return false;
     }
+
+    // Migration: add max_message_chars if it doesn't exist
+    mysql_query(mysql_, "ALTER TABLE guild_leveling_config ADD COLUMN IF NOT EXISTS max_message_chars INT NOT NULL DEFAULT 2000");
 
     // Create Table guild_level_roles
     std::string create_glr =
@@ -2249,6 +2253,7 @@ namespace bronx {
     std::string select_glc_sql =
         "SELECT server_id, enabled, reward_coins, coins_per_message, "
         "min_xp_per_message, max_xp_per_message, min_message_chars, "
+        "max_message_chars, "
         "xp_cooldown_seconds, announcement_channel, announce_levelup, "
         "level_up_message, sticky_roles FROM guild_leveling_config";
     if (mysql_query(mysql_, select_glc_sql.c_str()) == 0) {
@@ -2267,12 +2272,13 @@ namespace bronx {
           cfg.min_xp_per_message = row[4] ? std::stoi(row[4]) : 15;
           cfg.max_xp_per_message = row[5] ? std::stoi(row[5]) : 25;
           cfg.min_message_chars = row[6] ? std::stoi(row[6]) : 5;
-          cfg.xp_cooldown_seconds = row[7] ? std::stoi(row[7]) : 60;
-          if (row[8])
-            cfg.announcement_channel = row[8];
-          cfg.announce_levelup = row[9] && std::string(row[9]) == "1";
-          cfg.announcement_message = row[10] ? row[10] : "";
-          cfg.sticky_roles = row[11] && std::string(row[11]) == "1";
+          cfg.max_message_chars = row[7] ? std::stoi(row[7]) : 2000;
+          cfg.xp_cooldown_seconds = row[8] ? std::stoi(row[8]) : 60;
+          if (row[9])
+            cfg.announcement_channel = row[9];
+          cfg.announce_levelup = row[10] && std::string(row[10]) == "1";
+          cfg.announcement_message = row[11] ? row[11] : "";
+          cfg.sticky_roles = row[12] && std::string(row[12]) == "1";
           leveling_config_cache_[s_id] = cfg;
         }
         mysql_free_result(glc_res);

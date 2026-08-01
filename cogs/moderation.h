@@ -123,14 +123,16 @@ public:
                                   return;
                             }
 
-                            if (!helpers::check_hierarchy(bot, msg.server_id, exec_member, target_member)) {
-                                bot.send_message(msg.channel_id, "hierarchy error: you cannot moderate this user.");
-                                return;
-                            }
+                            if (!target_member.id.empty()) {
+                                if (!helpers::check_hierarchy(bot, msg.server_id, exec_member, target_member)) {
+                                    bot.send_message(msg.channel_id, "hierarchy error: you cannot moderate this user.");
+                                    return;
+                                }
 
-                            if (!helpers::check_hierarchy(bot, msg.server_id, bot_member, target_member)) {
-                                bot.send_message(msg.channel_id, "hierarchy error: i do not have high enough position to moderate this user.");
-                                return;
+                                if (!helpers::check_hierarchy(bot, msg.server_id, bot_member, target_member)) {
+                                    bot.send_message(msg.channel_id, "hierarchy error: i do not have high enough position to moderate this user.");
+                                    return;
+                                }
                             }
 
                             bot.ban_user(msg.server_id, target_user.id, reason, [&bot, msg, target_user, reason](bool action_success) {
@@ -330,6 +332,10 @@ public:
                         bot.send_message(msg.channel_id, "could not resolve target user for kick.");
                         return;
                     }
+                    if (target_member.id.empty()) {
+                        bot.send_message(msg.channel_id, "error: that user is not in this server.");
+                        return;
+                    }
 
                     bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, target_user, reason](stoatpp::models::Member exec_member, bool exec_ok) {
                         if (!exec_ok) {
@@ -418,6 +424,10 @@ public:
                 helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, seconds, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
                         bot.send_message(msg.channel_id, "could not resolve target user.");
+                        return;
+                    }
+                    if (target_member.id.empty()) {
+                        bot.send_message(msg.channel_id, "error: that user is not in this server.");
                         return;
                     }
 
@@ -520,6 +530,10 @@ public:
                 helpers::resolve_user(bot, msg.server_id, query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
                         bot.send_message(msg.channel_id, "could not resolve target user for warn.");
+                        return;
+                    }
+                    if (target_member.id.empty()) {
+                        bot.send_message(msg.channel_id, "error: that user is not in this server.");
                         return;
                     }
 
@@ -750,6 +764,10 @@ public:
                         bot.send_message(msg.channel_id, "could not resolve target user.");
                         return;
                     }
+                    if (target_member.id.empty()) {
+                        bot.send_message(msg.channel_id, "error: that user is not in this server.");
+                        return;
+                    }
 
                     bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, target_member, reason, duration, is_timed, jail_cfg_opt, target_user](stoatpp::models::Member exec_member, bool exec_ok) {
                         if (!exec_ok) {
@@ -859,6 +877,10 @@ public:
                 helpers::resolve_user(bot, msg.server_id, target_query, [&bot, msg, reason](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                     if (!success) {
                         bot.send_message(msg.channel_id, "could not resolve target user.");
+                        return;
+                    }
+                    if (target_member.id.empty()) {
+                        bot.send_message(msg.channel_id, "error: that user is not in this server.");
                         return;
                     }
 
@@ -1733,7 +1755,7 @@ private:
                     desc += "<@" + e.moderator_id + "> | ";
                     desc += reason_val + " |\n";
                 }
-                desc += "\n-# Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
+                desc += "\n###### Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
                 embed.set_description(desc);
             }
         } else {
@@ -1772,7 +1794,7 @@ private:
                     desc += "<@" + e.target_id + "> | ";
                     desc += reason_val + " |\n";
                 }
-                desc += "\n-# Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
+                desc += "\n###### Page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + " | showing entries " + std::to_string(start_idx + 1) + "-" + std::to_string(end_idx) + " of " + std::to_string(total_entries);
                 embed.set_description(desc);
             }
         }

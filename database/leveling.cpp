@@ -118,6 +118,7 @@ namespace bronx {
     std::string val_min_xp = std::to_string(cfg.min_xp_per_message);
     std::string val_max_xp = std::to_string(cfg.max_xp_per_message);
     std::string val_min_chars = std::to_string(cfg.min_message_chars);
+    std::string val_max_chars = std::to_string(cfg.max_message_chars);
     std::string val_cooldown = std::to_string(cfg.xp_cooldown_seconds);
     std::string val_channel =
         cfg.announcement_channel
@@ -131,12 +132,12 @@ namespace bronx {
     std::string q =
         "INSERT INTO guild_leveling_config (server_id, enabled, reward_coins, "
         "coins_per_message, min_xp_per_message, max_xp_per_message, "
-        "min_message_chars, xp_cooldown_seconds, announcement_channel, "
+        "min_message_chars, max_message_chars, xp_cooldown_seconds, announcement_channel, "
         "announce_levelup, level_up_message, sticky_roles) "
         "VALUES ('" +
         esc_server_id + "', " + val_enabled + ", " + val_reward_coins + ", " +
         val_coins + ", " + val_min_xp + ", " + val_max_xp + ", " +
-        val_min_chars + ", " + val_cooldown + ", " + val_channel + ", " +
+        val_min_chars + ", " + val_max_chars + ", " + val_cooldown + ", " + val_channel + ", " +
         val_announce + ", " + val_message + ", " + val_sticky +
         ") "
         "ON DUPLICATE KEY UPDATE enabled=" +
@@ -145,6 +146,7 @@ namespace bronx {
         ", min_xp_per_message=" + val_min_xp +
         ", max_xp_per_message=" + val_max_xp +
         ", min_message_chars=" + val_min_chars +
+        ", max_message_chars=" + val_max_chars +
         ", xp_cooldown_seconds=" + val_cooldown +
         ", announcement_channel=" + val_channel +
         ", announce_levelup=" + val_announce +
@@ -494,6 +496,83 @@ namespace bronx {
       }
     }
     return 0;
+  }
+
+  bool Database::reload_guild_leveling_config(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string q = "SELECT server_id, enabled, reward_coins, coins_per_message, "
+                    "min_xp_per_message, max_xp_per_message, min_message_chars, "
+                    "max_message_chars, "
+                    "xp_cooldown_seconds, announcement_channel, announce_levelup, "
+                    "level_up_message, sticky_roles FROM guild_leveling_config "
+                    "WHERE server_id = '" + escape_string(server_id) + "'";
+
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        std::lock_guard<std::shared_mutex> cache_lock(leveling_config_cache_mutex_);
+        if (row) {
+          GuildLevelingConfig cfg;
+          cfg.server_id = row[0] ? row[0] : "";
+          cfg.enabled = row[1] && std::string(row[1]) == "1";
+          cfg.reward_coins = row[2] && std::string(row[2]) == "1";
+          cfg.coins_per_message = row[3] ? std::stoi(row[3]) : 1;
+          cfg.min_xp_per_message = row[4] ? std::stoi(row[4]) : 15;
+          cfg.max_xp_per_message = row[5] ? std::stoi(row[5]) : 25;
+          cfg.min_message_chars = row[6] ? std::stoi(row[6]) : 5;
+          cfg.max_message_chars = row[7] ? std::stoi(row[7]) : 2000;
+          cfg.xp_cooldown_seconds = row[8] ? std::stoi(row[8]) : 60;
+          if (row[9])
+            cfg.announcement_channel = row[9];
+          cfg.announce_levelup = row[10] && std::string(row[10]) == "1";
+          cfg.announcement_message = row[11] ? row[11] : "";
+          cfg.sticky_roles = row[12] && std::string(row[12]) == "1";
+          leveling_config_cache_[server_id] = cfg;
+        } else {
+          leveling_config_cache_.erase(server_id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+  bool Database::reload_level_roles(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string q = "SELECT id, server_id, level, role_id, role_name, remove_previous "
+                    "FROM guild_level_roles WHERE server_id = '" + escape_string(server_id) + "'";
+
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        std::lock_guard<std::shared_mutex> cache_lock(level_roles_cache_mutex_);
+        level_roles_cache_[server_id].clear();
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          LevelRole r;
+          r.id = row[0] ? std::stoi(row[0]) : 0;
+          r.server_id = row[1] ? row[1] : "";
+          r.level = row[2] ? std::stoul(row[2]) : 1;
+          r.role_id = row[3] ? row[3] : "";
+          r.role_name = row[4] ? row[4] : "";
+          r.remove_previous = row[5] && std::string(row[5]) == "1";
+          level_roles_cache_[server_id].push_back(r);
+        }
+        std::sort(level_roles_cache_[server_id].begin(), level_roles_cache_[server_id].end(),
+                  [](const LevelRole &a, const LevelRole &b) {
+                    return a.level < b.level;
+                  });
+        mysql_free_result(res);
+      }
+    }
+    return true;
   }
 
 } // namespace bronx
