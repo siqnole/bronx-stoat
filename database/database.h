@@ -107,6 +107,8 @@ public:
                      const std::string &icon_id = "",
                      const std::string &banner_id = "");
 
+  bool server_exists(const std::string &server_id);
+
   void upsert_server_member(const std::string &server_id,
                             const std::string &user_id, bool is_owner = false,
                             bool is_admin = false);

@@ -2478,6 +2478,27 @@ namespace bronx {
     mysql_query(mysql_, sql.c_str());
   }
 
+  bool Database::server_exists(const std::string &server_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_ || server_id.empty())
+      return false;
+
+    std::string esc_id = escape_string(server_id);
+    std::string sql = "SELECT 1 FROM servers WHERE server_id = '" + esc_id + "' LIMIT 1";
+    if (mysql_query(mysql_, sql.c_str()) != 0)
+      return false;
+
+    MYSQL_RES *res = mysql_store_result(mysql_);
+    bool exists = false;
+    if (res) {
+      if (mysql_num_rows(res) > 0) {
+        exists = true;
+      }
+      mysql_free_result(res);
+    }
+    return exists;
+  }
+
   void Database::upsert_server_member(const std::string &server_id,
                             const std::string &user_id, bool is_owner,
                             bool is_admin) {

@@ -40,6 +40,7 @@
 #include "cogs/general.h"
 #include "cogs/help.h"
 #include "cogs/honeypot.h"
+#include "cogs/setup.h"
 #include "cogs/lastfm.h"
 #include "cogs/leveling.h"
 #include "cogs/logging.h"
@@ -119,6 +120,7 @@ static std::unordered_set<std::string> g_handling_channels;
 // Toggleable verbose logging — when false, only command/error logs are shown.
 // Set via --verbose / -v CLI flag. Can also be toggled at runtime.
 static std::atomic<bool> g_verbose_logging{false};
+static std::atomic<bool> g_bot_ready{false};
 
 bool bot_has_masquerade_permission(stoatpp::cluster &bot,
                                    const std::string &channel_id) {
@@ -599,9 +601,11 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::HistoryModule>());
   bot.use(std::make_unique<bronx::cogs::SnipeModule>());
   bot.use(std::make_unique<bronx::cogs::TimezoneModule>());
+  bot.use(std::make_unique<bronx::cogs::SetupModule>());
 
 
   bot.on_ready([&bot](const stoatpp::events::Ready &e) {
+    g_bot_ready = true;
     std::cout << "\033[1;32m[bronx event]\033[0m ready! logged in as: " << e.user.username
               << " (id: " << e.user.id << ")\n";
     std::cout << "              serving: " << e.servers.size() << " servers, "
@@ -1217,11 +1221,52 @@ int main(int argc, char *argv[]) {
               << " (id: " << e.server.id << ")\n";
 
     if (bronx::g_db) {
+      bool is_new = !bronx::g_db->server_exists(e.server.id);
       std::string icon = e.server.icon ? *e.server.icon : "";
       std::string banner = e.server.banner ? *e.server.banner : "";
       bronx::g_db->upsert_server(e.server.id, e.server.name, icon, banner);
       if (!e.server.owner.empty()) {
         bronx::g_db->upsert_server_member(e.server.id, e.server.owner, true, true);
+      }
+
+      if (is_new && g_bot_ready) {
+        std::thread([&bot, e]() {
+          std::string target_channel_id = "";
+          if (e.server.raw.contains("system_channel") && !e.server.raw["system_channel"].is_null()) {
+              target_channel_id = e.server.raw["system_channel"].get<std::string>();
+          }
+          if (target_channel_id.empty() && !e.server.channels.empty()) {
+              for (const auto& ch_id : e.server.channels) {
+                  auto ch = bot.get_channel(ch_id);
+                  if (ch && ch->channel_type == "Text") {
+                      target_channel_id = ch_id;
+                      break;
+                  }
+              }
+          }
+          if (target_channel_id.empty() && !e.server.channels.empty()) {
+              target_channel_id = e.server.channels[0];
+          }
+
+          if (!target_channel_id.empty()) {
+              stoatpp::models::MessagePayload payload;
+              payload.content = 
+                  "👋 **Hello, I am Bronx!**\n"
+                  "A multi-purpose, high-performance C++ moderation and utility bot designed to protect and enhance your server.\n\n"
+                  "**Quick Features:**\n"
+                  "🍯 **Honeypot Traps:** Detect and administrative-action rogue users automatically.\n"
+                  "🛡️ **Anti-Raid:** Guard against rapid join/spam floods.\n"
+                  "⚖️ **Moderation & Jailing:** Advanced moderation suite, including custom jail roles.\n"
+                  "👥 **Tupper/Masquerading:** Dynamic profile switching for proxying messages.\n\n"
+                  "**Interactive Getting Started:**\n"
+                  "Please click one of the reactions below to get started:\n"
+                  "🛠️ **Run One-Time Setup:** Guided automatic configuration for essential features.\n"
+                  "📖 **Show Help:** List commands and setup documentation.";
+              
+              payload.set_interactions({"🛠️", "📖"}, false);
+              bot.send_message(target_channel_id, payload);
+          }
+        }).detach();
       }
     }
 
