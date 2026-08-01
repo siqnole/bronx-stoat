@@ -60,7 +60,7 @@ EQUALS = =
 CMAKE_SOURCE_DIR = /home/siq/Documents/bots/stoat++
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/siq/Documents/bots/stoat++/bronx
+CMAKE_BINARY_DIR = /var/home/siq/Documents/bots/stoat++/bronx
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -68,7 +68,7 @@ CMAKE_BINARY_DIR = /home/siq/Documents/bots/stoat++/bronx
 # Special rule for the target package
 package: preinstall
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Run CPack packaging tool..."
-	cd /home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackConfig.cmake
+	cd /var/home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackConfig.cmake
 .PHONY : package
 
 # Special rule for the target package
@@ -78,7 +78,7 @@ package/fast: package
 # Special rule for the target package_source
 package_source:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Run CPack packaging tool for source..."
-	cd /home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackSourceConfig.cmake
+	cd /var/home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackSourceConfig.cmake
 .PHONY : package_source
 
 # Special rule for the target package_source
@@ -152,14 +152,14 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	cd /home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -E cmake_progress_start /home/siq/Documents/bots/stoat++/bronx/CMakeFiles /home/siq/Documents/bots/stoat++/bronx/examples/ping_bot//CMakeFiles/progress.marks
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/siq/Documents/bots/stoat++/bronx/CMakeFiles 0
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -E cmake_progress_start /var/home/siq/Documents/bots/stoat++/bronx/CMakeFiles /var/home/siq/Documents/bots/stoat++/bronx/examples/ping_bot//CMakeFiles/progress.marks
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /var/home/siq/Documents/bots/stoat++/bronx/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
 clean:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/clean
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/clean
 .PHONY : clean
 
 # The main clean target
@@ -168,22 +168,22 @@ clean/fast: clean
 
 # Prepare targets for installation.
 preinstall: all
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/preinstall
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/preinstall
 .PHONY : preinstall
 
 # Prepare targets for installation.
 preinstall/fast:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/preinstall
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/preinstall
 .PHONY : preinstall/fast
 
 # clear depends
 depend:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
 
 # Convenience name for target.
 examples/ping_bot/CMakeFiles/ping_bot.dir/rule:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/CMakeFiles/ping_bot.dir/rule
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 examples/ping_bot/CMakeFiles/ping_bot.dir/rule
 .PHONY : examples/ping_bot/CMakeFiles/ping_bot.dir/rule
 
 # Convenience name for target.
@@ -192,7 +192,7 @@ ping_bot: examples/ping_bot/CMakeFiles/ping_bot.dir/rule
 
 # fast build rule for target.
 ping_bot/fast:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/build
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/build
 .PHONY : ping_bot/fast
 
 main.o: main.cpp.o
@@ -200,7 +200,7 @@ main.o: main.cpp.o
 
 # target to build an object file
 main.cpp.o:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/main.cpp.o
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/main.cpp.o
 .PHONY : main.cpp.o
 
 main.i: main.cpp.i
@@ -208,7 +208,7 @@ main.i: main.cpp.i
 
 # target to preprocess a source file
 main.cpp.i:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/main.cpp.i
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/main.cpp.i
 .PHONY : main.cpp.i
 
 main.s: main.cpp.s
@@ -216,7 +216,7 @@ main.s: main.cpp.s
 
 # target to generate assembly for a file
 main.cpp.s:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/main.cpp.s
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f examples/ping_bot/CMakeFiles/ping_bot.dir/build.make examples/ping_bot/CMakeFiles/ping_bot.dir/main.cpp.s
 .PHONY : main.cpp.s
 
 # Help Target
@@ -248,6 +248,6 @@ help:
 # No rule that depends on this can have commands that come from listfiles
 # because they might be regenerated.
 cmake_check_build_system:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
 .PHONY : cmake_check_build_system
 

@@ -145,6 +145,8 @@ public:
                 if (!s.content.empty()) {
                     std::string trunc = s.content.size() > 1800 ? s.content.substr(0, 1800) + "..." : s.content;
                     desc += "**Content:** [" + trunc + "](https://app.revolt.chat/channel/" + msg.channel_id + "/" + s.msg_id + ")\n";
+                } else {
+                    desc += "**Message:** [Jump to message](https://app.revolt.chat/channel/" + msg.channel_id + "/" + s.msg_id + ")\n";
                 }
                 if (!s.attachments.empty()) {
                     desc += "**Attachments:** " + std::to_string(s.attachments.size()) + " file(s)\n";
@@ -210,7 +212,7 @@ public:
 
                 std::string desc = "**User:** <@" + s.user_id + ">\n"
                                    "**Reaction:** " + formatted_emoji + "\n"
-                                   "**Message ID:** `" + s.message_id + "`\n";
+                                   "**Message:** [Jump to message](https://app.revolt.chat/channel/" + msg.channel_id + "/" + s.message_id + ")\n";
                 if (s.timestamp_ms > 0) {
                     desc += "**Removed:** " + stoatpp::utils::format_timestamp(static_cast<int64_t>(s.timestamp_ms / 1000), "R");
                 }

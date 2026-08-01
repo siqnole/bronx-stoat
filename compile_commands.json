@@ -3,222 +3,222 @@
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXBench.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXBench.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXBench.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXBench.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXBench.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXCancellationRequest.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXCancellationRequest.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXCancellationRequest.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXCancellationRequest.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXCancellationRequest.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXConnectionState.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXConnectionState.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXConnectionState.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXConnectionState.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXConnectionState.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXDNSLookup.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXDNSLookup.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXDNSLookup.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXDNSLookup.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXDNSLookup.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXExponentialBackoff.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXExponentialBackoff.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXExponentialBackoff.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXExponentialBackoff.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXExponentialBackoff.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXGetFreePort.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXGetFreePort.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXGetFreePort.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXGetFreePort.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXGetFreePort.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXGzipCodec.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXGzipCodec.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXGzipCodec.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXGzipCodec.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXGzipCodec.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttp.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXHttp.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXHttp.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttp.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttp.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttpClient.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXHttpClient.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXHttpClient.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttpClient.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttpClient.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttpServer.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXHttpServer.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXHttpServer.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttpServer.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXHttpServer.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXNetSystem.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXNetSystem.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXNetSystem.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXNetSystem.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXNetSystem.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterrupt.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterrupt.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterrupt.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterrupt.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterrupt.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptFactory.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterruptFactory.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterruptFactory.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptFactory.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptFactory.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptPipe.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterruptPipe.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterruptPipe.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptPipe.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptPipe.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptEvent.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterruptEvent.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSelectInterruptEvent.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptEvent.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSelectInterruptEvent.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSetThreadName.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSetThreadName.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSetThreadName.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSetThreadName.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSetThreadName.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocket.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocket.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocket.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocket.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocket.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketConnect.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketConnect.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketConnect.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketConnect.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketConnect.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketFactory.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketFactory.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketFactory.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketFactory.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketFactory.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketServer.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketServer.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketServer.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketServer.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketServer.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketTLSOptions.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketTLSOptions.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketTLSOptions.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketTLSOptions.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketTLSOptions.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXStrCaseCompare.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXStrCaseCompare.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXStrCaseCompare.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXStrCaseCompare.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXStrCaseCompare.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUdpSocket.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUdpSocket.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUdpSocket.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUdpSocket.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUdpSocket.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUrlParser.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUrlParser.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUrlParser.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUrlParser.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUrlParser.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUuid.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUuid.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUuid.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUuid.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUuid.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUserAgent.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUserAgent.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXUserAgent.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUserAgent.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXUserAgent.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocket.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocket.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocket.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocket.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocket.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketCloseConstants.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketCloseConstants.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketCloseConstants.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketCloseConstants.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketCloseConstants.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketHandshake.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketHandshake.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketHandshake.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketHandshake.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketHandshake.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketHttpHeaders.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketHttpHeaders.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketHttpHeaders.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketHttpHeaders.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketHttpHeaders.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflate.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketPerMessageDeflate.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketPerMessageDeflate.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflate.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflate.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflateCodec.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketPerMessageDeflateCodec.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketPerMessageDeflateCodec.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflateCodec.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflateCodec.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflateOptions.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketPerMessageDeflateOptions.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketPerMessageDeflateOptions.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflateOptions.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketPerMessageDeflateOptions.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketProxyServer.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketProxyServer.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketProxyServer.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketProxyServer.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketProxyServer.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketServer.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketServer.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketServer.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketServer.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketServer.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketTransport.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketTransport.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXWebSocketTransport.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketTransport.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXWebSocketTransport.cpp.o"
 },
 {
   "directory": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build",
   "command": "/usr/bin/c++ -DIXWEBSOCKET_USE_OPEN_SSL -DIXWEBSOCKET_USE_TLS -DIXWEBSOCKET_USE_ZLIB -I/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src  -Wall -Wextra -pedantic -O3 -DNDEBUG -std=c++11 -flto=auto -fno-fat-lto-objects -fPIC -o CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketOpenSSL.cpp.o -c /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketOpenSSL.cpp",
   "file": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src/ixwebsocket/IXSocketOpenSSL.cpp",
-  "output": "_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketOpenSSL.cpp.o"
+  "output": "/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/ixwebsocket/IXSocketOpenSSL.cpp.o"
 }
 ]

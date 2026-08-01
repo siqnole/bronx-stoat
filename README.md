@@ -208,8 +208,8 @@ Audit trail tracking for edits, deletes, joins, leaves, mod actions, and global 
 
 | Event Type | Key | Placeholders | Default Behavior |
 | :--- | :--- | :--- | :--- |
-| Message Deletions | `delete` | `{author}`, `{username}`, `{channel}`, `{content}` | Shows deleted text, author, and channel details. |
-| Message Edits | `edit` | `{author}`, `{username}`, `{channel}`, `{before}`, `{after}` | Lists before and after states. |
+| Message Deletions | `delete` | `{author}`, `{username}`, `{channel}`, `{content}`, `{jump_url}` | Shows deleted text, author, and channel details. |
+| Message Edits | `edit` | `{author}`, `{username}`, `{channel}`, `{before}`, `{after}`, `{jump_url}` | Lists before and after states. |
 | Member Joins | `join` | `{user}`, `{username}`, `{membercount}` | Audits arrival and updates total member count. |
 | Member Leaves | `leave` | `{user}`, `{username}`, `{membercount}` | Audits departure and updates total member count. |
 | Moderation Actions | `mod` | `{action}`, `{moderator}`, `{target}`, `{reason}`, `{details}` | Logs bans, kicks, and timeouts with reasons. |

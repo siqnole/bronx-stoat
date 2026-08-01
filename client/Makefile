@@ -60,7 +60,7 @@ EQUALS = =
 CMAKE_SOURCE_DIR = /home/siq/Documents/bots/stoat++
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/siq/Documents/bots/stoat++/bronx
+CMAKE_BINARY_DIR = /var/home/siq/Documents/bots/stoat++/bronx
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -68,7 +68,7 @@ CMAKE_BINARY_DIR = /home/siq/Documents/bots/stoat++/bronx
 # Special rule for the target package
 package: preinstall
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Run CPack packaging tool..."
-	cd /home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackConfig.cmake
+	cd /var/home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackConfig.cmake
 .PHONY : package
 
 # Special rule for the target package
@@ -78,7 +78,7 @@ package/fast: package
 # Special rule for the target package_source
 package_source:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Run CPack packaging tool for source..."
-	cd /home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackSourceConfig.cmake
+	cd /var/home/siq/Documents/bots/stoat++/bronx && /home/linuxbrew/.linuxbrew/bin/cpack --config ./CPackSourceConfig.cmake
 .PHONY : package_source
 
 # Special rule for the target package_source
@@ -152,14 +152,14 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	cd /home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -E cmake_progress_start /home/siq/Documents/bots/stoat++/bronx/CMakeFiles /home/siq/Documents/bots/stoat++/bronx/client//CMakeFiles/progress.marks
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/siq/Documents/bots/stoat++/bronx/CMakeFiles 0
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -E cmake_progress_start /var/home/siq/Documents/bots/stoat++/bronx/CMakeFiles /var/home/siq/Documents/bots/stoat++/bronx/client//CMakeFiles/progress.marks
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /var/home/siq/Documents/bots/stoat++/bronx/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
 clean:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/clean
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/clean
 .PHONY : clean
 
 # The main clean target
@@ -168,22 +168,22 @@ clean/fast: clean
 
 # Prepare targets for installation.
 preinstall: all
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/preinstall
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/preinstall
 .PHONY : preinstall
 
 # Prepare targets for installation.
 preinstall/fast:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/preinstall
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/preinstall
 .PHONY : preinstall/fast
 
 # clear depends
 depend:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
 
 # Convenience name for target.
 client/CMakeFiles/stoat-client.dir/rule:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/CMakeFiles/stoat-client.dir/rule
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 client/CMakeFiles/stoat-client.dir/rule
 .PHONY : client/CMakeFiles/stoat-client.dir/rule
 
 # Convenience name for target.
@@ -192,7 +192,7 @@ stoat-client: client/CMakeFiles/stoat-client.dir/rule
 
 # fast build rule for target.
 stoat-client/fast:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/build
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/build
 .PHONY : stoat-client/fast
 
 clipboard.o: clipboard.cpp.o
@@ -200,7 +200,7 @@ clipboard.o: clipboard.cpp.o
 
 # target to build an object file
 clipboard.cpp.o:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/clipboard.cpp.o
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/clipboard.cpp.o
 .PHONY : clipboard.cpp.o
 
 clipboard.i: clipboard.cpp.i
@@ -208,7 +208,7 @@ clipboard.i: clipboard.cpp.i
 
 # target to preprocess a source file
 clipboard.cpp.i:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/clipboard.cpp.i
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/clipboard.cpp.i
 .PHONY : clipboard.cpp.i
 
 clipboard.s: clipboard.cpp.s
@@ -216,7 +216,7 @@ clipboard.s: clipboard.cpp.s
 
 # target to generate assembly for a file
 clipboard.cpp.s:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/clipboard.cpp.s
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/clipboard.cpp.s
 .PHONY : clipboard.cpp.s
 
 graphics.o: graphics.cpp.o
@@ -224,7 +224,7 @@ graphics.o: graphics.cpp.o
 
 # target to build an object file
 graphics.cpp.o:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/graphics.cpp.o
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/graphics.cpp.o
 .PHONY : graphics.cpp.o
 
 graphics.i: graphics.cpp.i
@@ -232,7 +232,7 @@ graphics.i: graphics.cpp.i
 
 # target to preprocess a source file
 graphics.cpp.i:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/graphics.cpp.i
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/graphics.cpp.i
 .PHONY : graphics.cpp.i
 
 graphics.s: graphics.cpp.s
@@ -240,7 +240,7 @@ graphics.s: graphics.cpp.s
 
 # target to generate assembly for a file
 graphics.cpp.s:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/graphics.cpp.s
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/graphics.cpp.s
 .PHONY : graphics.cpp.s
 
 main.o: main.cpp.o
@@ -248,7 +248,7 @@ main.o: main.cpp.o
 
 # target to build an object file
 main.cpp.o:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/main.cpp.o
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/main.cpp.o
 .PHONY : main.cpp.o
 
 main.i: main.cpp.i
@@ -256,7 +256,7 @@ main.i: main.cpp.i
 
 # target to preprocess a source file
 main.cpp.i:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/main.cpp.i
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/main.cpp.i
 .PHONY : main.cpp.i
 
 main.s: main.cpp.s
@@ -264,7 +264,7 @@ main.s: main.cpp.s
 
 # target to generate assembly for a file
 main.cpp.s:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/main.cpp.s
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/main.cpp.s
 .PHONY : main.cpp.s
 
 markdown.o: markdown.cpp.o
@@ -272,7 +272,7 @@ markdown.o: markdown.cpp.o
 
 # target to build an object file
 markdown.cpp.o:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/markdown.cpp.o
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/markdown.cpp.o
 .PHONY : markdown.cpp.o
 
 markdown.i: markdown.cpp.i
@@ -280,7 +280,7 @@ markdown.i: markdown.cpp.i
 
 # target to preprocess a source file
 markdown.cpp.i:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/markdown.cpp.i
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/markdown.cpp.i
 .PHONY : markdown.cpp.i
 
 markdown.s: markdown.cpp.s
@@ -288,7 +288,7 @@ markdown.s: markdown.cpp.s
 
 # target to generate assembly for a file
 markdown.cpp.s:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/markdown.cpp.s
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/markdown.cpp.s
 .PHONY : markdown.cpp.s
 
 state.o: state.cpp.o
@@ -296,7 +296,7 @@ state.o: state.cpp.o
 
 # target to build an object file
 state.cpp.o:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/state.cpp.o
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/state.cpp.o
 .PHONY : state.cpp.o
 
 state.i: state.cpp.i
@@ -304,7 +304,7 @@ state.i: state.cpp.i
 
 # target to preprocess a source file
 state.cpp.i:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/state.cpp.i
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/state.cpp.i
 .PHONY : state.cpp.i
 
 state.s: state.cpp.s
@@ -312,7 +312,7 @@ state.s: state.cpp.s
 
 # target to generate assembly for a file
 state.cpp.s:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/state.cpp.s
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/state.cpp.s
 .PHONY : state.cpp.s
 
 ui_components.o: ui_components.cpp.o
@@ -320,7 +320,7 @@ ui_components.o: ui_components.cpp.o
 
 # target to build an object file
 ui_components.cpp.o:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/ui_components.cpp.o
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/ui_components.cpp.o
 .PHONY : ui_components.cpp.o
 
 ui_components.i: ui_components.cpp.i
@@ -328,7 +328,7 @@ ui_components.i: ui_components.cpp.i
 
 # target to preprocess a source file
 ui_components.cpp.i:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/ui_components.cpp.i
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/ui_components.cpp.i
 .PHONY : ui_components.cpp.i
 
 ui_components.s: ui_components.cpp.s
@@ -336,7 +336,7 @@ ui_components.s: ui_components.cpp.s
 
 # target to generate assembly for a file
 ui_components.cpp.s:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/ui_components.cpp.s
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(MAKE) $(MAKESILENT) -f client/CMakeFiles/stoat-client.dir/build.make client/CMakeFiles/stoat-client.dir/ui_components.cpp.s
 .PHONY : ui_components.cpp.s
 
 # Help Target
@@ -383,6 +383,6 @@ help:
 # No rule that depends on this can have commands that come from listfiles
 # because they might be regenerated.
 cmake_check_build_system:
-	cd /home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
+	cd /var/home/siq/Documents/bots/stoat++/bronx && $(CMAKE_COMMAND) -S$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
 .PHONY : cmake_check_build_system
 

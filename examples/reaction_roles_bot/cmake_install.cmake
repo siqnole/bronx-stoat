@@ -45,6 +45,6 @@ endif()
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/home/siq/Documents/bots/stoat++/bronx/examples/reaction_roles_bot/install_local_manifest.txt"
+  file(WRITE "/var/home/siq/Documents/bots/stoat++/bronx/examples/reaction_roles_bot/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()

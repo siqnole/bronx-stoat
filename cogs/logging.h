@@ -216,6 +216,13 @@ dispatch_log(stoatpp::cluster &bot, const std::string &server_id,
       }
     }
   }
+  if (payload.content.empty()) {
+    auto it = placeholders.find("jump_url");
+    if (it != placeholders.end()) {
+      payload.content = it->second;
+    }
+  }
+
   if (payload.content.length() > 1900) {
     payload.content = payload.content.substr(0, 1897) + "...";
   }
@@ -632,9 +639,9 @@ public:
             msg.channel_id,
             "**Valid Event Types:**\n"
             "- `delete` / `message_delete` (Placeholders: `{author}`, "
-            "`{username}`, `{channel}`, `{content}`)\n"
+            "`{username}`, `{channel}`, `{content}`, `{jump_url}`)\n"
             "- `edit` / `message_edit` (Placeholders: `{author}`, "
-            "`{username}`, `{channel}`, `{before}`, `{after}`)\n"
+            "`{username}`, `{channel}`, `{before}`, `{after}`, `{jump_url}`)\n"
             "- `join` / `member_join` (Placeholders: `{user}`, `{username}`, "
             "`{membercount}`)\n"
             "- `leave` / `member_leave` (Placeholders: `{user}`, `{username}`, "
@@ -659,9 +666,9 @@ public:
             "- `webhook_update` (Placeholders: `{webhookId}`, `{channel}`, "
             "`{action}`)\n"
             "- `reaction_add` (Placeholders: `{user}`, `{username}`, "
-            "`{channel}`, `{messageId}`, `{emoji}`)\n"
+            "`{channel}`, `{messageId}`, `{emoji}`, `{jump_url}`)\n"
             "- `reaction_remove` (Placeholders: `{user}`, `{username}`, "
-            "`{channel}`, `{messageId}`, `{emoji}`)\n"
+            "`{channel}`, `{messageId}`, `{emoji}`, `{jump_url}`)\n"
             "- `server_update` (Placeholders: `{server}`, `{details}`)\n"
             "- `member_update` (Placeholders: `{user}`, `{username}`, "
             "`{details}`)");
@@ -1410,7 +1417,8 @@ public:
               {"author", "<@" + author_id + ">"},
               {"username", username},
               {"channel", "<#" + e.channel_id + ">"},
-              {"content", trunc_deleted}};
+              {"content", trunc_deleted},
+              {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
 
           auto default_fallback = [e, author_id, username, trunc_deleted]() {
             nlohmann::json embed = nlohmann::json::object();
@@ -1490,7 +1498,8 @@ public:
             {"username", username},
             {"channel", "<#" + e.channel_id + ">"},
             {"before", trunc_old},
-            {"after", trunc_new}};
+            {"after", trunc_new},
+            {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
 
         auto default_fallback = [e, author_id, trunc_old, trunc_new]() {
           nlohmann::json embed = nlohmann::json::object();
@@ -1975,7 +1984,8 @@ public:
           {"username", username},
           {"channel", "<#" + e.channel_id + ">"},
           {"messageId", e.id},
-          {"emoji", e.emoji_id}};
+          {"emoji", e.emoji_id},
+          {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
 
       auto default_fallback = [e, username]() {
         nlohmann::json embed = nlohmann::json::object();
@@ -2019,7 +2029,8 @@ public:
           {"username", username},
           {"channel", "<#" + e.channel_id + ">"},
           {"messageId", e.id},
-          {"emoji", e.emoji_id}};
+          {"emoji", e.emoji_id},
+          {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
 
       auto default_fallback = [e, username]() {
         nlohmann::json embed = nlohmann::json::object();

@@ -60,7 +60,7 @@ EQUALS = =
 CMAKE_SOURCE_DIR = /home/siq/Documents/bots/stoat++
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/siq/Documents/bots/stoat++/bronx
+CMAKE_BINARY_DIR = /var/home/siq/Documents/bots/stoat++/bronx
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -152,9 +152,9 @@ install/strip/fast: preinstall/fast
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/siq/Documents/bots/stoat++/bronx/CMakeFiles /home/siq/Documents/bots/stoat++/bronx//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /var/home/siq/Documents/bots/stoat++/bronx/CMakeFiles /var/home/siq/Documents/bots/stoat++/bronx//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/siq/Documents/bots/stoat++/bronx/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /var/home/siq/Documents/bots/stoat++/bronx/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -204,7 +204,7 @@ ixwebsocket: cmake_check_build_system
 
 # fast build rule for target.
 ixwebsocket/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/build.make _deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/build
+	$(MAKE) $(MAKESILENT) -f /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/build.make /home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/CMakeFiles/ixwebsocket.dir/build
 .PHONY : ixwebsocket/fast
 
 #=============================================================================
@@ -295,7 +295,7 @@ screen: cmake_check_build_system
 
 # fast build rule for target.
 screen/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/ftxui-build/CMakeFiles/screen.dir/build.make _deps/ftxui-build/CMakeFiles/screen.dir/build
+	$(MAKE) $(MAKESILENT) -f /home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build/CMakeFiles/screen.dir/build.make /home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build/CMakeFiles/screen.dir/build
 .PHONY : screen/fast
 
 #=============================================================================
@@ -308,7 +308,7 @@ dom: cmake_check_build_system
 
 # fast build rule for target.
 dom/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/ftxui-build/CMakeFiles/dom.dir/build.make _deps/ftxui-build/CMakeFiles/dom.dir/build
+	$(MAKE) $(MAKESILENT) -f /home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build/CMakeFiles/dom.dir/build.make /home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build/CMakeFiles/dom.dir/build
 .PHONY : dom/fast
 
 #=============================================================================
@@ -321,7 +321,7 @@ component: cmake_check_build_system
 
 # fast build rule for target.
 component/fast:
-	$(MAKE) $(MAKESILENT) -f _deps/ftxui-build/CMakeFiles/component.dir/build.make _deps/ftxui-build/CMakeFiles/component.dir/build
+	$(MAKE) $(MAKESILENT) -f /home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build/CMakeFiles/component.dir/build.make /home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build/CMakeFiles/component.dir/build
 .PHONY : component/fast
 
 src/cluster.o: src/cluster.cpp.o

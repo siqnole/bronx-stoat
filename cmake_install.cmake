@@ -59,38 +59,38 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/examples/ping_bot/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/examples/ping_bot/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/examples/full_bot/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/examples/full_bot/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/examples/moderation_bot/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/examples/moderation_bot/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/examples/reaction_roles_bot/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/examples/reaction_roles_bot/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/examples/custom_prefix_bot/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/examples/custom_prefix_bot/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/client/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/client/cmake_install.cmake")
 endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
 if(CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/home/siq/Documents/bots/stoat++/bronx/install_local_manifest.txt"
+  file(WRITE "/var/home/siq/Documents/bots/stoat++/bronx/install_local_manifest.txt"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
 if(CMAKE_INSTALL_COMPONENT)
@@ -106,6 +106,6 @@ else()
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
-  file(WRITE "/home/siq/Documents/bots/stoat++/bronx/${CMAKE_INSTALL_MANIFEST}"
+  file(WRITE "/var/home/siq/Documents/bots/stoat++/bronx/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")
 endif()
