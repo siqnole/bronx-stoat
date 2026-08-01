@@ -373,6 +373,8 @@ public:
 
   bool toggle_user_ignored(const std::string &user_id, bool &is_now_ignored);
 
+  bool toggle_dashboard_allowed_user(const std::string &server_id, const std::string &user_id, bool &is_allowed);
+
   std::optional<UserRankCard>
   get_user_rank_card(const std::string &user_id);
 

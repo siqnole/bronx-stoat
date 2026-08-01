@@ -209,6 +209,44 @@ namespace bronx {
     return true;
   }
 
+  bool Database::toggle_dashboard_allowed_user(const std::string &server_id, const std::string &user_id, bool &is_allowed) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_ || server_id.empty() || user_id.empty())
+      return false;
+
+    std::string esc_sid = escape_string(server_id);
+    std::string esc_uid = escape_string(user_id);
+
+    bool exists = false;
+    std::string sel_query = "SELECT 1 FROM dashboard_allowed_users WHERE server_id = '" + esc_sid + "' AND user_id = '" + esc_uid + "'";
+    if (mysql_query(mysql_, sel_query.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        if (mysql_num_rows(res) > 0) {
+          exists = true;
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    std::string query;
+    if (exists) {
+      query = "DELETE FROM dashboard_allowed_users WHERE server_id = '" + esc_sid + "' AND user_id = '" + esc_uid + "'";
+      is_allowed = false;
+    } else {
+      query = "INSERT INTO dashboard_allowed_users (server_id, user_id) VALUES ('" + esc_sid + "', '" + esc_uid + "')";
+      is_allowed = true;
+    }
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to toggle dashboard allowed user: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    return true;
+  }
+
   bool Database::delete_user_masquerade(const std::string &user_id) {
     std::lock_guard<std::mutex> db_lock(db_mutex_);
 

@@ -347,6 +347,37 @@ public:
              return;
            }
 
+           if (!args.empty()) {
+             if (msg.server_id.empty()) {
+               bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+               return;
+             }
+             // Restrict to server owner
+             if (!bot.is_server_owner(msg.server_id, msg.author.id)) {
+               bot.send_message(msg.channel_id, "❌ Only the server owner can manage dashboard access.");
+               return;
+             }
+
+             std::string target = args[0];
+             std::string target_user_id = target;
+             if (target.rfind("<@", 0) == 0 && target.back() == '>' && target.find("@&") == std::string::npos) {
+               target_user_id = target.substr(2, target.size() - 3);
+               if (target_user_id.rfind("!", 0) == 0) target_user_id = target_user_id.substr(1);
+             }
+
+             bool is_allowed = false;
+             if (bronx::g_db->toggle_dashboard_allowed_user(msg.server_id, target_user_id, is_allowed)) {
+               if (is_allowed) {
+                 bot.send_message(msg.channel_id, "✅ Allowed <@" + target_user_id + "> to see/edit this server on the dashboard.");
+               } else {
+                 bot.send_message(msg.channel_id, "✅ Removed dashboard access for <@" + target_user_id + ">.");
+               }
+             } else {
+               bot.send_message(msg.channel_id, "⚠️ Failed to update dashboard access in database.");
+             }
+             return;
+           }
+
            std::string user_id = msg.author.id;
            if (!msg.server_id.empty()) {
              bronx::g_db->upsert_server_member(msg.server_id, user_id, false,
@@ -409,12 +440,12 @@ public:
                               "⚠️ Unable to open DM channel. Please check your "
                               "Direct Message privacy settings.");
            }).detach();
-         },
+          },
          "General"});
 
-    bot.on_message_react([&bot](const stoatpp::events::MessageReact &e) {
-      std::unique_lock<std::mutex> lock(helpers::g_pages_mutex);
-      auto it = helpers::g_pages.find(e.id);
+     bot.on_message_react([&bot](const stoatpp::events::MessageReact &e) {
+       std::unique_lock<std::mutex> lock(helpers::g_pages_mutex);
+       auto it = helpers::g_pages.find(e.id);
       if (it != helpers::g_pages.end()) {
         auto &session = it->second;
         if (e.user_id == bot.current_user().id)
