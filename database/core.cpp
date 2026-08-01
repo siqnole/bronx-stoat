@@ -742,6 +742,24 @@ namespace bronx {
       return false;
     }
 
+    // Create Table honeypot_configs
+    std::string create_hp =
+        "CREATE TABLE IF NOT EXISTS honeypot_configs ("
+        "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+        "  channel_id VARCHAR(30) DEFAULT NULL,"
+        "  honeypot_message TEXT DEFAULT NULL,"
+        "  disclaimer_message TEXT DEFAULT NULL,"
+        "  action VARCHAR(50) NOT NULL DEFAULT 'ban',"
+        "  message_triggers TINYINT(1) NOT NULL DEFAULT 1,"
+        "  react_triggers TINYINT(1) NOT NULL DEFAULT 0,"
+        "  enabled TINYINT(1) NOT NULL DEFAULT 0"
+        ")";
+    if (mysql_query(mysql_, create_hp.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'honeypot_configs': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     // Migration: widen action columns to support comma-separated multi-action
     // lists (e.g. "delete,warn")
     mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN "
@@ -1703,6 +1721,33 @@ namespace bronx {
       }
     }
 
+    // Load honeypot_configs
+    std::string select_hp =
+        "SELECT server_id, channel_id, COALESCE(honeypot_message, ''), "
+        "COALESCE(disclaimer_message, ''), action, message_triggers, "
+        "react_triggers, enabled FROM honeypot_configs";
+    if (mysql_query(mysql_, select_hp.c_str()) == 0) {
+      MYSQL_RES *hp_res = mysql_store_result(mysql_);
+      if (hp_res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> hp_lock(hp_cache_mutex_);
+        while ((row = mysql_fetch_row(hp_res))) {
+          std::string s_id = row[0];
+          HoneypotConfig hp;
+          hp.server_id = s_id;
+          hp.channel_id = row[1] ? row[1] : "";
+          hp.honeypot_message = row[2] ? row[2] : "";
+          hp.disclaimer_message = row[3] ? row[3] : "";
+          hp.action = row[4] ? row[4] : "ban";
+          hp.message_triggers = row[5] ? (std::stoi(row[5]) != 0) : true;
+          hp.react_triggers = row[6] ? (std::stoi(row[6]) != 0) : false;
+          hp.enabled = row[7] ? (std::stoi(row[7]) != 0) : false;
+          hp_cache_[s_id] = hp;
+        }
+        mysql_free_result(hp_res);
+      }
+    }
+
     // Load recurring_messages
     std::string select_rm =
         "SELECT id, server_id, channel_id, name, message_type, "
@@ -2653,6 +2698,7 @@ namespace bronx {
     const char *tables[] = {
         "prefixes",          "rr_messages",       "rr_rules",
         "server_aliases",    "user_aliases",      "guild_leveling_config",
+        "honeypot_configs",
         "level_roles",       "xp_blacklist",      "user_xp",
         "counting_config",   "masquerade_config", "user_masquerade",
         "tuppers",           "tupper_proxies",    "starboards",

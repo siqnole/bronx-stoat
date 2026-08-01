@@ -50,6 +50,18 @@ struct AntiRaidConfig {
     std::string default_profile_action = "none";
 };
 
+struct HoneypotConfig {
+    std::string server_id;
+    std::string channel_id;
+    std::string honeypot_message = "hold on!";
+    std::string disclaimer_message = "Warning: This channel is a trap. Messaging or reacting here results in immediate action.";
+    std::string action = "ban"; // customizable action: jail, warn, kick, ban, log, timeout
+    bool message_triggers = true;
+    bool react_triggers = false;
+    bool enabled = false;
+};
+
+
 struct ApplicationPanel {
     std::string server_id;
     std::string name;                // unique panel name per server

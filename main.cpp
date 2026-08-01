@@ -39,6 +39,7 @@
 #include "cogs/games.h"
 #include "cogs/general.h"
 #include "cogs/help.h"
+#include "cogs/honeypot.h"
 #include "cogs/lastfm.h"
 #include "cogs/leveling.h"
 #include "cogs/logging.h"
@@ -303,6 +304,9 @@ void start_reload_server() {
               }
               if (module == "autoreact" || module == "all") {
                 bronx::g_db->reload_autoreacts(server_id);
+              }
+              if (module == "commands" || module == "all") {
+                bronx::g_db->reload_disabled_items(server_id);
               }
             }
           }
@@ -572,6 +576,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::MediaModule>());
   bot.use(std::make_unique<bronx::cogs::RemindersModule>());
   bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
+  bot.use(std::make_unique<bronx::cogs::HoneypotModule>());
   bot.use(std::make_unique<bronx::cogs::AutoModule>());
   bot.use(std::make_unique<bronx::cogs::TicketsModule>());
   bot.use(std::make_unique<bronx::cogs::ApplicationsModule>());

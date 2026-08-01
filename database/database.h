@@ -32,6 +32,7 @@ public:
   using ActionMessageConfig = ::bronx::ActionMessageConfig;
   using ActiveJail = ::bronx::ActiveJail;
   using AntiRaidConfig = ::bronx::AntiRaidConfig;
+  using HoneypotConfig = ::bronx::HoneypotConfig;
   using ApplicationPanel = ::bronx::ApplicationPanel;
   using ApplicationSubmission = ::bronx::ApplicationSubmission;
   using AutoreactConfig = ::bronx::AutoreactConfig;
@@ -424,6 +425,11 @@ public:
   get_antiraid_config(const std::string &server_id);
 
   bool save_antiraid_config(const AntiRaidConfig &ar);
+
+  std::optional<HoneypotConfig>
+  get_honeypot_config(const std::string &server_id);
+
+  bool save_honeypot_config(const HoneypotConfig &hp);
 
   bool save_logging_channel(const std::string &server_id,
                             const std::string &event_type,
@@ -895,9 +901,11 @@ public:
   bool reload_logging_config(const std::string &server_id);
   bool reload_logging_embeds(const std::string &server_id);
   bool reload_antiraid_config(const std::string &server_id);
+  bool reload_honeypot_config(const std::string &server_id);
   bool reload_prefixes(const std::string &server_id);
   bool reload_autoresponders(const std::string &server_id);
   bool reload_autoreacts(const std::string &server_id);
+  bool reload_disabled_items(const std::string &server_id);
 
   std::vector<LevelRole> get_level_roles(const std::string &server_id);
 
@@ -996,6 +1004,10 @@ private:
   // Server ID -> AntiRaidConfig
   std::unordered_map<std::string, AntiRaidConfig> ar_cache_;
   std::shared_mutex ar_cache_mutex_;
+
+  // Server ID -> HoneypotConfig
+  std::unordered_map<std::string, HoneypotConfig> hp_cache_;
+  std::shared_mutex hp_cache_mutex_;
 
   // Server ID -> {Event Type -> Channel ID}
   std::unordered_map<std::string, std::unordered_map<std::string, std::string>>

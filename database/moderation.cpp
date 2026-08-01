@@ -1432,4 +1432,106 @@ namespace bronx {
     return true;
   }
 
+  bool Database::reload_disabled_items(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT target_type, target_name FROM disabled_commands WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        std::unique_lock<std::shared_mutex> lock(disabled_cache_mutex_);
+        disabled_cache_[server_id].clear();
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          if (row[0] && row[1]) {
+            disabled_cache_[server_id].insert(std::string(row[0]) + ":" + row[1]);
+          }
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+  std::optional<HoneypotConfig>
+  Database::get_honeypot_config(const std::string &server_id) {
+    std::shared_lock<std::shared_mutex> lock(hp_cache_mutex_);
+    auto it = hp_cache_.find(server_id);
+    if (it != hp_cache_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool Database::save_honeypot_config(const HoneypotConfig &hp) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+    std::string esc_srv = escape_string(hp.server_id);
+    std::string esc_chan = escape_string(hp.channel_id);
+    std::string esc_msg = escape_string(hp.honeypot_message);
+    std::string esc_disc = escape_string(hp.disclaimer_message);
+    std::string esc_act = escape_string(hp.action);
+
+    std::string query =
+        "INSERT INTO honeypot_configs (server_id, channel_id, honeypot_message, "
+        "disclaimer_message, action, message_triggers, react_triggers, enabled) VALUES ("
+        "'" + esc_srv + "', "
+        "'" + esc_chan + "', "
+        "'" + esc_msg + "', "
+        "'" + esc_disc + "', "
+        "'" + esc_act + "', "
+        + std::to_string(hp.message_triggers ? 1 : 0) + ", "
+        + std::to_string(hp.react_triggers ? 1 : 0) + ", "
+        + std::to_string(hp.enabled ? 1 : 0) + ") "
+        "ON DUPLICATE KEY UPDATE "
+        "channel_id = VALUES(channel_id), "
+        "honeypot_message = VALUES(honeypot_message), "
+        "disclaimer_message = VALUES(disclaimer_message), "
+        "action = VALUES(action), "
+        "message_triggers = VALUES(message_triggers), "
+        "react_triggers = VALUES(react_triggers), "
+        "enabled = VALUES(enabled)";
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save honeypot config: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    std::lock_guard<std::shared_mutex> cache_lock(hp_cache_mutex_);
+    hp_cache_[hp.server_id] = hp;
+    return true;
+  }
+
+  bool Database::reload_honeypot_config(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT server_id, channel_id, COALESCE(honeypot_message, ''), "
+                    "COALESCE(disclaimer_message, ''), action, message_triggers, "
+                    "react_triggers, enabled FROM honeypot_configs WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        std::lock_guard<std::shared_mutex> cache_lock(hp_cache_mutex_);
+        if (row) {
+          HoneypotConfig hp;
+          hp.server_id = row[0] ? row[0] : "";
+          hp.channel_id = row[1] ? row[1] : "";
+          hp.honeypot_message = row[2] ? row[2] : "";
+          hp.disclaimer_message = row[3] ? row[3] : "";
+          hp.action = row[4] ? row[4] : "ban";
+          hp.message_triggers = row[5] ? (std::stoi(row[5]) != 0) : true;
+          hp.react_triggers = row[6] ? (std::stoi(row[6]) != 0) : false;
+          hp.enabled = row[7] ? (std::stoi(row[7]) != 0) : false;
+          hp_cache_[server_id] = hp;
+        } else {
+          hp_cache_.erase(server_id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
 } // namespace bronx
