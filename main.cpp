@@ -825,8 +825,13 @@ int main(int argc, char *argv[]) {
     // Tupperbox proxying check
     if (!msg.author.bot && !msg.content.empty() && msg.content[0] != '\\' &&
         bronx::g_db) {
-      std::vector<bronx::Database::Tupper> tuppers =
-          bronx::g_db->get_user_tuppers(msg.author.id);
+      bool is_tupper_disabled = false;
+      if (!msg.server_id.empty()) {
+        is_tupper_disabled = bronx::g_db->is_disabled(msg.server_id, "tupper", "tupper");
+      }
+      if (!is_tupper_disabled) {
+        std::vector<bronx::Database::Tupper> tuppers =
+            bronx::g_db->get_user_tuppers(msg.author.id);
       for (const auto &t : tuppers) {
         bool prefix_match =
             t.prefix.empty() || (msg.content.rfind(t.prefix, 0) == 0);
@@ -869,6 +874,7 @@ int main(int argc, char *argv[]) {
         }
       }
     }
+  }
 
     if (!msg.author.bot && !msg.channel_id.empty() && !msg.author.id.empty()) {
       std::lock_guard<std::mutex> lock(g_invoker_mutex);
