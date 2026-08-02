@@ -1238,7 +1238,7 @@ int main(int argc, char *argv[]) {
           if (target_channel_id.empty() && !e.server.channels.empty()) {
               for (const auto& ch_id : e.server.channels) {
                   auto ch = bot.get_channel(ch_id);
-                  if (ch && ch->channel_type == "Text") {
+                  if (ch && (ch->channel_type == "TextChannel" || ch->channel_type == "Text")) {
                       target_channel_id = ch_id;
                       break;
                   }

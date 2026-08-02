@@ -1556,6 +1556,8 @@ public:
     // --- GATEWAY EVENT: SERVER MEMBER JOIN ---
     bot.on_server_member_join(
         [this, &bot](const stoatpp::events::ServerMemberJoin &e) {
+          if (e.user_id == bot.current_user().id)
+            return;
           if (!g_db)
             return;
           bot.get_member_count(
@@ -1595,6 +1597,8 @@ public:
     // --- GATEWAY EVENT: SERVER MEMBER LEAVE ---
     bot.on_server_member_leave(
         [this, &bot](const stoatpp::events::ServerMemberLeave &e) {
+          if (e.user_id == bot.current_user().id)
+            return;
           if (!g_db)
             return;
           bot.get_member_count(
