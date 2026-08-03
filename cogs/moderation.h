@@ -135,7 +135,7 @@ public:
                                 }
                             }
 
-                            bot.ban_user(msg.server_id, target_user.id, reason, [&bot, msg, target_user, reason](bool action_success) {
+                            helpers::ban_user_with_links(bot, msg.server_id, target_user.id, reason, msg.author.id, [&bot, msg, target_user, reason](bool action_success) {
                                 if (action_success) {
                                     std::unordered_map<std::string, std::string> tokens = {
                                         {"{user}", "<@" + target_user.id + ">"},
@@ -274,7 +274,7 @@ public:
                         return;
                     }
 
-                    bot.unban_user(msg.server_id, resolved_id, [&bot, msg, resolved_id, resolved_name, reason](bool success) {
+                    helpers::unban_user_with_links(bot, msg.server_id, resolved_id, msg.author.id, [&bot, msg, resolved_id, resolved_name, reason](bool success) {
                         if (success) {
                             std::unordered_map<std::string, std::string> tokens = {
                                 {"{user}", "<@" + resolved_id + ">"},
@@ -292,6 +292,189 @@ public:
             },
             "Moderation",
             stoatpp::permissions::BanMembers
+        });
+
+        bot.register_command({
+            "linkban",
+            {},
+            "link or unlink banlists between servers.",
+            "",
+            {"<server_id/unlink/list/sync>", "[server_id]"},
+            [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                auto server = bot.get_server(msg.server_id);
+                auto mem_opt = bot.get_member(msg.server_id, msg.author.id);
+                if (server && mem_opt) {
+                    if (!bot.has_permission(*server, *mem_opt, stoatpp::permissions::ManageServer)) {
+                        bot.send_message(msg.channel_id, "permission error: you do not have the required permissions to use this command.");
+                        return;
+                    }
+                }
+
+                if (args.empty()) {
+                    bot.send_message(msg.channel_id,
+                        "🔗 **Banlist Linking System**\n"
+                        "• `" + msg.prefix + "linkban <other_server_id>` — Send/accept a request to link banlists with another server. Both servers must mutually run this to activate the link.\n"
+                        "• `" + msg.prefix + "linkban unlink <other_server_id>` — Terminate a banlist link.\n"
+                        "• `" + msg.prefix + "linkban list` — List all active, pending, and incoming links in an embed.\n"
+                        "• `" + msg.prefix + "linkban sync` — Sync banlists by banning users currently banned on mutually linked servers.");
+                    return;
+                }
+
+                std::string action = args[0];
+                if (action == "list") {
+                    if (!g_db) return;
+                    std::thread([&bot, msg]() {
+                        auto linked = g_db->get_linked_ban_servers(msg.server_id);
+                        auto pending = g_db->get_pending_ban_links(msg.server_id);
+                        auto incoming = g_db->get_incoming_ban_links(msg.server_id);
+
+                        std::string desc = "";
+
+                        desc += "### 🔗 Linked Servers\n";
+                        if (linked.empty()) {
+                            desc += "*None*\n";
+                        } else {
+                            for (const auto& s_id : linked) {
+                                auto s = bot.get_server(s_id);
+                                desc += "• " + (s ? s->name : "Unknown Server") + " (`" + s_id + "`)\n";
+                            }
+                        }
+
+                        desc += "\n### ✉️ Pending Outgoing Requests\n";
+                        if (pending.empty()) {
+                            desc += "*None*\n";
+                        } else {
+                            for (const auto& s_id : pending) {
+                                auto s = bot.get_server(s_id);
+                                desc += "• " + (s ? s->name : "Unknown Server") + " (`" + s_id + "`)\n";
+                            }
+                        }
+
+                        desc += "\n### 📥 Incoming Requests\n*Run `" + msg.prefix + "linkban <server_id>` to accept.*\n";
+                        if (incoming.empty()) {
+                            desc += "*None*\n";
+                        } else {
+                            for (const auto& s_id : incoming) {
+                                auto s = bot.get_server(s_id);
+                                desc += "• " + (s ? s->name : "Unknown Server") + " (`" + s_id + "`)\n";
+                            }
+                        }
+
+                        stoatpp::models::MessagePayload payload;
+                        nlohmann::json embed = nlohmann::json::object();
+                        embed["title"] = "🔗 Banlist Links Status";
+                        embed["colour"] = "#2ecc71"; // green
+                        embed["description"] = desc;
+                        payload.embeds.push_back(embed);
+
+                        bot.send_message(msg.channel_id, payload);
+                    }).detach();
+                    return;
+                }
+
+                if (action == "sync") {
+                    if (!g_db) return;
+                    std::thread([&bot, msg]() {
+                        bot.send_message(msg.channel_id, "🔄 **Syncing banlists...** Fetching bans from mutually linked servers.");
+
+                        auto linked = g_db->get_linked_ban_servers(msg.server_id);
+                        if (linked.empty()) {
+                            bot.send_message(msg.channel_id, "⚠️ This server has no mutually linked servers to sync with. Use `.linkban <server_id>` first.");
+                            return;
+                        }
+
+                        // Fetch current server's bans
+                        std::unordered_set<std::string> current_bans;
+                        auto cur_bans_res = bot.rest().get_server_bans(msg.server_id);
+                        if (cur_bans_res.success() && cur_bans_res.body.is_array()) {
+                            for (const auto& item : cur_bans_res.body) {
+                                std::string banned_user_id = "";
+                                if (item.contains("id") && item["id"].is_object() && item["id"].contains("user") && item["id"]["user"].is_string()) {
+                                    banned_user_id = item["id"]["user"].get<std::string>();
+                                } else if (item.contains("_id") && item["_id"].is_object() && item["_id"].contains("user") && item["_id"]["user"].is_string()) {
+                                    banned_user_id = item["_id"]["user"].get<std::string>();
+                                }
+                                if (!banned_user_id.empty()) {
+                                    current_bans.insert(banned_user_id);
+                                }
+                            }
+                        }
+
+                        int sync_count = 0;
+                        for (const auto& s_id : linked) {
+                            auto other_bans_res = bot.rest().get_server_bans(s_id);
+                            if (other_bans_res.success() && other_bans_res.body.is_array()) {
+                                for (const auto& item : other_bans_res.body) {
+                                    std::string banned_user_id = "";
+                                    if (item.contains("id") && item["id"].is_object() && item["id"].contains("user") && item["id"]["user"].is_string()) {
+                                        banned_user_id = item["id"]["user"].get<std::string>();
+                                    } else if (item.contains("_id") && item["_id"].is_object() && item["_id"].contains("user") && item["_id"]["user"].is_string()) {
+                                        banned_user_id = item["_id"]["user"].get<std::string>();
+                                    }
+                                    if (!banned_user_id.empty() && current_bans.find(banned_user_id) == current_bans.end()) {
+                                        bot.ban_user(msg.server_id, banned_user_id, "[Linked Ban Sync] Synchronizing banlists", [](bool){});
+                                        current_bans.insert(banned_user_id);
+                                        sync_count++;
+                                    }
+                                }
+                            }
+                        }
+
+                        bot.send_message(msg.channel_id, "✅ **Sync Complete!** Successfully banned **" + std::to_string(sync_count) + "** user(s) from linked servers to sync banlists.");
+                    }).detach();
+                    return;
+                }
+
+                if (action == "unlink") {
+                    if (args.size() < 2) {
+                        bot.send_message(msg.channel_id, "usage: `" + msg.prefix + "linkban unlink <server_id>`");
+                        return;
+                    }
+                    if (!g_db) return;
+                    std::string target_guild_id = args[1];
+                    std::thread([&bot, msg, target_guild_id]() {
+                        auto other_srv = bot.get_server(target_guild_id);
+                        std::string other_name = other_srv ? other_srv->name : target_guild_id;
+
+                        g_db->remove_ban_link(msg.server_id, target_guild_id);
+                        bot.send_message(msg.channel_id, "🔓 **Unlinked!** Banlists are no longer synchronized with **" + other_name + "**.");
+                    }).detach();
+                    return;
+                }
+
+                // Default: args[0] is the target server_id
+                std::string target_guild_id = action;
+                if (target_guild_id.size() != 26) {
+                    bot.send_message(msg.channel_id, "⚠️ Invalid server ID. Please provide a valid 26-character server ID.");
+                    return;
+                }
+                if (target_guild_id == msg.server_id) {
+                    bot.send_message(msg.channel_id, "⚠️ You cannot link a server to itself.");
+                    return;
+                }
+
+                if (!g_db) return;
+                std::thread([&bot, msg, target_guild_id, server]() {
+                    auto other_srv = bot.get_server(target_guild_id);
+                    if (!other_srv) {
+                        bot.send_message(msg.channel_id, "⚠️ I am not currently in that server. Please invite me to that server first!");
+                        return;
+                    }
+
+                    g_db->add_ban_link(msg.server_id, target_guild_id);
+
+                    auto linked_servers = g_db->get_linked_ban_servers(msg.server_id);
+                    bool is_mutual = std::find(linked_servers.begin(), linked_servers.end(), target_guild_id) != linked_servers.end();
+
+                    if (is_mutual) {
+                        bot.send_message(msg.channel_id, "🔗 **Banlists are now linked!** Bans from either **" + server->name + "** or **" + other_srv->name + "** will be synchronized to the other.");
+                    } else {
+                        bot.send_message(msg.channel_id, "✉️ **Link request sent!** An administrator of **" + other_srv->name + "** must run `.linkban " + msg.server_id + "` to complete the link.");
+                    }
+                }).detach();
+            },
+            "Moderation",
+            stoatpp::permissions::ManageServer
         });
 
 

@@ -2162,3 +2162,48 @@ public:
 };
 
 } // namespace bronx::cogs
+
+namespace bronx::helpers {
+
+inline void ban_user_with_links(stoatpp::cluster& bot, const std::string& server_id, const std::string& user_id, const std::string& reason, const std::string& moderator_id, std::function<void(bool)> callback = nullptr) {
+    bot.ban_user(server_id, user_id, reason, [&bot, server_id, user_id, reason, moderator_id, callback](bool success) {
+        if (success) {
+            if (g_db) {
+                std::thread([&bot, server_id, user_id, reason, moderator_id]() {
+                    auto linked_servers = g_db->get_linked_ban_servers(server_id);
+                    for (const auto& linked_id : linked_servers) {
+                        bot.ban_user(linked_id, user_id, "[Linked Ban Sync] " + reason, [&bot, linked_id, user_id, reason, moderator_id](bool sync_success) {
+                            if (sync_success) {
+                                bronx::cogs::log_moderation_action(bot, linked_id, "Ban", moderator_id, user_id, "[Linked Ban Sync] " + reason);
+                            }
+                        });
+                    }
+                }).detach();
+            }
+        }
+        if (callback) callback(success);
+    });
+}
+
+inline void unban_user_with_links(stoatpp::cluster& bot, const std::string& server_id, const std::string& user_id, const std::string& moderator_id, std::function<void(bool)> callback = nullptr) {
+    bot.unban_user(server_id, user_id, [&bot, server_id, user_id, moderator_id, callback](bool success) {
+        if (success) {
+            if (g_db) {
+                std::thread([&bot, server_id, user_id, moderator_id]() {
+                    auto linked_servers = g_db->get_linked_ban_servers(server_id);
+                    for (const auto& linked_id : linked_servers) {
+                        bot.unban_user(linked_id, user_id, [&bot, linked_id, user_id, moderator_id](bool sync_success) {
+                            if (sync_success) {
+                                bronx::cogs::log_moderation_action(bot, linked_id, "Unban", moderator_id, user_id, "[Linked Unban Sync]");
+                            }
+                        });
+                    }
+                }).detach();
+            }
+        }
+        if (callback) callback(success);
+    });
+}
+
+} // namespace bronx::helpers
+

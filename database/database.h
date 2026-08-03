@@ -979,6 +979,12 @@ public:
 
   void purge_server_data(const std::string& server_id);
 
+  bool add_ban_link(const std::string &guild_id, const std::string &target_guild_id);
+  bool remove_ban_link(const std::string &guild_id, const std::string &target_guild_id);
+  std::vector<std::string> get_linked_ban_servers(const std::string &guild_id);
+  std::vector<std::string> get_pending_ban_links(const std::string &guild_id);
+  std::vector<std::string> get_incoming_ban_links(const std::string &guild_id);
+
 private:
   MYSQL *mysql_ = nullptr;
   std::unordered_map<std::string, UserAFK> user_afk_cache_;

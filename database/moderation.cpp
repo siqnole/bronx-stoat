@@ -1534,4 +1534,100 @@ namespace bronx {
     return true;
   }
 
+  bool Database::add_ban_link(const std::string &guild_id, const std::string &target_guild_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string query = "INSERT IGNORE INTO ban_links (guild_id, target_guild_id) VALUES ('" +
+                        escape_string(guild_id) + "', '" + escape_string(target_guild_id) + "')";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to add ban link: " << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  bool Database::remove_ban_link(const std::string &guild_id, const std::string &target_guild_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string query = "DELETE FROM ban_links WHERE (guild_id = '" + escape_string(guild_id) +
+                        "' AND target_guild_id = '" + escape_string(target_guild_id) + "') OR "
+                        "(guild_id = '" + escape_string(target_guild_id) +
+                        "' AND target_guild_id = '" + escape_string(guild_id) + "')";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to remove ban link: " << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    return true;
+  }
+
+  std::vector<std::string> Database::get_linked_ban_servers(const std::string &guild_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<std::string> servers;
+    if (!mysql_) return servers;
+    std::string query = "SELECT a.target_guild_id FROM ban_links a "
+                        "INNER JOIN ban_links b ON a.guild_id = b.target_guild_id AND a.target_guild_id = b.guild_id "
+                        "WHERE a.guild_id = '" + escape_string(guild_id) + "'";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to get linked ban servers: " << mysql_error(mysql_) << "\n";
+      return servers;
+    }
+    MYSQL_RES *res = mysql_store_result(mysql_);
+    if (res) {
+      MYSQL_ROW row;
+      while ((row = mysql_fetch_row(res))) {
+        if (row[0]) {
+          servers.push_back(row[0]);
+        }
+      }
+      mysql_free_result(res);
+    }
+    return servers;
+  }
+
+  std::vector<std::string> Database::get_pending_ban_links(const std::string &guild_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<std::string> servers;
+    if (!mysql_) return servers;
+    std::string query = "SELECT target_guild_id FROM ban_links WHERE guild_id = '" + escape_string(guild_id) + "' "
+                        "AND target_guild_id NOT IN (SELECT guild_id FROM ban_links WHERE target_guild_id = '" + escape_string(guild_id) + "')";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to get pending ban links: " << mysql_error(mysql_) << "\n";
+      return servers;
+    }
+    MYSQL_RES *res = mysql_store_result(mysql_);
+    if (res) {
+      MYSQL_ROW row;
+      while ((row = mysql_fetch_row(res))) {
+        if (row[0]) {
+          servers.push_back(row[0]);
+        }
+      }
+      mysql_free_result(res);
+    }
+    return servers;
+  }
+
+  std::vector<std::string> Database::get_incoming_ban_links(const std::string &guild_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    std::vector<std::string> servers;
+    if (!mysql_) return servers;
+    std::string query = "SELECT guild_id FROM ban_links WHERE target_guild_id = '" + escape_string(guild_id) + "' "
+                        "AND guild_id NOT IN (SELECT target_guild_id FROM ban_links WHERE target_guild_id = '" + escape_string(guild_id) + "')";
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to get incoming ban links: " << mysql_error(mysql_) << "\n";
+      return servers;
+    }
+    MYSQL_RES *res = mysql_store_result(mysql_);
+    if (res) {
+      MYSQL_ROW row;
+      while ((row = mysql_fetch_row(res))) {
+        if (row[0]) {
+          servers.push_back(row[0]);
+        }
+      }
+      mysql_free_result(res);
+    }
+    return servers;
+  }
+
 } // namespace bronx

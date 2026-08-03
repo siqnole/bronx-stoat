@@ -1132,6 +1132,19 @@ namespace bronx {
       return false;
     }
 
+    // Create Table ban_links
+    std::string create_ban_links =
+        "CREATE TABLE IF NOT EXISTS ban_links ("
+        "  guild_id VARCHAR(36) NOT NULL,"
+        "  target_guild_id VARCHAR(36) NOT NULL,"
+        "  PRIMARY KEY (guild_id, target_guild_id)"
+        ")";
+    if (mysql_query(mysql_, create_ban_links.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'ban_links': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     // Load counting configs into cache
     {
       std::string sel_counting =

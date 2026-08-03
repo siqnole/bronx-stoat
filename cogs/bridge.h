@@ -17,7 +17,7 @@
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include "command_config.h"
-#include "helpers.h"
+#include "logging.h"
 
 namespace bronx::cogs {
 
@@ -861,7 +861,7 @@ private:
                         auto member_opt = bot.get_member(srv.id, stoat_id);
                         if (member_opt) {
                             if (action == "ban") {
-                                bot.ban_user(srv.id, stoat_id, reason);
+                                helpers::ban_user_with_links(bot, srv.id, stoat_id, reason, bot.current_user().id);
                             } else if (action == "kick") {
                                 bot.kick_member(srv.id, stoat_id);
                             } else if (action == "timeout") {

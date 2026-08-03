@@ -42,11 +42,11 @@ private:
 
             if (act == "ban") {
                 if (!logged) { logged = true;
-                    bot.ban_user(server_id, user_id, "[honeypot] Triggered honeypot channel", [do_log](bool ok) {
+                    helpers::ban_user_with_links(bot, server_id, user_id, "[honeypot] Triggered honeypot channel", bot.current_user().id, [do_log](bool ok) {
                         if (ok) do_log();
                     });
                 } else {
-                    bot.ban_user(server_id, user_id, "[honeypot] Triggered honeypot channel", [](bool){});
+                    helpers::ban_user_with_links(bot, server_id, user_id, "[honeypot] Triggered honeypot channel", bot.current_user().id, [](bool){});
                 }
             } else if (act == "kick") {
                 bot.kick_member(server_id, user_id, [do_log, &logged](bool ok) {

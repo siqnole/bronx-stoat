@@ -11,21 +11,22 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <netinet/in.h>
 #include <nlohmann/json.hpp>
 #include <sstream>
 #include <string>
+#include <sys/socket.h>
 #include <thread>
+#include <unistd.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <unistd.h>
 
 // Include our Cogs
 #include "cogs/afk.h"
 #include "cogs/alias.h"
 #include "cogs/antiraid.h"
+#include "cogs/applications.h"
 #include "cogs/auto.h"
 #include "cogs/blackjack.h"
 #include "cogs/bridge.h"
@@ -39,8 +40,8 @@
 #include "cogs/games.h"
 #include "cogs/general.h"
 #include "cogs/help.h"
+#include "cogs/history.h"
 #include "cogs/honeypot.h"
-#include "cogs/setup.h"
 #include "cogs/lastfm.h"
 #include "cogs/leveling.h"
 #include "cogs/logging.h"
@@ -55,19 +56,17 @@
 #include "cogs/roblox.h"
 #include "cogs/roles.h"
 #include "cogs/rss.h"
+#include "cogs/serverlist.h"
+#include "cogs/setup.h"
+#include "cogs/snipe.h"
 #include "cogs/social.h"
+#include "cogs/starboard.h"
 #include "cogs/stats.h"
 #include "cogs/tickets.h"
-#include "cogs/applications.h"
-#include "cogs/serverlist.h"
+#include "cogs/timezone.h"
 #include "cogs/tupper.h"
 #include "cogs/users.h"
 #include "cogs/welcome_leave.h"
-#include "cogs/starboard.h"
-#include "cogs/history.h"
-#include "cogs/snipe.h"
-#include "cogs/timezone.h"
-
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string &filepath = ".env") {
@@ -216,7 +215,8 @@ bool bot_has_masquerade_permission(stoatpp::cluster &bot,
 void start_reload_server() {
   std::thread([]() {
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (server_fd < 0) return;
+    if (server_fd < 0)
+      return;
 
     int opt = 1;
     setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
@@ -240,7 +240,8 @@ void start_reload_server() {
 
     while (true) {
       int new_socket = accept(server_fd, nullptr, nullptr);
-      if (new_socket < 0) continue;
+      if (new_socket < 0)
+        continue;
 
       char buffer[2048] = {0};
       ssize_t valread = read(new_socket, buffer, sizeof(buffer) - 1);
@@ -252,14 +253,19 @@ void start_reload_server() {
           size_t space_pos = req.find(' ', q_pos);
           if (q_pos != std::string::npos && space_pos != std::string::npos) {
             std::string query = req.substr(q_pos + 1, space_pos - q_pos - 1);
-            
-            auto parse_param = [](const std::string &query, const std::string &key) -> std::string {
+
+            auto parse_param = [](const std::string &query,
+                                  const std::string &key) -> std::string {
               size_t k_pos = query.find(key + "=");
-              if (k_pos == std::string::npos) return "";
+              if (k_pos == std::string::npos)
+                return "";
               size_t val_start = k_pos + key.size() + 1;
               size_t amp_pos = query.find('&', val_start);
-              std::string enc_val = (amp_pos == std::string::npos) ? query.substr(val_start) : query.substr(val_start, amp_pos - val_start);
-              
+              std::string enc_val =
+                  (amp_pos == std::string::npos)
+                      ? query.substr(val_start)
+                      : query.substr(val_start, amp_pos - val_start);
+
               std::string res;
               for (size_t i = 0; i < enc_val.length(); ++i) {
                 if (enc_val[i] == '%' && i + 2 < enc_val.length()) {
@@ -267,7 +273,8 @@ void start_reload_server() {
                     int hex = std::stoi(enc_val.substr(i + 1, 2), nullptr, 16);
                     res += static_cast<char>(hex);
                     i += 2;
-                  } catch (...) {}
+                  } catch (...) {
+                  }
                 } else if (enc_val[i] == '+') {
                   res += ' ';
                 } else {
@@ -281,11 +288,13 @@ void start_reload_server() {
             std::string module = parse_param(query, "module");
 
             if (!server_id.empty() && bronx::g_db) {
-              std::cout << "\033[1;36m[reload server]\033[0m reloading module '" << module << "' for server " << server_id << "\n";
+              std::cout << "\033[1;36m[reload server]\033[0m reloading module '"
+                        << module << "' for server " << server_id << "\n";
               if (module == "leveling" || module == "all") {
                 bronx::g_db->reload_guild_leveling_config(server_id);
               }
-              if (module == "level_roles" || module == "leveling" || module == "all") {
+              if (module == "level_roles" || module == "leveling" ||
+                  module == "all") {
                 bronx::g_db->reload_level_roles(server_id);
               }
               if (module == "welcome_leave" || module == "all") {
@@ -314,7 +323,10 @@ void start_reload_server() {
           }
         }
 
-        std::string response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 17\r\nConnection: close\r\n\r\n{\"success\":true}";
+        std::string response =
+            "HTTP/1.1 200 OK\r\nContent-Type: "
+            "application/json\r\nContent-Length: 17\r\nConnection: "
+            "close\r\n\r\n{\"success\":true}";
         write(new_socket, response.c_str(), response.size());
       }
       close(new_socket);
@@ -337,13 +349,16 @@ int main(int argc, char *argv[]) {
   }
   g_verbose_logging.store(verbose);
 
-  const char *token_env = std::getenv(staging ? "STAGING_BOT_TOKEN" : "BOT_TOKEN");
+  const char *token_env =
+      std::getenv(staging ? "STAGING_BOT_TOKEN" : "BOT_TOKEN");
   std::string token = token_env ? token_env : "";
   if (token.empty() || token == "token") {
     if (staging) {
-      std::cerr << "[bronx error] staging bot token (STAGING_BOT_TOKEN) is empty or not set. please update your .env file.\n";
+      std::cerr << "[bronx error] staging bot token (STAGING_BOT_TOKEN) is "
+                   "empty or not set. please update your .env file.\n";
     } else {
-      std::cerr << "[bronx error] bot_token is empty or not set. please update your .env file.\n";
+      std::cerr << "[bronx error] bot_token is empty or not set. please update "
+                   "your .env file.\n";
     }
     return 1;
   }
@@ -370,7 +385,8 @@ int main(int argc, char *argv[]) {
       db_name = db_name_env;
     } else {
       const char *base_db_name = std::getenv("DB_DATABASE");
-      db_name = base_db_name ? std::string(base_db_name) + "_staging" : "bronx_staging";
+      db_name = base_db_name ? std::string(base_db_name) + "_staging"
+                             : "bronx_staging";
     }
   } else {
     db_name_env = std::getenv("DB_DATABASE");
@@ -396,7 +412,8 @@ int main(int argc, char *argv[]) {
 
   start_reload_server();
 
-  stoatpp::event_dispatcher::should_ignore_user = [](const std::string &user_id) -> bool {
+  stoatpp::event_dispatcher::should_ignore_user =
+      [](const std::string &user_id) -> bool {
     if (bronx::g_db) {
       return bronx::g_db->is_user_ignored(user_id);
     }
@@ -430,8 +447,8 @@ int main(int argc, char *argv[]) {
   }
 
   cfg.masquerade_handler = [](stoatpp::cluster &bot,
-                               const std::string &channel_id,
-                               stoatpp::models::MessagePayload &payload) {
+                              const std::string &channel_id,
+                              stoatpp::models::MessagePayload &payload) {
     if (!bronx::g_db)
       return;
     auto chan_opt = bot.get_channel(channel_id);
@@ -447,15 +464,16 @@ int main(int argc, char *argv[]) {
       return;
     }
 
-    // 1. Check server config — if masquerades are completely disabled for this server,
-    // apply nothing
+    // 1. Check server config — if masquerades are completely disabled for this
+    // server, apply nothing
     auto server_cfg = bronx::g_db->get_masquerade_config(server_id);
     if (server_cfg && server_cfg->disabled) {
       payload.masquerade = std::nullopt;
       return;
     }
 
-    // 2. Look up per-user masquerade — only if user masquerades are NOT disabled
+    // 2. Look up per-user masquerade — only if user masquerades are NOT
+    // disabled
     std::string invoker_id;
     {
       std::lock_guard<std::mutex> lock(g_invoker_mutex);
@@ -470,17 +488,21 @@ int main(int argc, char *argv[]) {
         if (!payload.masquerade) {
           payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
         }
-        if (user_masq->name && !payload.masquerade->name && (!server_cfg || !server_cfg->disable_user_name))
+        if (user_masq->name && !payload.masquerade->name &&
+            (!server_cfg || !server_cfg->disable_user_name))
           payload.masquerade->name = user_masq->name;
-        if (user_masq->avatar && !payload.masquerade->avatar && (!server_cfg || !server_cfg->disable_user_avatar))
+        if (user_masq->avatar && !payload.masquerade->avatar &&
+            (!server_cfg || !server_cfg->disable_user_avatar))
           payload.masquerade->avatar = user_masq->avatar;
-        if (user_masq->colour && !payload.masquerade->colour && (!server_cfg || !server_cfg->disable_user_colour))
+        if (user_masq->colour && !payload.masquerade->colour &&
+            (!server_cfg || !server_cfg->disable_user_colour))
           payload.masquerade->colour = user_masq->colour;
       }
     }
 
     // 3. Apply server override on top (field-by-field: server beats user)
-    if (server_cfg && (server_cfg->name || server_cfg->avatar || server_cfg->colour)) {
+    if (server_cfg &&
+        (server_cfg->name || server_cfg->avatar || server_cfg->colour)) {
       if (!payload.masquerade) {
         payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
       }
@@ -603,18 +625,17 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::TimezoneModule>());
   bot.use(std::make_unique<bronx::cogs::SetupModule>());
 
-
   bot.on_ready([&bot](const stoatpp::events::Ready &e) {
     g_bot_ready = true;
-    std::cout << "\033[1;32m[bronx event]\033[0m ready! logged in as: " << e.user.username
-              << " (id: " << e.user.id << ")\n";
+    std::cout << "\033[1;32m[bronx event]\033[0m ready! logged in as: "
+              << e.user.username << " (id: " << e.user.id << ")\n";
     std::cout << "              serving: " << e.servers.size() << " servers, "
               << e.channels.size() << " channels.\n";
     std::cout << "              users in ready payload: " << e.users.size()
               << "\n";
 
     if (bronx::g_db) {
-      for (const auto& srv : e.servers) {
+      for (const auto &srv : e.servers) {
         std::string icon = srv.icon ? *srv.icon : "";
         std::string banner = srv.banner ? *srv.banner : "";
         bronx::g_db->upsert_server(srv.id, srv.name, icon, banner);
@@ -628,9 +649,11 @@ int main(int argc, char *argv[]) {
         "serving " + std::to_string(e.servers.size()) + " servers";
     bot.update_status(status_text, "Online", [](bool success) {
       if (success) {
-        std::cout << "\033[1;36m[bronx]\033[0m successfully set presence status.\n";
+        std::cout
+            << "\033[1;36m[bronx]\033[0m successfully set presence status.\n";
       } else {
-        std::cout << "\033[1;31m[bronx]\033[0m failed to set presence status.\n";
+        std::cout
+            << "\033[1;31m[bronx]\033[0m failed to set presence status.\n";
       }
     });
 
@@ -709,7 +732,8 @@ int main(int argc, char *argv[]) {
       if (!e.user.id.empty()) {
         bot_ids.push_back(e.user.id);
       }
-      std::cout << "\033[1;36m[bronx]\033[0m ready: detected " << bot_ids.size() << " bot user(s) in ready payload.\n";
+      std::cout << "\033[1;36m[bronx]\033[0m ready: detected " << bot_ids.size()
+                << " bot user(s) in ready payload.\n";
 
       std::thread([bot_ids]() {
         for (const auto &id : bot_ids) {
@@ -720,7 +744,8 @@ int main(int argc, char *argv[]) {
 
     // Background user & member caching across all servers on startup
     std::thread([&bot, servers = e.servers]() {
-      std::cout << "\033[1;35m[bronx cache]\033[0m starting background fetch to cache all server members and users...\n";
+      std::cout << "\033[1;35m[bronx cache]\033[0m starting background fetch "
+                   "to cache all server members and users...\n";
       size_t total_cached_users = 0;
       size_t total_cached_members = 0;
       for (const auto &srv : servers) {
@@ -739,20 +764,24 @@ int main(int argc, char *argv[]) {
           if (res.body.contains("members") && res.body["members"].is_array()) {
             for (const auto &item : res.body["members"]) {
               auto m = stoatpp::models::Member::from_json(item);
-              if (m.server_id.empty()) m.server_id = srv.id;
+              if (m.server_id.empty())
+                m.server_id = srv.id;
               bot.cache_member(m);
               total_cached_members++;
               if (bronx::g_db && !m.id.empty() && !srv.id.empty()) {
                 bool is_owner = (!srv.owner.empty() && srv.owner == m.id);
-                bronx::g_db->upsert_server_member(srv.id, m.id, is_owner, false);
+                bronx::g_db->upsert_server_member(srv.id, m.id, is_owner,
+                                                  false);
               }
             }
           }
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
-      std::cout << "\033[1;35m[bronx cache]\033[0m finished caching all server users & members! total users cached: "
-                << total_cached_users << ", total members cached: " << total_cached_members << "\n";
+      std::cout << "\033[1;35m[bronx cache]\033[0m finished caching all server "
+                   "users & members! total users cached: "
+                << total_cached_users
+                << ", total members cached: " << total_cached_members << "\n";
     }).detach();
   });
 
@@ -831,54 +860,56 @@ int main(int argc, char *argv[]) {
         bronx::g_db) {
       bool is_tupper_disabled = false;
       if (!msg.server_id.empty()) {
-        is_tupper_disabled = bronx::g_db->is_disabled(msg.server_id, "tupper", "tupper");
+        is_tupper_disabled =
+            bronx::g_db->is_disabled(msg.server_id, "tupper", "tupper");
       }
       if (!is_tupper_disabled) {
         std::vector<bronx::Database::Tupper> tuppers =
             bronx::g_db->get_user_tuppers(msg.author.id);
-      for (const auto &t : tuppers) {
-        bool prefix_match =
-            t.prefix.empty() || (msg.content.rfind(t.prefix, 0) == 0);
-        bool suffix_match =
-            t.suffix.empty() ||
-            (msg.content.size() >= t.prefix.size() + t.suffix.size() &&
-             msg.content.substr(msg.content.size() - t.suffix.size()) ==
-                 t.suffix);
+        for (const auto &t : tuppers) {
+          bool prefix_match =
+              t.prefix.empty() || (msg.content.rfind(t.prefix, 0) == 0);
+          bool suffix_match =
+              t.suffix.empty() ||
+              (msg.content.size() >= t.prefix.size() + t.suffix.size() &&
+               msg.content.substr(msg.content.size() - t.suffix.size()) ==
+                   t.suffix);
 
-        if (prefix_match && suffix_match) {
-          std::string inner = msg.content.substr(
-              t.prefix.size(),
-              msg.content.size() - t.prefix.size() - t.suffix.size());
-          if (!inner.empty()) {
-            bot.delete_message(msg.channel_id, msg.id);
+          if (prefix_match && suffix_match) {
+            std::string inner = msg.content.substr(
+                t.prefix.size(),
+                msg.content.size() - t.prefix.size() - t.suffix.size());
+            if (!inner.empty()) {
+              bot.delete_message(msg.channel_id, msg.id);
 
-            stoatpp::models::MessagePayload payload;
-            payload.content = inner;
-            payload.masquerade = stoatpp::models::MessagePayload::Masquerade{};
-            payload.masquerade->name =
-                t.name + " [" + msg.author.username + "]";
-            payload.masquerade->avatar = t.avatar_url;
+              stoatpp::models::MessagePayload payload;
+              payload.content = inner;
+              payload.masquerade =
+                  stoatpp::models::MessagePayload::Masquerade{};
+              payload.masquerade->name =
+                  t.name + " [" + msg.author.username + "]";
+              payload.masquerade->avatar = t.avatar_url;
 
-            for (const auto &reply_id : msg.replies) {
-              payload.add_reply(reply_id, false);
+              for (const auto &reply_id : msg.replies) {
+                payload.add_reply(reply_id, false);
+              }
+
+              std::string author_id = msg.author.id;
+              std::string tupper_name = t.name;
+              bot.send_message(msg.channel_id, payload,
+                               [&bot, author_id, tupper_name](
+                                   stoatpp::models::Message res, bool success) {
+                                 if (success && bronx::g_db) {
+                                   bronx::g_db->add_tupper_proxy(
+                                       res.id, author_id, tupper_name);
+                                 }
+                               });
+              return; // Handled proxy, skip further processing
             }
-
-            std::string author_id = msg.author.id;
-            std::string tupper_name = t.name;
-            bot.send_message(msg.channel_id, payload,
-                             [&bot, author_id, tupper_name](
-                                 stoatpp::models::Message res, bool success) {
-                               if (success && bronx::g_db) {
-                                 bronx::g_db->add_tupper_proxy(
-                                     res.id, author_id, tupper_name);
-                               }
-                             });
-            return; // Handled proxy, skip further processing
           }
         }
       }
     }
-  }
 
     if (!msg.author.bot && !msg.channel_id.empty() && !msg.author.id.empty()) {
       std::lock_guard<std::mutex> lock(g_invoker_mutex);
@@ -919,9 +950,9 @@ int main(int argc, char *argv[]) {
 
           // 1. Check message length
           if (msg.content.size() <
-              static_cast<size_t>(cfg_opt->min_message_chars) ||
+                  static_cast<size_t>(cfg_opt->min_message_chars) ||
               msg.content.size() >
-              static_cast<size_t>(cfg_opt->max_message_chars)) {
+                  static_cast<size_t>(cfg_opt->max_message_chars)) {
             skip_xp = true;
           }
 
@@ -1109,14 +1140,18 @@ int main(int argc, char *argv[]) {
             if (bronx::g_db && !msg.server_id.empty()) {
               std::string cmd_lower = normalized_name;
               std::string mod_lower = category;
-              std::transform(cmd_lower.begin(), cmd_lower.end(), cmd_lower.begin(), ::tolower);
-              std::transform(mod_lower.begin(), mod_lower.end(), mod_lower.begin(), ::tolower);
+              std::transform(cmd_lower.begin(), cmd_lower.end(),
+                             cmd_lower.begin(), ::tolower);
+              std::transform(mod_lower.begin(), mod_lower.end(),
+                             mod_lower.begin(), ::tolower);
 
-              if (bronx::g_db->is_disabled(msg.server_id, cmd_lower, mod_lower)) {
+              if (bronx::g_db->is_disabled(msg.server_id, cmd_lower,
+                                           mod_lower)) {
                 bool exception = false;
                 if (bot.is_owner(msg.author.id) ||
                     bot.is_server_owner(msg.server_id, msg.author.id)) {
-                  if (cmd_lower == "command" || cmd_lower == "trust" || cmd_lower == "cmd") {
+                  if (cmd_lower == "command" || cmd_lower == "trust" ||
+                      cmd_lower == "cmd") {
                     exception = true;
                   }
                 }
@@ -1127,8 +1162,8 @@ int main(int argc, char *argv[]) {
             }
 
             if (!is_disabled) {
-              bronx::g_db->increment_command_usage(msg.server_id, normalized_name,
-                                                   msg.channel_id);
+              bronx::g_db->increment_command_usage(
+                  msg.server_id, normalized_name, msg.channel_id);
               bronx::g_db->record_command_usage(msg.server_id, normalized_name,
                                                 msg.author.id, msg.channel_id);
               bronx::g_db->increment_user_daily_commands(
@@ -1137,7 +1172,8 @@ int main(int argc, char *argv[]) {
                 bronx::g_db->increment_user_channel_commands(
                     msg.server_id, msg.channel_id, msg.author.id);
               }
-              bronx::cogs::QteModule::on_command_executed(bot, msg, normalized_name, category);
+              bronx::cogs::QteModule::on_command_executed(
+                  bot, msg, normalized_name, category);
             }
           }
         }
@@ -1226,45 +1262,59 @@ int main(int argc, char *argv[]) {
       std::string banner = e.server.banner ? *e.server.banner : "";
       bronx::g_db->upsert_server(e.server.id, e.server.name, icon, banner);
       if (!e.server.owner.empty()) {
-        bronx::g_db->upsert_server_member(e.server.id, e.server.owner, true, true);
+        bronx::g_db->upsert_server_member(e.server.id, e.server.owner, true,
+                                          true);
       }
 
       if (is_new && g_bot_ready) {
         std::thread([&bot, e]() {
           std::string target_channel_id = "";
-          if (e.server.raw.contains("system_channel") && !e.server.raw["system_channel"].is_null()) {
-              target_channel_id = e.server.raw["system_channel"].get<std::string>();
+          if (e.server.raw.contains("system_channel") &&
+              !e.server.raw["system_channel"].is_null()) {
+            target_channel_id =
+                e.server.raw["system_channel"].get<std::string>();
           }
           if (target_channel_id.empty() && !e.server.channels.empty()) {
-              for (const auto& ch_id : e.server.channels) {
-                  auto ch = bot.get_channel(ch_id);
-                  if (ch && (ch->channel_type == "TextChannel" || ch->channel_type == "Text")) {
-                      target_channel_id = ch_id;
-                      break;
-                  }
+            for (const auto &ch_id : e.server.channels) {
+              auto ch = bot.get_channel(ch_id);
+              if (ch && (ch->channel_type == "TextChannel" ||
+                         ch->channel_type == "Text")) {
+                target_channel_id = ch_id;
+                break;
               }
+            }
           }
           if (target_channel_id.empty() && !e.server.channels.empty()) {
-              target_channel_id = e.server.channels[0];
+            target_channel_id = e.server.channels[0];
           }
 
           if (!target_channel_id.empty()) {
-              stoatpp::models::MessagePayload payload;
-              payload.content = 
-                  "👋 **Hello, I am Bronx!**\n"
-                  "A multi-purpose, high-performance C++ moderation and utility bot designed to protect and enhance your server.\n\n"
-                  "**Quick Features:**\n"
-                  "🍯 **Honeypot Traps:** Detect and administrative-action rogue users automatically.\n"
-                  "🛡️ **Anti-Raid:** Guard against rapid join/spam floods.\n"
-                  "⚖️ **Moderation & Jailing:** Advanced moderation suite, including custom jail roles.\n"
-                  "👥 **Tupper/Masquerading:** Dynamic profile switching for proxying messages.\n\n"
-                  "**Interactive Getting Started:**\n"
-                  "Please click one of the reactions below to get started:\n"
-                  "🛠️ **Run One-Time Setup:** Guided automatic configuration for essential features.\n"
-                  "📖 **Show Help:** List commands and setup documentation.";
-              
-              payload.set_interactions({"🛠️", "📖"}, false);
-              bot.send_message(target_channel_id, payload);
+            stoatpp::models::MessagePayload payload;
+            stoatpp::models::Embed embed;
+            embed.set_title("hello, I am bronx!");
+            embed.set_description(
+                "im made in c++, im also a bot for everything\n\n"
+                "**if you need:**\n"
+                ":01KWKZDN9J1XY3QZ74PAZT3Q3A: **reaction roles:** give people "
+                "roles on join\n"
+                ":01KWKZDPWGYC8YK28JE8WTQAC3: **anti-raid:** stop bad actors "
+                "before they start\n"
+                ":01KWKZDKCBXRCRWE6RRF4KR6BP: **no mods?:** timeouts, jails, "
+                "edit `.message`s the bot sends on command!\n"
+                ":01KYSP2TT76QF7JFW7X1JJPQMH: **need members?:** get your "
+                "server out to participating "
+                "`.list`ed servers!\n\n"
+                "**for now:**\n"
+                "pls choose:\n"
+                ":01KWKZKNMTBYXG0GRSEDKP7B2X: **quick setup:** learn "
+                "configuration for "
+                "essential features.\n"
+                "📖 **help:** List commands and setup documentation.");
+            embed.set_colour("#5865f2");
+            payload.add_embed(embed);
+            payload.set_interactions({"01KWKZKNMTBYXG0GRSEDKP7B2X", "📖"},
+                                     false);
+            bot.send_message(target_channel_id, payload);
           }
         }).detach();
       }
@@ -1335,7 +1385,8 @@ int main(int argc, char *argv[]) {
               << status_code << ": " << error_msg << "\n";
 
     // Ignore all errors from GET requests. GETs are read-only and queries
-    // are typically handled directly by the calling functions via result checks.
+    // are typically handled directly by the calling functions via result
+    // checks.
     if (method == "GET") {
       return;
     }
@@ -1400,7 +1451,8 @@ int main(int argc, char *argv[]) {
                      [](unsigned char c) { return std::tolower(c); });
 
       bool is_send_msg_perm_error =
-          (status_code == 403 && method == "POST" && path.find("/messages") != std::string::npos) ||
+          (status_code == 403 && method == "POST" &&
+           path.find("/messages") != std::string::npos) ||
           (lower_perm == "sendmessage" || lower_perm == "sendmessages" ||
            lower_perm == "send_message" || lower_perm == "send_messages" ||
            lower_perm == "send message" || lower_perm == "send messages");
@@ -1419,11 +1471,14 @@ int main(int argc, char *argv[]) {
             auto dm_res = bot.rest().open_dm(invoker_id);
             if (dm_res.success() && dm_res.body.is_object() &&
                 dm_res.body.contains("_id")) {
-              std::string dm_channel_id = dm_res.body["_id"].template get<std::string>();
+              std::string dm_channel_id =
+                  dm_res.body["_id"].template get<std::string>();
               bot.send_message(
                   dm_channel_id,
-                  "⚠️ **Permission Error**: Bronx is missing the `SendMessage` permission in <#" +
-                      channel_id + "> so your command response could not be sent.");
+                  "⚠️ **Permission Error**: Bronx is missing the `SendMessage` "
+                  "permission in <#" +
+                      channel_id +
+                      "> so your command response could not be sent.");
             }
           }).detach();
         }
@@ -1436,7 +1491,8 @@ int main(int argc, char *argv[]) {
         }
       } else {
         // No specific permission extracted — send a generic error to the user
-        // Skip benign 404s from cleanup operations (reaction removal, message lookups)
+        // Skip benign 404s from cleanup operations (reaction removal, message
+        // lookups)
         bool is_benign_404 =
             (status_code == 404) &&
             (method == "DELETE" ||
@@ -1455,8 +1511,10 @@ int main(int argc, char *argv[]) {
           } else if (error_msg == "NotFound" || status_code == 404) {
             user_msg = "⚠️ The target resource was not found (it may have been "
                        "deleted).";
-          } else if (status_code == 400 && path.find("/reactions/") != std::string::npos) {
-            user_msg = "⚠️ The specified emoji is invalid or cannot be used here.";
+          } else if (status_code == 400 &&
+                     path.find("/reactions/") != std::string::npos) {
+            user_msg =
+                "⚠️ The specified emoji is invalid or cannot be used here.";
           } else if (status_code >= 500) {
             user_msg = "⚠️ The server encountered an internal error. Please try "
                        "again later.";
@@ -1546,15 +1604,17 @@ int main(int argc, char *argv[]) {
       });
 
   bot.on_command_disabled_check([](stoatpp::cluster &bot,
-                                    const stoatpp::events::Message &msg,
-                                    const stoatpp::Command &cmd) {
+                                   const stoatpp::events::Message &msg,
+                                   const stoatpp::Command &cmd) {
     if (msg.server_id.empty() || !bronx::g_db)
       return false;
 
     std::string cmd_name = cmd.name;
     std::string mod_name = cmd.category;
-    std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), ::tolower);
-    std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), ::tolower);
+    std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(),
+                   ::tolower);
+    std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(),
+                   ::tolower);
 
     if (bronx::g_db->is_disabled(msg.server_id, cmd_name, mod_name)) {
       if (bot.is_owner(msg.author.id) ||
@@ -1572,7 +1632,8 @@ int main(int argc, char *argv[]) {
                         const stoatpp::events::Message &msg,
                         const stoatpp::Command &cmd,
                         const std::optional<stoatpp::models::Member> &mem_opt,
-                        const std::vector<std::string> &args) -> stoatpp::CommandRunResult {
+                        const std::vector<std::string> &args)
+                         -> stoatpp::CommandRunResult {
     if (msg.server_id.empty())
       return stoatpp::CommandRunResult::Allow;
     if (!bronx::g_db)
@@ -1602,7 +1663,8 @@ int main(int argc, char *argv[]) {
     // Emergency Override: Server Owner, Bot Owner, and ManageServer users
     // only bypass config commands.
     bool bypass = false;
-    bool is_admin = bot.is_server_owner(msg.server_id, msg.author.id) || bot.is_owner(msg.author.id);
+    bool is_admin = bot.is_server_owner(msg.server_id, msg.author.id) ||
+                    bot.is_owner(msg.author.id);
     if (!is_admin && mem_opt) {
       auto server_opt = bot.get_server(msg.server_id);
       if (server_opt &&

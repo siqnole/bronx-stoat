@@ -538,7 +538,6 @@ inline std::string get_raw_args(const stoatpp::events::Message& msg, const std::
     }
     return msg.content.substr(idx);
 }
-
 } // namespace bronx::helpers
 
 namespace bronx::cogs {
