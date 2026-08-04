@@ -348,149 +348,149 @@ src/cluster.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster.cpp.s
 .PHONY : src/cluster.cpp.s
 
-src/cluster_cache.o: src/cluster_cache.cpp.o
-.PHONY : src/cluster_cache.o
+src/cluster/cache.o: src/cluster/cache.cpp.o
+.PHONY : src/cluster/cache.o
 
 # target to build an object file
-src/cluster_cache.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_cache.cpp.o
-.PHONY : src/cluster_cache.cpp.o
+src/cluster/cache.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/cache.cpp.o
+.PHONY : src/cluster/cache.cpp.o
 
-src/cluster_cache.i: src/cluster_cache.cpp.i
-.PHONY : src/cluster_cache.i
+src/cluster/cache.i: src/cluster/cache.cpp.i
+.PHONY : src/cluster/cache.i
 
 # target to preprocess a source file
-src/cluster_cache.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_cache.cpp.i
-.PHONY : src/cluster_cache.cpp.i
+src/cluster/cache.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/cache.cpp.i
+.PHONY : src/cluster/cache.cpp.i
 
-src/cluster_cache.s: src/cluster_cache.cpp.s
-.PHONY : src/cluster_cache.s
+src/cluster/cache.s: src/cluster/cache.cpp.s
+.PHONY : src/cluster/cache.s
 
 # target to generate assembly for a file
-src/cluster_cache.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_cache.cpp.s
-.PHONY : src/cluster_cache.cpp.s
+src/cluster/cache.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/cache.cpp.s
+.PHONY : src/cluster/cache.cpp.s
 
-src/cluster_commands.o: src/cluster_commands.cpp.o
-.PHONY : src/cluster_commands.o
+src/cluster/commands.o: src/cluster/commands.cpp.o
+.PHONY : src/cluster/commands.o
 
 # target to build an object file
-src/cluster_commands.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_commands.cpp.o
-.PHONY : src/cluster_commands.cpp.o
+src/cluster/commands.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/commands.cpp.o
+.PHONY : src/cluster/commands.cpp.o
 
-src/cluster_commands.i: src/cluster_commands.cpp.i
-.PHONY : src/cluster_commands.i
+src/cluster/commands.i: src/cluster/commands.cpp.i
+.PHONY : src/cluster/commands.i
 
 # target to preprocess a source file
-src/cluster_commands.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_commands.cpp.i
-.PHONY : src/cluster_commands.cpp.i
+src/cluster/commands.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/commands.cpp.i
+.PHONY : src/cluster/commands.cpp.i
 
-src/cluster_commands.s: src/cluster_commands.cpp.s
-.PHONY : src/cluster_commands.s
+src/cluster/commands.s: src/cluster/commands.cpp.s
+.PHONY : src/cluster/commands.s
 
 # target to generate assembly for a file
-src/cluster_commands.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_commands.cpp.s
-.PHONY : src/cluster_commands.cpp.s
+src/cluster/commands.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/commands.cpp.s
+.PHONY : src/cluster/commands.cpp.s
 
-src/cluster_events.o: src/cluster_events.cpp.o
-.PHONY : src/cluster_events.o
+src/cluster/events.o: src/cluster/events.cpp.o
+.PHONY : src/cluster/events.o
 
 # target to build an object file
-src/cluster_events.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_events.cpp.o
-.PHONY : src/cluster_events.cpp.o
+src/cluster/events.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/events.cpp.o
+.PHONY : src/cluster/events.cpp.o
 
-src/cluster_events.i: src/cluster_events.cpp.i
-.PHONY : src/cluster_events.i
+src/cluster/events.i: src/cluster/events.cpp.i
+.PHONY : src/cluster/events.i
 
 # target to preprocess a source file
-src/cluster_events.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_events.cpp.i
-.PHONY : src/cluster_events.cpp.i
+src/cluster/events.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/events.cpp.i
+.PHONY : src/cluster/events.cpp.i
 
-src/cluster_events.s: src/cluster_events.cpp.s
-.PHONY : src/cluster_events.s
+src/cluster/events.s: src/cluster/events.cpp.s
+.PHONY : src/cluster/events.s
 
 # target to generate assembly for a file
-src/cluster_events.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_events.cpp.s
-.PHONY : src/cluster_events.cpp.s
+src/cluster/events.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/events.cpp.s
+.PHONY : src/cluster/events.cpp.s
 
-src/cluster_messaging.o: src/cluster_messaging.cpp.o
-.PHONY : src/cluster_messaging.o
+src/cluster/messaging.o: src/cluster/messaging.cpp.o
+.PHONY : src/cluster/messaging.o
 
 # target to build an object file
-src/cluster_messaging.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_messaging.cpp.o
-.PHONY : src/cluster_messaging.cpp.o
+src/cluster/messaging.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/messaging.cpp.o
+.PHONY : src/cluster/messaging.cpp.o
 
-src/cluster_messaging.i: src/cluster_messaging.cpp.i
-.PHONY : src/cluster_messaging.i
+src/cluster/messaging.i: src/cluster/messaging.cpp.i
+.PHONY : src/cluster/messaging.i
 
 # target to preprocess a source file
-src/cluster_messaging.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_messaging.cpp.i
-.PHONY : src/cluster_messaging.cpp.i
+src/cluster/messaging.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/messaging.cpp.i
+.PHONY : src/cluster/messaging.cpp.i
 
-src/cluster_messaging.s: src/cluster_messaging.cpp.s
-.PHONY : src/cluster_messaging.s
+src/cluster/messaging.s: src/cluster/messaging.cpp.s
+.PHONY : src/cluster/messaging.s
 
 # target to generate assembly for a file
-src/cluster_messaging.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_messaging.cpp.s
-.PHONY : src/cluster_messaging.cpp.s
+src/cluster/messaging.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/messaging.cpp.s
+.PHONY : src/cluster/messaging.cpp.s
 
-src/cluster_misc.o: src/cluster_misc.cpp.o
-.PHONY : src/cluster_misc.o
+src/cluster/misc.o: src/cluster/misc.cpp.o
+.PHONY : src/cluster/misc.o
 
 # target to build an object file
-src/cluster_misc.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_misc.cpp.o
-.PHONY : src/cluster_misc.cpp.o
+src/cluster/misc.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/misc.cpp.o
+.PHONY : src/cluster/misc.cpp.o
 
-src/cluster_misc.i: src/cluster_misc.cpp.i
-.PHONY : src/cluster_misc.i
+src/cluster/misc.i: src/cluster/misc.cpp.i
+.PHONY : src/cluster/misc.i
 
 # target to preprocess a source file
-src/cluster_misc.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_misc.cpp.i
-.PHONY : src/cluster_misc.cpp.i
+src/cluster/misc.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/misc.cpp.i
+.PHONY : src/cluster/misc.cpp.i
 
-src/cluster_misc.s: src/cluster_misc.cpp.s
-.PHONY : src/cluster_misc.s
+src/cluster/misc.s: src/cluster/misc.cpp.s
+.PHONY : src/cluster/misc.s
 
 # target to generate assembly for a file
-src/cluster_misc.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_misc.cpp.s
-.PHONY : src/cluster_misc.cpp.s
+src/cluster/misc.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/misc.cpp.s
+.PHONY : src/cluster/misc.cpp.s
 
-src/cluster_moderation.o: src/cluster_moderation.cpp.o
-.PHONY : src/cluster_moderation.o
+src/cluster/moderation.o: src/cluster/moderation.cpp.o
+.PHONY : src/cluster/moderation.o
 
 # target to build an object file
-src/cluster_moderation.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_moderation.cpp.o
-.PHONY : src/cluster_moderation.cpp.o
+src/cluster/moderation.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/moderation.cpp.o
+.PHONY : src/cluster/moderation.cpp.o
 
-src/cluster_moderation.i: src/cluster_moderation.cpp.i
-.PHONY : src/cluster_moderation.i
+src/cluster/moderation.i: src/cluster/moderation.cpp.i
+.PHONY : src/cluster/moderation.i
 
 # target to preprocess a source file
-src/cluster_moderation.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_moderation.cpp.i
-.PHONY : src/cluster_moderation.cpp.i
+src/cluster/moderation.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/moderation.cpp.i
+.PHONY : src/cluster/moderation.cpp.i
 
-src/cluster_moderation.s: src/cluster_moderation.cpp.s
-.PHONY : src/cluster_moderation.s
+src/cluster/moderation.s: src/cluster/moderation.cpp.s
+.PHONY : src/cluster/moderation.s
 
 # target to generate assembly for a file
-src/cluster_moderation.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster_moderation.cpp.s
-.PHONY : src/cluster_moderation.cpp.s
+src/cluster/moderation.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/cluster/moderation.cpp.s
+.PHONY : src/cluster/moderation.cpp.s
 
 src/event_handler.o: src/event_handler.cpp.o
 .PHONY : src/event_handler.o
@@ -539,6 +539,30 @@ src/gateway.s: src/gateway.cpp.s
 src/gateway.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/gateway.cpp.s
 .PHONY : src/gateway.cpp.s
+
+src/pulse_voice.o: src/pulse_voice.cpp.o
+.PHONY : src/pulse_voice.o
+
+# target to build an object file
+src/pulse_voice.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/pulse_voice.cpp.o
+.PHONY : src/pulse_voice.cpp.o
+
+src/pulse_voice.i: src/pulse_voice.cpp.i
+.PHONY : src/pulse_voice.i
+
+# target to preprocess a source file
+src/pulse_voice.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/pulse_voice.cpp.i
+.PHONY : src/pulse_voice.cpp.i
+
+src/pulse_voice.s: src/pulse_voice.cpp.s
+.PHONY : src/pulse_voice.s
+
+# target to generate assembly for a file
+src/pulse_voice.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/pulse_voice.cpp.s
+.PHONY : src/pulse_voice.cpp.s
 
 src/rest.o: src/rest.cpp.o
 .PHONY : src/rest.o
@@ -640,30 +664,33 @@ help:
 	@echo "... src/cluster.o"
 	@echo "... src/cluster.i"
 	@echo "... src/cluster.s"
-	@echo "... src/cluster_cache.o"
-	@echo "... src/cluster_cache.i"
-	@echo "... src/cluster_cache.s"
-	@echo "... src/cluster_commands.o"
-	@echo "... src/cluster_commands.i"
-	@echo "... src/cluster_commands.s"
-	@echo "... src/cluster_events.o"
-	@echo "... src/cluster_events.i"
-	@echo "... src/cluster_events.s"
-	@echo "... src/cluster_messaging.o"
-	@echo "... src/cluster_messaging.i"
-	@echo "... src/cluster_messaging.s"
-	@echo "... src/cluster_misc.o"
-	@echo "... src/cluster_misc.i"
-	@echo "... src/cluster_misc.s"
-	@echo "... src/cluster_moderation.o"
-	@echo "... src/cluster_moderation.i"
-	@echo "... src/cluster_moderation.s"
+	@echo "... src/cluster/cache.o"
+	@echo "... src/cluster/cache.i"
+	@echo "... src/cluster/cache.s"
+	@echo "... src/cluster/commands.o"
+	@echo "... src/cluster/commands.i"
+	@echo "... src/cluster/commands.s"
+	@echo "... src/cluster/events.o"
+	@echo "... src/cluster/events.i"
+	@echo "... src/cluster/events.s"
+	@echo "... src/cluster/messaging.o"
+	@echo "... src/cluster/messaging.i"
+	@echo "... src/cluster/messaging.s"
+	@echo "... src/cluster/misc.o"
+	@echo "... src/cluster/misc.i"
+	@echo "... src/cluster/misc.s"
+	@echo "... src/cluster/moderation.o"
+	@echo "... src/cluster/moderation.i"
+	@echo "... src/cluster/moderation.s"
 	@echo "... src/event_handler.o"
 	@echo "... src/event_handler.i"
 	@echo "... src/event_handler.s"
 	@echo "... src/gateway.o"
 	@echo "... src/gateway.i"
 	@echo "... src/gateway.s"
+	@echo "... src/pulse_voice.o"
+	@echo "... src/pulse_voice.i"
+	@echo "... src/pulse_voice.s"
 	@echo "... src/rest.o"
 	@echo "... src/rest.i"
 	@echo "... src/rest.s"

@@ -51,6 +51,8 @@ pkg_check_modules(LEPTONICA REQUIRED lept)
 list(APPEND CMAKE_PREFIX_PATH /home/linuxbrew/.linuxbrew)
 set(ENV{PKG_CONFIG_PATH} "/home/linuxbrew/.linuxbrew/lib/pkgconfig:$ENV{PKG_CONFIG_PATH}")
 pkg_check_modules(CAIRO cairo)
+pkg_check_modules(PULSE REQUIRED libpulse libpulse-simple)
+
 if(CAIRO_FOUND)
     message(STATUS "Cairo ${CAIRO_VERSION} found — chart rendering enabled")
     target_compile_definitions(bronx PRIVATE BRONX_CHART_ENABLED=1)
@@ -64,8 +66,11 @@ target_include_directories(bronx PRIVATE
     ${MARIADB_INCLUDE_DIR}
     ${TESSERACT_INCLUDE_DIRS}
     ${LEPTONICA_INCLUDE_DIRS}
+    ${PULSE_INCLUDE_DIRS}
     $<$<BOOL:${CAIRO_FOUND}>:${CAIRO_INCLUDE_DIRS}>
 )
+
+target_link_directories(bronx PRIVATE ${PULSE_LIBRARY_DIRS})
 
 # Link against stoatpp, mariadb, tesseract, leptonica, and (optionally) Cairo
 target_link_libraries(bronx PRIVATE
@@ -73,5 +78,6 @@ target_link_libraries(bronx PRIVATE
     ${MARIADB_LIBRARY}
     ${TESSERACT_LIBRARIES}
     ${LEPTONICA_LIBRARIES}
+    ${PULSE_LIBRARIES}
     $<$<BOOL:${CAIRO_FOUND}>:${CAIRO_LIBRARIES}>
 )

@@ -67,6 +67,7 @@
 #include "cogs/tupper.h"
 #include "cogs/users.h"
 #include "cogs/welcome_leave.h"
+#include "cogs/voice.h"
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string &filepath = ".env") {
@@ -624,6 +625,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::SnipeModule>());
   bot.use(std::make_unique<bronx::cogs::TimezoneModule>());
   bot.use(std::make_unique<bronx::cogs::SetupModule>());
+  bot.use(std::make_unique<bronx::cogs::VoiceModule>());
 
   bot.on_ready([&bot](const stoatpp::events::Ready &e) {
     g_bot_ready = true;
