@@ -44,17 +44,27 @@ endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/_deps/json-build/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/_deps/json-build/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/_deps/httplib-build/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/_deps/httplib-build/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)
   # Include the install script for the subdirectory.
-  include("/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/cmake_install.cmake")
+  include("/var/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/var/home/siq/Documents/bots/stoat++/bronx/_deps/opus-build/cmake_install.cmake")
+endif()
+
+if(NOT CMAKE_INSTALL_LOCAL_ONLY)
+  # Include the install script for the subdirectory.
+  include("/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build/cmake_install.cmake")
 endif()
 
 if(NOT CMAKE_INSTALL_LOCAL_ONLY)

@@ -34,6 +34,14 @@ public:
                     uint64_t account_created_ms = stoatpp::utils::decode_ulid_timestamp(user.id);
                     std::string stoat_join = helpers::format_epoch_ms(account_created_ms);
                     
+                    std::string server_name = "server";
+                    if (!msg.server_id.empty()) {
+                        auto srv = bot.get_server(msg.server_id);
+                        if (srv) {
+                            server_name = srv->name;
+                        }
+                    }
+
                     std::string server_join = "none";
                     if (!member.joined_at.empty()) {
                         server_join = helpers::format_iso_string(member.joined_at);
@@ -47,7 +55,7 @@ public:
                     desc += "• **status**: " + status_full + "\n";
                     desc += "• **bio**: " + user.bio.value_or("none") + "\n\n";
                     desc += "• **joined stoat**: " + stoat_join + "\n";
-                    desc += "• **joined stoat++**: " + server_join + "\n";
+                    desc += "• **joined " + server_name + "**: " + server_join + "\n";
                     
                     stoatpp::models::Embed embed;
                     embed.title       = user.username + discrim + (user.bot ? " [bot]" : "");

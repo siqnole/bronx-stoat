@@ -14,11 +14,20 @@
 # EXTERNAL cache entries
 ########################
 
+//Path to a program.
+BASH_PROGRAM:FILEPATH=/usr/bin/bash
+
 //OFF
 BUILD_DEMO:BOOL=OFF
 
 //Build shared libraries (.dll/.so) instead of static ones (.lib/.a)
 BUILD_SHARED_LIBS:BOOL=OFF
+
+//Adds sanitizer flags to compiler
+BUILD_WITH_SANITIZERS:BOOL=OFF
+
+//Add warning as error flags for libSRTP
+BUILD_WITH_WARNINGS:BOOL=OFF
 
 //The path to Brotli's include directory.
 Brotli_INCLUDE_DIR:PATH=/home/linuxbrew/.linuxbrew/include
@@ -31,6 +40,9 @@ Brotli_decoder:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libbrotlidec.so
 
 //Path to a library.
 Brotli_encoder:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libbrotlienc.so
+
+//Set calling convention of C API callbacks stdcall
+CAPI_STDCALL:BOOL=OFF
 
 //Path to clang-tidy executable
 CLANG_TIDY_EXE:FILEPATH=CLANG_TIDY_EXE-NOTFOUND
@@ -322,8 +334,26 @@ CPACK_SOURCE_TZ:BOOL=ON
 //Enable to build ZIP source packages
 CPACK_SOURCE_ZIP:BOOL=OFF
 
+//Enable debug logging in all modules
+ENABLE_DEBUG_LOGGING:BOOL=OFF
+
+//Enable MbedTLS crypto engine
+ENABLE_MBEDTLS:BOOL=OFF
+
+//Enable NSS crypto engine
+ENABLE_NSS:BOOL=OFF
+
+//Enable OpenSSL crypto engine for libSRTP
+ENABLE_OPENSSL:BOOL=ON
+
+//Use file for logging
+ERR_REPORTING_FILE:FILEPATH=
+
+//Enable logging to stdout
+ERR_REPORTING_STDOUT:BOOL=OFF
+
 //Directory under which to collect all populated content
-FETCHCONTENT_BASE_DIR:PATH=/home/siq/Documents/bots/stoat++/bronx/_deps
+FETCHCONTENT_BASE_DIR:PATH=/var/home/siq/Documents/bots/stoat++/bronx/_deps
 
 //Disables all attempts to download or update content and assumes
 // source dirs already exist
@@ -348,6 +378,14 @@ FETCHCONTENT_SOURCE_DIR_IXWEBSOCKET:PATH=
 // for json
 FETCHCONTENT_SOURCE_DIR_JSON:PATH=
 
+//When not empty, overrides where to find pre-populated content
+// for libdatachannel
+FETCHCONTENT_SOURCE_DIR_LIBDATACHANNEL:PATH=
+
+//When not empty, overrides where to find pre-populated content
+// for opus
+FETCHCONTENT_SOURCE_DIR_OPUS:PATH=
+
 //Enables UPDATE_DISCONNECTED behavior for all content population
 FETCHCONTENT_UPDATES_DISCONNECTED:BOOL=OFF
 
@@ -362,6 +400,12 @@ FETCHCONTENT_UPDATES_DISCONNECTED_IXWEBSOCKET:BOOL=OFF
 
 //Enables UPDATE_DISCONNECTED behavior just for population of json
 FETCHCONTENT_UPDATES_DISCONNECTED_JSON:BOOL=OFF
+
+//Enables UPDATE_DISCONNECTED behavior just for population of libdatachannel
+FETCHCONTENT_UPDATES_DISCONNECTED_LIBDATACHANNEL:BOOL=OFF
+
+//Enables UPDATE_DISCONNECTED behavior just for population of opus
+FETCHCONTENT_UPDATES_DISCONNECTED_OPUS:BOOL=OFF
 
 //Set to ON to build docs
 FTXUI_BUILD_DOCS:BOOL=OFF
@@ -395,8 +439,32 @@ FTXUI_MICROSOFT_TERMINAL_FALLBACK:BOOL=OFF
 //Set to ON for FTXUI to be quiet
 FTXUI_QUIET:BOOL=OFF
 
+//INTERNAL
+GCM:BOOL=ON
+
 //Git command line client
 GIT_EXECUTABLE:FILEPATH=/usr/bin/git
+
+//Path to a file.
+GLIBCONFIG_INCLUDE_DIR:PATH=/home/linuxbrew/.linuxbrew/lib/glib-2.0/include
+
+//Path to a library.
+GLIB_GIO_LIBRARIES:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libgio-2.0.so
+
+//Path to a library.
+GLIB_GMODULE_LIBRARIES:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libgmodule-2.0.so
+
+//Path to a library.
+GLIB_GOBJECT_LIBRARIES:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libgobject-2.0.so
+
+//Path to a library.
+GLIB_GTHREAD_LIBRARIES:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libgthread-2.0.so
+
+//Path to a file.
+GLIB_INCLUDE_DIR:PATH=/home/linuxbrew/.linuxbrew/include/glib-2.0
+
+//Path to a library.
+GLIB_LIBRARIES:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libglib-2.0.so
 
 //If ON, uses a Python script to split the header into a compilable
 // header & source file (requires Python v3).
@@ -435,9 +503,6 @@ HTTPLIB_USE_ZLIB_IF_AVAILABLE:BOOL=ON
 //Install IXWebSocket
 IXWEBSOCKET_INSTALL:BOOL=ON
 
-//Build the unit tests when BUILD_TESTING is enabled.
-JSON_BuildTests:BOOL=OFF
-
 //Enable CI build targets.
 JSON_CI:BOOL=OFF
 
@@ -465,6 +530,30 @@ JSON_MultipleHeaders:BOOL=ON
 //Include as system headers (skip for clang-tidy).
 JSON_SystemInclude:BOOL=OFF
 
+//Path to a file.
+LIBNICE_INCLUDE_DIR:PATH=/home/linuxbrew/.linuxbrew/include
+
+//Path to a library.
+LIBNICE_LIBRARY:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libnice.so
+
+//Disable examples
+NO_EXAMPLES:BOOL=OFF
+
+//Disable media transport support
+NO_MEDIA:BOOL=OFF
+
+//Disable submodules
+NO_SUBMODULES:BOOL=OFF
+
+//Disable tests build
+NO_TESTS:BOOL=OFF
+
+//Disable WebSocket support
+NO_WEBSOCKET:BOOL=ON
+
+//INTERNAL
+OPENSSL:BOOL=ON
+
 //Path to a library.
 OPENSSL_CRYPTO_LIBRARY:FILEPATH=/usr/lib64/libcrypto.so
 
@@ -474,11 +563,134 @@ OPENSSL_INCLUDE_DIR:PATH=/usr/include
 //Path to a library.
 OPENSSL_SSL_LIBRARY:FILEPATH=/usr/lib64/libssl.so
 
+//additional software error checking.
+OPUS_ASSERTIONS:BOOL=OFF
+
+//build programs.
+OPUS_BUILD_PROGRAMS:BOOL=OFF
+
+//build shared library.
+OPUS_BUILD_SHARED_LIBRARY:BOOL=OFF
+
+//build tests.
+OPUS_BUILD_TESTING:BOOL=OFF
+
+//Build tests
+OPUS_BUILD_TESTS:BOOL=OFF
+
+//enable bit-exactness checks between optimized and c implementations.
+OPUS_CHECK_ASM:BOOL=OFF
+
+//enable non-Opus modes, e.g. 44.1 kHz & 2^n frames.
+OPUS_CUSTOM_MODES:BOOL=OFF
+
+//disable all intrinsics optimizations.
+OPUS_DISABLE_INTRINSICS:BOOL=OFF
+
+//Run DNN computations as float for debugging purposes.
+OPUS_DNN_FLOAT_DEBUG:BOOL=OFF
+
+//enable DRED.
+OPUS_DRED:BOOL=OFF
+
+//compile with the floating point API (for machines with float
+// library).
+OPUS_ENABLE_FLOAT_API:BOOL=ON
+
+//compile as fixed-point (for machines without a fast enough FPU).
+OPUS_FIXED_POINT:BOOL=OFF
+
+//enable floating point approximations (Ensure your platform supports
+// IEEE 754 before enabling).
+OPUS_FLOAT_APPROX:BOOL=OFF
+
+//add protection against buffer overflows.
+OPUS_FORTIFY_SOURCE:BOOL=ON
+
+//causes the encoder to make random decisions (do not use in production).
+OPUS_FUZZING:BOOL=OFF
+
+//run-time checks that are cheap and safe for use in production.
+OPUS_HARDENING:BOOL=ON
+
+//install CMake package config module.
+OPUS_INSTALL_CMAKE_CONFIG_MODULE:BOOL=ON
+
+//install pkg-config module.
+OPUS_INSTALL_PKG_CONFIG_MODULE:BOOL=ON
+
+//enable OSCE.
+OPUS_OSCE:BOOL=OFF
+
+//use stack protection.
+OPUS_STACK_PROTECTOR:BOOL=ON
+
+//use variable length arrays for stack arrays.
+OPUS_VAR_ARRAYS:BOOL=ON
+
+//does runtime check for AVX FMA AVX2 support.
+OPUS_X86_MAY_HAVE_AVX2:BOOL=ON
+
+//does runtime check for SSE1 support.
+OPUS_X86_MAY_HAVE_SSE:BOOL=ON
+
+//does runtime check for SSE2 support.
+OPUS_X86_MAY_HAVE_SSE2:BOOL=ON
+
+//does runtime check for SSE4.1 support.
+OPUS_X86_MAY_HAVE_SSE4_1:BOOL=ON
+
+//assume target CPU has AVX FMA AVX2 support (override runtime
+// check).
+OPUS_X86_PRESUME_AVX2:BOOL=OFF
+
+//assume target CPU has SSE1 support (override runtime check).
+OPUS_X86_PRESUME_SSE:BOOL=ON
+
+//assume target CPU has SSE2 support (override runtime check).
+OPUS_X86_PRESUME_SSE2:BOOL=ON
+
+//assume target CPU has SSE4.1 support (override runtime check).
+OPUS_X86_PRESUME_SSE4_1:BOOL=OFF
+
+//Value Computed by CMake
+Opus_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/opus-build
+
+//Value Computed by CMake
+Opus_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+Opus_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/opus-src
+
+//Path to a file.
+PCAP_INCLUDE_DIR_TEMP:PATH=PCAP_INCLUDE_DIR_TEMP-NOTFOUND
+
+//Path to a library.
+PCAP_LIBRARY_TEMP:FILEPATH=PCAP_LIBRARY_TEMP-NOTFOUND
+
 //Arguments to supply to pkg-config
 PKG_CONFIG_ARGN:STRING=
 
 //pkg-config executable
 PKG_CONFIG_EXECUTABLE:FILEPATH=/usr/bin/pkg-config
+
+//Build plog samples
+PLOG_BUILD_SAMPLES:BOOL=OFF
+
+//Build tests
+PLOG_BUILD_TESTS:BOOL=OFF
+
+//Generate plog install target
+PLOG_INSTALL:BOOL=OFF
+
+//Prefer system libraries over deps folder
+PREFER_SYSTEM_LIB:BOOL=OFF
+
+//Enable SCTP debugging output to verbose log
+SCTP_DEBUG:BOOL=OFF
+
+//Build with mbedtls sha1 support.
+SCTP_USE_MBEDTLS_SHA1:BOOL=OFF
 
 //Build the chat client application
 STOATPP_BUILD_CLIENT:BOOL=ON
@@ -489,11 +701,47 @@ STOATPP_BUILD_EXAMPLES:BOOL=ON
 //Use Boost.Beast instead of ixwebsocket
 STOATPP_USE_BOOST_BEAST:BOOL=OFF
 
+//Build test applications
+TEST_APPS:BOOL=ON
+
+//Use Boost
+USE_BOOST:BOOL=OFF
+
+//Use GnuTLS instead of OpenSSL
+USE_GNUTLS:BOOL=OFF
+
+//Use Mbed TLS instead of OpenSSL
+USE_MBEDTLS:BOOL=OFF
+
+//Use Nettle in libjuice
+USE_NETTLE:BOOL=OFF
+
+//Use libnice instead of libjuice
+USE_NICE:BOOL=ON
+
+//Use system Nlohmann JSON
+USE_SYSTEM_JSON:BOOL=ON
+
+//Use system libjuice
+USE_SYSTEM_JUICE:BOOL=OFF
+
+//Use system Plog
+USE_SYSTEM_PLOG:BOOL=OFF
+
+//Use system libSRTP
+USE_SYSTEM_SRTP:BOOL=OFF
+
+//Use system libusrsctp
+USE_SYSTEM_USRSCTP:BOOL=OFF
+
 //Enable TLS support
 USE_TLS:BOOL=ON
 
 //Enable zlib support
 USE_ZLIB:BOOL=ON
+
+//Treat warnings as errors
+WARNINGS_AS_ERRORS:BOOL=OFF
 
 //Path to a file.
 ZLIB_INCLUDE_DIR:PATH=/usr/include
@@ -504,44 +752,95 @@ ZLIB_LIBRARY_DEBUG:FILEPATH=ZLIB_LIBRARY_DEBUG-NOTFOUND
 //Path to a library.
 ZLIB_LIBRARY_RELEASE:FILEPATH=/usr/lib64/libz.so
 
+//Dependencies for the target
+datachannel-static_LIB_DEPENDS:STATIC=general;Usrsctp::Usrsctp;general;srtp2;general;OpenSSL::SSL;general;LibNice::LibNice;
+
+//Dependencies for the target
+datachannel_LIB_DEPENDS:STATIC=general;Usrsctp::Usrsctp;general;srtp2;general;OpenSSL::SSL;general;LibNice::LibNice;
+
 //Value Computed by CMake
-ftxui_BINARY_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build
+ftxui_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build
 
 //Value Computed by CMake
 ftxui_IS_TOP_LEVEL:STATIC=OFF
 
 //Value Computed by CMake
-ftxui_SOURCE_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-src
+ftxui_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-src
 
 //Value Computed by CMake
-httplib_BINARY_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/httplib-build
+httplib_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/httplib-build
 
 //Value Computed by CMake
 httplib_IS_TOP_LEVEL:STATIC=OFF
 
 //Value Computed by CMake
-httplib_SOURCE_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/httplib-src
+httplib_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/httplib-src
 
 //Path to a program.
 iwyu_path:FILEPATH=iwyu_path-NOTFOUND
 
 //Value Computed by CMake
-ixwebsocket_BINARY_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build
+ixwebsocket_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-build
 
 //Value Computed by CMake
 ixwebsocket_IS_TOP_LEVEL:STATIC=OFF
 
 //Value Computed by CMake
-ixwebsocket_SOURCE_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src
+ixwebsocket_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/ixwebsocket-src
 
 //Value Computed by CMake
-nlohmann_json_BINARY_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/json-build
+libdatachannel_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build
+
+//Value Computed by CMake
+libdatachannel_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+libdatachannel_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-src
+
+//Value Computed by CMake
+libsrtp2_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build/deps/libsrtp
+
+//Value Computed by CMake
+libsrtp2_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+libsrtp2_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-src/deps/libsrtp
+
+//Value Computed by CMake
+nlohmann_json_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/json-build
+
+//Path to nlohmann_json config
+nlohmann_json_DIR:PATH=/var/home/siq/Documents/bots/stoat++/bronx/_deps/json-build
 
 //Value Computed by CMake
 nlohmann_json_IS_TOP_LEVEL:STATIC=OFF
 
 //Value Computed by CMake
-nlohmann_json_SOURCE_DIR:STATIC=/home/siq/Documents/bots/stoat++/bronx/_deps/json-src
+nlohmann_json_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/json-src
+
+//Value Computed by CMake
+offerer_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build/examples/copy-paste-capi
+
+//Value Computed by CMake
+offerer_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+offerer_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-src/examples/copy-paste-capi
+
+//Path to a library.
+pkgcfg_lib_PC_GLIB_glib-2.0:FILEPATH=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/libglib-2.0.so
+
+//Path to a library.
+pkgcfg_lib_PC_LIBNICE_gio-2.0:FILEPATH=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/libgio-2.0.so
+
+//Path to a library.
+pkgcfg_lib_PC_LIBNICE_glib-2.0:FILEPATH=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/libglib-2.0.so
+
+//Path to a library.
+pkgcfg_lib_PC_LIBNICE_gobject-2.0:FILEPATH=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/libgobject-2.0.so
+
+//Path to a library.
+pkgcfg_lib_PC_LIBNICE_nice:FILEPATH=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/lib/libnice.so
 
 //Path to a library.
 pkgcfg_lib_PULSE_pulse:FILEPATH=/home/linuxbrew/.linuxbrew/Cellar/pulseaudio/17.0/lib/libpulse.so
@@ -556,6 +855,45 @@ pkgcfg_lib__OPENSSL_crypto:FILEPATH=/usr/lib64/libcrypto.so
 pkgcfg_lib__OPENSSL_ssl:FILEPATH=/usr/lib64/libssl.so
 
 //Value Computed by CMake
+plog_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build/deps/plog
+
+//Value Computed by CMake
+plog_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+plog_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-src/deps/plog
+
+//Compile in clang fuzzing mode
+sctp_build_fuzzer:BOOL=OFF
+
+//Build example programs
+sctp_build_programs:BOOL=OFF
+
+//Build USRSCTP as shared library
+sctp_build_shared_lib:BOOL=OFF
+
+//Provide debug information
+sctp_debug:BOOL=ON
+
+//Support IPv4
+sctp_inet:BOOL=OFF
+
+//Support IPv6
+sctp_inet6:BOOL=OFF
+
+//Add runtime checks
+sctp_invariants:BOOL=OFF
+
+//Compile with address sanitizer
+sctp_sanitizer_address:BOOL=OFF
+
+//Compile with memory sanitizer
+sctp_sanitizer_memory:BOOL=OFF
+
+//Treat warning as error
+sctp_werror:BOOL=OFF
+
+//Value Computed by CMake
 stoatpp_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx
 
 //Value Computed by CMake
@@ -564,11 +902,22 @@ stoatpp_IS_TOP_LEVEL:STATIC=ON
 //Value Computed by CMake
 stoatpp_SOURCE_DIR:STATIC=/home/siq/Documents/bots/stoat++
 
+//Value Computed by CMake
+usrsctplib_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build/deps/usrsctp
+
+//Value Computed by CMake
+usrsctplib_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+usrsctplib_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-src/deps/usrsctp
+
 
 ########################
 # INTERNAL cache entries
 ########################
 
+//Test AVX2_SUPPORTED
+AVX2_SUPPORTED:INTERNAL=1
 //ADVANCED property for variable: Brotli_INCLUDE_DIR
 Brotli_INCLUDE_DIR-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: Brotli_common
@@ -792,7 +1141,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_NM
 CMAKE_NM-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=13
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=24
 //ADVANCED property for variable: CMAKE_OBJCOPY
 CMAKE_OBJCOPY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_OBJDUMP
@@ -837,6 +1186,12 @@ CMAKE_TAPI-ADVANCED:INTERNAL=1
 CMAKE_UNAME:INTERNAL=/usr/bin/uname
 //ADVANCED property for variable: CMAKE_VERBOSE_MAKEFILE
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
+//Result of TRY_COMPILE
+COMPILE_CPU_INFO_BY_ASM_SUPPORTED:INTERNAL=TRUE
+//Result of TRY_COMPILE
+COMPILE_CPU_INFO_BY_C_SUPPORTED:INTERNAL=TRUE
+//Result of TRY_COMPILE
+COMPILE_VLA_SUPPORTED:INTERNAL=TRUE
 //ADVANCED property for variable: CPACK_SOURCE_RPM
 CPACK_SOURCE_RPM-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CPACK_SOURCE_TBZ2
@@ -849,6 +1204,14 @@ CPACK_SOURCE_TXZ-ADVANCED:INTERNAL=1
 CPACK_SOURCE_TZ-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CPACK_SOURCE_ZIP
 CPACK_SOURCE_ZIP-ADVANCED:INTERNAL=1
+//Test FAST_MATH_SUPPORTED
+FAST_MATH_SUPPORTED:INTERNAL=1
+//Details about finding GLIB
+FIND_PACKAGE_MESSAGE_DETAILS_GLIB:INTERNAL=[/home/linuxbrew/.linuxbrew/include/glib-2.0;/home/linuxbrew/.linuxbrew/lib/glib-2.0/include][/home/linuxbrew/.linuxbrew/lib/libglib-2.0.so][/home/linuxbrew/.linuxbrew/lib/libgio-2.0.so][/home/linuxbrew/.linuxbrew/lib/libgobject-2.0.so][/home/linuxbrew/.linuxbrew/lib/libgmodule-2.0.so][/home/linuxbrew/.linuxbrew/lib/libgthread-2.0.so][v2.88.2()]
+//Details about finding Git
+FIND_PACKAGE_MESSAGE_DETAILS_Git:INTERNAL=[/usr/bin/git][v2.54.0()]
+//Details about finding LibNice
+FIND_PACKAGE_MESSAGE_DETAILS_LibNice:INTERNAL=[/home/linuxbrew/.linuxbrew/lib/libnice.so][/home/linuxbrew/.linuxbrew/include][v()]
 //Details about finding OpenSSL
 FIND_PACKAGE_MESSAGE_DETAILS_OpenSSL:INTERNAL=[/usr/lib64/libcrypto.so][/usr/include][ ][v3.5.5()]
 //Details about finding PkgConfig
@@ -857,8 +1220,103 @@ FIND_PACKAGE_MESSAGE_DETAILS_PkgConfig:INTERNAL=[/usr/bin/pkg-config][v2.5.1()]
 FIND_PACKAGE_MESSAGE_DETAILS_Threads:INTERNAL=[TRUE][v()]
 //Details about finding ZLIB
 FIND_PACKAGE_MESSAGE_DETAILS_ZLIB:INTERNAL=[/usr/lib64/libz.so][/usr/include][ ][v1.3.1()]
+//Details about finding nlohmann_json
+FIND_PACKAGE_MESSAGE_DETAILS_nlohmann_json:INTERNAL=[/var/home/siq/Documents/bots/stoat++/bronx/_deps/json-build/nlohmann_jsonConfig.cmake][v3.11.3()]
 //ADVANCED property for variable: GIT_EXECUTABLE
 GIT_EXECUTABLE-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: GLIBCONFIG_INCLUDE_DIR
+GLIBCONFIG_INCLUDE_DIR-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: GLIB_GIO_LIBRARIES
+GLIB_GIO_LIBRARIES-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: GLIB_GMODULE_LIBRARIES
+GLIB_GMODULE_LIBRARIES-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: GLIB_GOBJECT_LIBRARIES
+GLIB_GOBJECT_LIBRARIES-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: GLIB_GTHREAD_LIBRARIES
+GLIB_GTHREAD_LIBRARIES-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: GLIB_INCLUDE_DIR
+GLIB_INCLUDE_DIR-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: GLIB_LIBRARIES
+GLIB_LIBRARIES-ADVANCED:INTERNAL=1
+//Have include alloca.h
+HAVE_ALLOCA_H:INTERNAL=1
+//Have include arpa/inet.h
+HAVE_ARPA_INET_H:INTERNAL=1
+//Have include byteswap.h
+HAVE_BYTESWAP_H:INTERNAL=1
+//Have include cpuid.h
+HAVE_CPUID_H:INTERNAL=1
+//Have include emmintrin.h
+HAVE_EMMINTRIN_H:INTERNAL=1
+//Have include immintrin.h
+HAVE_IMMINTRIN_H:INTERNAL=1
+//Have function inet_aton
+HAVE_INET_ATON:INTERNAL=1
+//Have function inet_pton
+HAVE_INET_PTON:INTERNAL=1
+//Test HAVE_INLINE
+HAVE_INLINE:INTERNAL=1
+//Result of TRY_COMPILE
+HAVE_INT32_T:INTERNAL=TRUE
+//Have include inttypes.h
+HAVE_INTTYPES_H:INTERNAL=1
+//Have library m
+HAVE_LIBM:INTERNAL=1
+//Have symbol lrint
+HAVE_LRINT:INTERNAL=1
+//Have symbol lrintf
+HAVE_LRINTF:INTERNAL=1
+//Have include machine/types.h
+HAVE_MACHINE_TYPES_H:INTERNAL=
+//Have include netinet/in.h
+HAVE_NETINET_IN_H:INTERNAL=1
+//Have function sigaction
+HAVE_SIGACTION:INTERNAL=1
+//Result of TRY_COMPILE
+HAVE_SIZEOF_UNSIGNED_LONG:INTERNAL=TRUE
+//Result of TRY_COMPILE
+HAVE_SIZEOF_UNSIGNED_LONG_LONG:INTERNAL=TRUE
+//Have include smmintrin.h
+HAVE_SMMINTRIN_H:INTERNAL=1
+//Have include stddef.h
+HAVE_STDDEF_H:INTERNAL=1
+//Have include stdint.h
+HAVE_STDINT_H:INTERNAL=1
+//Have include stdlib.h
+HAVE_STDLIB_H:INTERNAL=1
+//Have include sys/int_types.h
+HAVE_SYS_INT_TYPES_H:INTERNAL=
+//Have include sys/socket.h
+HAVE_SYS_SOCKET_H:INTERNAL=1
+//Have include sys/types.h
+HAVE_SYS_TYPES_H:INTERNAL=1
+//Result of TRY_COMPILE
+HAVE_UINT16_T:INTERNAL=TRUE
+//Result of TRY_COMPILE
+HAVE_UINT32_T:INTERNAL=TRUE
+//Result of TRY_COMPILE
+HAVE_UINT64_T:INTERNAL=TRUE
+//Result of TRY_COMPILE
+HAVE_UINT8_T:INTERNAL=TRUE
+//Have include unistd.h
+HAVE_UNISTD_H:INTERNAL=1
+//Have function usleep
+HAVE_USLEEP:INTERNAL=1
+//Have include windows.h
+HAVE_WINDOWS_H:INTERNAL=
+//Have include winsock2.h
+HAVE_WINSOCK2_H:INTERNAL=
+//Have include xmmintrin.h
+HAVE_XMMINTRIN_H:INTERNAL=1
+//Test HIDDEN_VISIBILITY_SUPPORTED
+HIDDEN_VISIBILITY_SUPPORTED:INTERNAL=1
+//CHECK_TYPE_SIZE: sizeof(int32_t)
+INT32_T:INTERNAL=4
+JSON_BuildTests:INTERNAL=OFF
+//ADVANCED property for variable: LIBNICE_INCLUDE_DIR
+LIBNICE_INCLUDE_DIR-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: LIBNICE_LIBRARY
+LIBNICE_LIBRARY-ADVANCED:INTERNAL=1
 NLOHMANN_JSON_CONFIG_INSTALL_DIR:INTERNAL=share/cmake/nlohmann_json
 //ADVANCED property for variable: OPENSSL_CRYPTO_LIBRARY
 OPENSSL_CRYPTO_LIBRARY-ADVANCED:INTERNAL=1
@@ -866,6 +1324,76 @@ OPENSSL_CRYPTO_LIBRARY-ADVANCED:INTERNAL=1
 OPENSSL_INCLUDE_DIR-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: OPENSSL_SSL_LIBRARY
 OPENSSL_SSL_LIBRARY-ADVANCED:INTERNAL=1
+PC_GLIB_CFLAGS:INTERNAL=-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include
+PC_GLIB_CFLAGS_I:INTERNAL=
+PC_GLIB_CFLAGS_OTHER:INTERNAL=
+PC_GLIB_FOUND:INTERNAL=1
+PC_GLIB_INCLUDEDIR:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include
+PC_GLIB_INCLUDE_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include
+PC_GLIB_LDFLAGS:INTERNAL=-L/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib;-lglib-2.0
+PC_GLIB_LDFLAGS_OTHER:INTERNAL=
+PC_GLIB_LIBDIR:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib
+PC_GLIB_LIBRARIES:INTERNAL=glib-2.0
+PC_GLIB_LIBRARY_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib
+PC_GLIB_LIBS:INTERNAL=
+PC_GLIB_LIBS_L:INTERNAL=
+PC_GLIB_LIBS_OTHER:INTERNAL=
+PC_GLIB_LIBS_PATHS:INTERNAL=
+PC_GLIB_MODULE_NAME:INTERNAL=glib-2.0
+PC_GLIB_PREFIX:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2
+PC_GLIB_STATIC_CFLAGS:INTERNAL=-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include
+PC_GLIB_STATIC_CFLAGS_I:INTERNAL=
+PC_GLIB_STATIC_CFLAGS_OTHER:INTERNAL=
+PC_GLIB_STATIC_INCLUDE_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include
+PC_GLIB_STATIC_LDFLAGS:INTERNAL=-L/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib;-lglib-2.0;-latomic;-lm;-pthread;-L/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/lib;-lpcre2-8;-pthread;-lpthread
+PC_GLIB_STATIC_LDFLAGS_OTHER:INTERNAL=-pthread;-pthread
+PC_GLIB_STATIC_LIBDIR:INTERNAL=
+PC_GLIB_STATIC_LIBRARIES:INTERNAL=glib-2.0;atomic;m;pcre2-8;pthread
+PC_GLIB_STATIC_LIBRARY_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib;/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/lib
+PC_GLIB_STATIC_LIBS:INTERNAL=
+PC_GLIB_STATIC_LIBS_L:INTERNAL=
+PC_GLIB_STATIC_LIBS_OTHER:INTERNAL=
+PC_GLIB_STATIC_LIBS_PATHS:INTERNAL=
+PC_GLIB_VERSION:INTERNAL=2.88.2
+PC_GLIB_glib-2.0_INCLUDEDIR:INTERNAL=
+PC_GLIB_glib-2.0_LIBDIR:INTERNAL=
+PC_GLIB_glib-2.0_PREFIX:INTERNAL=
+PC_GLIB_glib-2.0_VERSION:INTERNAL=
+PC_LIBNICE_CFLAGS:INTERNAL=-I/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/include/nice;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include;-I/home/linuxbrew/.linuxbrew/Cellar/libffi/3.7.1/include;-I/home/linuxbrew/.linuxbrew/opt/zlib-ng-compat/include;-DWITH_GZFILEOP;-I/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/libmount;-I/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/blkid;-pthread;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include;-I/home/linuxbrew/.linuxbrew/opt/gnutls/include;-I/home/linuxbrew/.linuxbrew/Cellar/nettle/4.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/libtasn1/4.21.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/libidn2/2.3.8/include;-I/home/linuxbrew/.linuxbrew/Cellar/p11-kit/0.26.4/include/p11-kit-1
+PC_LIBNICE_CFLAGS_I:INTERNAL=
+PC_LIBNICE_CFLAGS_OTHER:INTERNAL=-DWITH_GZFILEOP;-pthread
+PC_LIBNICE_FOUND:INTERNAL=1
+PC_LIBNICE_INCLUDEDIR:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/include
+PC_LIBNICE_INCLUDE_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/include/nice;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include;/home/linuxbrew/.linuxbrew/Cellar/libffi/3.7.1/include;/home/linuxbrew/.linuxbrew/opt/zlib-ng-compat/include;/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/libmount;/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/blkid;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include;/home/linuxbrew/.linuxbrew/opt/gnutls/include;/home/linuxbrew/.linuxbrew/Cellar/nettle/4.0/include;/home/linuxbrew/.linuxbrew/Cellar/libtasn1/4.21.0/include;/home/linuxbrew/.linuxbrew/Cellar/libidn2/2.3.8/include;/home/linuxbrew/.linuxbrew/Cellar/p11-kit/0.26.4/include/p11-kit-1
+PC_LIBNICE_LDFLAGS:INTERNAL=-L/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/lib;-lnice;-L/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib;-lgio-2.0;-lgobject-2.0;-lglib-2.0
+PC_LIBNICE_LDFLAGS_OTHER:INTERNAL=
+PC_LIBNICE_LIBDIR:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/lib
+PC_LIBNICE_LIBRARIES:INTERNAL=nice;gio-2.0;gobject-2.0;glib-2.0
+PC_LIBNICE_LIBRARY_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/lib;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib
+PC_LIBNICE_LIBS:INTERNAL=
+PC_LIBNICE_LIBS_L:INTERNAL=
+PC_LIBNICE_LIBS_OTHER:INTERNAL=
+PC_LIBNICE_LIBS_PATHS:INTERNAL=
+PC_LIBNICE_MODULE_NAME:INTERNAL=nice
+PC_LIBNICE_PREFIX:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23
+PC_LIBNICE_STATIC_CFLAGS:INTERNAL=-I/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/include/nice;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include;-I/home/linuxbrew/.linuxbrew/Cellar/libffi/3.7.1/include;-I/home/linuxbrew/.linuxbrew/opt/zlib-ng-compat/include;-DWITH_GZFILEOP;-I/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/libmount;-I/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/blkid;-pthread;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;-I/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include;-I/home/linuxbrew/.linuxbrew/opt/gnutls/include;-I/home/linuxbrew/.linuxbrew/Cellar/nettle/4.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/libtasn1/4.21.0/include;-I/home/linuxbrew/.linuxbrew/Cellar/libidn2/2.3.8/include;-I/home/linuxbrew/.linuxbrew/Cellar/p11-kit/0.26.4/include/p11-kit-1
+PC_LIBNICE_STATIC_CFLAGS_I:INTERNAL=
+PC_LIBNICE_STATIC_CFLAGS_OTHER:INTERNAL=-DWITH_GZFILEOP;-pthread
+PC_LIBNICE_STATIC_INCLUDE_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/include/nice;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include;/home/linuxbrew/.linuxbrew/Cellar/libffi/3.7.1/include;/home/linuxbrew/.linuxbrew/opt/zlib-ng-compat/include;/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/libmount;/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/include/blkid;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/include/glib-2.0;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib/glib-2.0/include;/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/include;/home/linuxbrew/.linuxbrew/opt/gnutls/include;/home/linuxbrew/.linuxbrew/Cellar/nettle/4.0/include;/home/linuxbrew/.linuxbrew/Cellar/libtasn1/4.21.0/include;/home/linuxbrew/.linuxbrew/Cellar/libidn2/2.3.8/include;/home/linuxbrew/.linuxbrew/Cellar/p11-kit/0.26.4/include/p11-kit-1
+PC_LIBNICE_STATIC_LDFLAGS:INTERNAL=-L/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/lib;-lnice;-L/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib;-lgio-2.0;-lgobject-2.0;-L/home/linuxbrew/.linuxbrew/Cellar/libffi/3.7.1/lib/../lib;-lffi;-lgmodule-2.0;-L/home/linuxbrew/.linuxbrew/opt/zlib-ng-compat/lib;-lz;-L/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/lib;-lmount;-lblkid;-lgthread-2.0;-pthread;-lglib-2.0;-latomic;-lm;-pthread;-L/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/lib;-lpcre2-8;-pthread;-lpthread;-L/home/linuxbrew/.linuxbrew/opt/gnutls/lib;-lgnutls;-lgmp;-lunistring;-latomic;-L/home/linuxbrew/.linuxbrew/Cellar/nettle/4.0/lib;-lhogweed;-lgmp;-lnettle;-L/home/linuxbrew/.linuxbrew/Cellar/libtasn1/4.21.0/lib;-ltasn1;-L/home/linuxbrew/.linuxbrew/Cellar/libidn2/2.3.8/lib;-lidn2;-lunistring;-L/home/linuxbrew/.linuxbrew/Cellar/p11-kit/0.26.4/lib;-lp11-kit
+PC_LIBNICE_STATIC_LDFLAGS_OTHER:INTERNAL=-pthread;-pthread;-pthread
+PC_LIBNICE_STATIC_LIBDIR:INTERNAL=
+PC_LIBNICE_STATIC_LIBRARIES:INTERNAL=nice;gio-2.0;gobject-2.0;ffi;gmodule-2.0;z;mount;blkid;gthread-2.0;glib-2.0;atomic;m;pcre2-8;pthread;gnutls;gmp;unistring;atomic;hogweed;gmp;nettle;tasn1;idn2;unistring;p11-kit
+PC_LIBNICE_STATIC_LIBRARY_DIRS:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/libnice/0.1.23/lib;/home/linuxbrew/.linuxbrew/Cellar/glib/2.88.2/lib;/home/linuxbrew/.linuxbrew/Cellar/libffi/3.7.1/lib/../lib;/home/linuxbrew/.linuxbrew/opt/zlib-ng-compat/lib;/home/linuxbrew/.linuxbrew/Cellar/util-linux/2.42.2/lib;/home/linuxbrew/.linuxbrew/Cellar/pcre2/10.47_1/lib;/home/linuxbrew/.linuxbrew/opt/gnutls/lib;/home/linuxbrew/.linuxbrew/Cellar/nettle/4.0/lib;/home/linuxbrew/.linuxbrew/Cellar/libtasn1/4.21.0/lib;/home/linuxbrew/.linuxbrew/Cellar/libidn2/2.3.8/lib;/home/linuxbrew/.linuxbrew/Cellar/p11-kit/0.26.4/lib
+PC_LIBNICE_STATIC_LIBS:INTERNAL=
+PC_LIBNICE_STATIC_LIBS_L:INTERNAL=
+PC_LIBNICE_STATIC_LIBS_OTHER:INTERNAL=
+PC_LIBNICE_STATIC_LIBS_PATHS:INTERNAL=
+PC_LIBNICE_VERSION:INTERNAL=0.1.23
+PC_LIBNICE_nice_INCLUDEDIR:INTERNAL=
+PC_LIBNICE_nice_LIBDIR:INTERNAL=
+PC_LIBNICE_nice_PREFIX:INTERNAL=
+PC_LIBNICE_nice_VERSION:INTERNAL=
 //ADVANCED property for variable: PKG_CONFIG_ARGN
 PKG_CONFIG_ARGN-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: PKG_CONFIG_EXECUTABLE
@@ -911,6 +1439,42 @@ PULSE_libpulse_LIBDIR:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/pulseaudio/17.0
 PULSE_libpulse_MODULE_NAME:INTERNAL=libpulse
 PULSE_libpulse_PREFIX:INTERNAL=/home/linuxbrew/.linuxbrew/Cellar/pulseaudio/17.0
 PULSE_libpulse_VERSION:INTERNAL=17.0
+//CHECK_TYPE_SIZE: sizeof(unsigned long)
+SIZEOF_UNSIGNED_LONG:INTERNAL=8
+//CHECK_TYPE_SIZE: sizeof(unsigned long long)
+SIZEOF_UNSIGNED_LONG_LONG:INTERNAL=8
+//Test SSE1_SUPPORTED
+SSE1_SUPPORTED:INTERNAL=1
+//Test SSE2_SUPPORTED
+SSE2_SUPPORTED:INTERNAL=1
+//Test SSE4_1_SUPPORTED
+SSE4_1_SUPPORTED:INTERNAL=1
+//Test STACK_PROTECTOR_SUPPORTED
+STACK_PROTECTOR_SUPPORTED:INTERNAL=1
+//CHECK_TYPE_SIZE: sizeof(uint16_t)
+UINT16_T:INTERNAL=2
+//CHECK_TYPE_SIZE: sizeof(uint32_t)
+UINT32_T:INTERNAL=4
+//CHECK_TYPE_SIZE: sizeof(uint64_t)
+UINT64_T:INTERNAL=8
+//CHECK_TYPE_SIZE: sizeof(uint8_t)
+UINT8_T:INTERNAL=1
+//Have symbol alloca
+USE_ALLOCA_SUPPORTED:INTERNAL=1
+//Test W_SUPPORTED
+W_SUPPORTED:INTERNAL=1
+//Test Wall_SUPPORTED
+Wall_SUPPORTED:INTERNAL=1
+//Test Wcastalign_SUPPORTED
+Wcastalign_SUPPORTED:INTERNAL=1
+//Test Wextra_SUPPORTED
+Wextra_SUPPORTED:INTERNAL=1
+//Test Wnestedexterns_SUPPORTED
+Wnestedexterns_SUPPORTED:INTERNAL=1
+//Test Wshadow_SUPPORTED
+Wshadow_SUPPORTED:INTERNAL=1
+//Test Wstrictprototypes_SUPPORTED
+Wstrictprototypes_SUPPORTED:INTERNAL=1
 //ADVANCED property for variable: ZLIB_INCLUDE_DIR
 ZLIB_INCLUDE_DIR-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: ZLIB_LIBRARY_DEBUG
@@ -954,13 +1518,71 @@ _OPENSSL_openssl_INCLUDEDIR:INTERNAL=
 _OPENSSL_openssl_LIBDIR:INTERNAL=
 _OPENSSL_openssl_PREFIX:INTERNAL=
 _OPENSSL_openssl_VERSION:INTERNAL=
+__pkg_config_arguments_PC_GLIB:INTERNAL=QUIET;glib-2.0
+__pkg_config_arguments_PC_LIBNICE:INTERNAL=nice
 __pkg_config_arguments_PULSE:INTERNAL=REQUIRED;libpulse;libpulse-simple
 __pkg_config_arguments__OPENSSL:INTERNAL=QUIET;openssl
 __pkg_config_checked_Brotli_common:INTERNAL=1
 __pkg_config_checked_Brotli_decoder:INTERNAL=1
 __pkg_config_checked_Brotli_encoder:INTERNAL=1
+__pkg_config_checked_PC_GLIB:INTERNAL=1
+__pkg_config_checked_PC_LIBNICE:INTERNAL=1
 __pkg_config_checked_PULSE:INTERNAL=1
 __pkg_config_checked__OPENSSL:INTERNAL=1
+//Test has_wfloat_equal
+has_wfloat_equal:INTERNAL=1
+//Test has_winit_self
+has_winit_self:INTERNAL=1
+//Test has_wno_address_of_packed_member
+has_wno_address_of_packed_member:INTERNAL=1
+//Test has_wno_deprecated_declarations
+has_wno_deprecated_declarations:INTERNAL=1
+//Test has_wno_unreachable_code
+has_wno_unreachable_code:INTERNAL=1
+//Test has_wno_unused_function
+has_wno_unused_function:INTERNAL=1
+//Test has_wno_unused_parameter
+has_wno_unused_parameter:INTERNAL=1
+//Test has_wpointer_aritih
+has_wpointer_aritih:INTERNAL=1
+//Test has_wshadow
+has_wshadow:INTERNAL=1
+//Test has_wstrict_prototypes
+has_wstrict_prototypes:INTERNAL=1
+//Test has_wunreachable_code
+has_wunreachable_code:INTERNAL=1
+//Have include sys/socket.h;linux/if_addr.h
+have_linux_if_addr_h:INTERNAL=1
+//Have include sys/socket.h;linux/rtnetlink.h
+have_linux_rtnetlink_h:INTERNAL=1
+//Have include sys/types.h;sys/socket.h;net/route.h
+have_net_route_h:INTERNAL=1
+//Have include sys/types.h;netinet/in.h;netinet/ip.h;netinet/ip_icmp.h
+have_netinet_ip_icmp_h:INTERNAL=1
+//Test have_sa_len
+have_sa_len:INTERNAL=
+//Test have_sconn_len
+have_sconn_len:INTERNAL=
+//Test have_sin6_len
+have_sin6_len:INTERNAL=
+//Test have_sin_len
+have_sin_len:INTERNAL=
+//Have include stdatomic.h
+have_stdatomic_h:INTERNAL=1
+//Have include sys/queue.h
+have_sys_queue_h:INTERNAL=1
+//Have include usrsctp.h
+have_usrsctp_h:INTERNAL=1
+//ADVANCED property for variable: pkgcfg_lib_PC_GLIB_glib-2.0
+pkgcfg_lib_PC_GLIB_glib-2.0-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: pkgcfg_lib_PC_LIBNICE_gio-2.0
+pkgcfg_lib_PC_LIBNICE_gio-2.0-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: pkgcfg_lib_PC_LIBNICE_glib-2.0
+pkgcfg_lib_PC_LIBNICE_glib-2.0-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: pkgcfg_lib_PC_LIBNICE_gobject-2.0
+pkgcfg_lib_PC_LIBNICE_gobject-2.0-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: pkgcfg_lib_PC_LIBNICE_nice
+pkgcfg_lib_PC_LIBNICE_nice-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: pkgcfg_lib_PULSE_pulse
 pkgcfg_lib_PULSE_pulse-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: pkgcfg_lib_PULSE_pulse-simple

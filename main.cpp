@@ -627,7 +627,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::SetupModule>());
   bot.use(std::make_unique<bronx::cogs::VoiceModule>());
 
-  bot.on_ready([&bot](const stoatpp::events::Ready &e) {
+  bot.on_ready([&bot, staging](const stoatpp::events::Ready &e) {
     g_bot_ready = true;
     std::cout << "\033[1;32m[bronx event]\033[0m ready! logged in as: "
               << e.user.username << " (id: " << e.user.id << ")\n";
@@ -649,7 +649,7 @@ int main(int argc, char *argv[]) {
 
     std::string status_text =
         "serving " + std::to_string(e.servers.size()) + " servers";
-    bot.update_status(status_text, "Online", [](bool success) {
+    bot.update_status(status_text, staging ? "Focus" : "Online", [](bool success) {
       if (success) {
         std::cout
             << "\033[1;36m[bronx]\033[0m successfully set presence status.\n";
@@ -661,7 +661,7 @@ int main(int argc, char *argv[]) {
 
     // Shifting status timer (runs every 90 seconds)
     bot.start_timer(
-        [&bot](stoatpp::timer t) {
+        [&bot, staging](stoatpp::timer t) {
           static int status_index = 1;
           std::string status_text;
 
@@ -717,7 +717,7 @@ int main(int argc, char *argv[]) {
             break;
           }
 
-          bot.update_status(status_text, "Online");
+          bot.update_status(status_text, staging ? "Focus" : "Online");
           status_index = (status_index + 1) % 7;
         },
         90);
