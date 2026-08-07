@@ -4,6 +4,7 @@
 #include "logging.h"
 #include "command_config.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <deque>
 #include <mutex>
 #include <chrono>
@@ -28,6 +29,10 @@ private:
     // Per-server per-user spam window (server_id:user_id -> recent message timestamps)
     std::unordered_map<std::string, std::deque<std::chrono::steady_clock::time_point>> spam_windows_;
     std::mutex spam_mutex_;
+
+    // Per-server per-user mention window (server_id:user_id -> mention counts per recent message)
+    std::unordered_map<std::string, std::deque<int>> mention_windows_;
+    std::mutex mention_mutex_;
 
     // ── Helper: normalise action string ──────────────────────────────────────
     static bool is_valid_single_action(const std::string& a) {
@@ -158,8 +163,10 @@ private:
 
     // ── Helper: pretty-print config ──────────────────────────────────────────
     static std::string format_config(const Database::AntiRaidConfig& cfg) {
-        std::string enabled_mark = (cfg.joins_action != "none" || cfg.spam_action != "none" || cfg.default_profile_action != "none")
-                                   ? "✅ **Enabled**" : "⚠️ **Inactive** (all actions set to `none`)"; 
+        std::string enabled_mark =
+            (cfg.joins_action != "none" || cfg.spam_action != "none" ||
+             cfg.default_profile_action != "none" || cfg.mentions_action != "none")
+            ? "✅ **Enabled**" : "⚠️ **Inactive** (all actions set to `none`)";
         return "🛡️ **Anti-Raid Configuration**\n" +
                enabled_mark + "\n\n" +
                "**Join Flood Detection**\n" +
@@ -168,9 +175,12 @@ private:
                "**Message Spam Detection**\n" +
                "• Threshold: `" + std::to_string(cfg.spam_threshold_count) + "` messages in `" + std::to_string(cfg.spam_threshold_seconds) + "s`\n" +
                "• Actions: `" + cfg.spam_action + "`\n\n" +
+               "**Mention Guard**\n" +
+               "• Threshold: `" + std::to_string(cfg.mentions_threshold_count) + "` user mentions over `" + std::to_string(cfg.mentions_threshold_messages) + "` messages\n" +
+               "• Actions: `" + cfg.mentions_action + "`\n\n" +
                "**Default Profile Detection**\n" +
                "• Actions on join (no avatar): `" + cfg.default_profile_action + "`\n\n" +
-               "*Use `.antiraid setup` to reconfigure, or `.antiraid <join|spam|profile> <options>` for individual settings.*\n" +
+               "*Use `.antiraid setup` to reconfigure, or `.antiraid <join|spam|mentions|profile> <options>` for individual settings.*\n" +
                "*Actions can be combined with commas, e.g. `delete,warn` or `ban`.*";
     }
 
@@ -240,7 +250,7 @@ public:
                         bot.send_message(msg.channel_id,
                             "🛡️ **Anti-Raid Setup Wizard**\n"
                             "Answer each prompt. Type `skip` to keep the current value, or `cancel` to abort.\n\n"
-                            "**Step 1/4 — Join Flood: How many joins within a time window should trigger the action?**\n"
+                            "**Step 1/7 — Join Flood: How many joins within a time window should trigger the action?**\n"
                             "Format: `<count> <seconds>` (e.g. `5 60`)\n"
                             "Current: `" + std::to_string(cfg.joins_threshold_count) + " " + std::to_string(cfg.joins_threshold_seconds) + "`");
 
@@ -263,7 +273,7 @@ public:
                                 }
 
                                 bot.send_message(msg.channel_id,
-                                    "**Step 2/4 — Join Flood Action: What should happen when join flooding is detected?**\n"
+                                    "**Step 2/7 — Join Flood Action: What should happen when join flooding is detected?**\n"
                                     "Options: `ban`, `kick`, `timeout`, `warn`, `none` (combine with commas, e.g. `kick,warn`)\n"
                                     "Current: `" + cfg.joins_action + "`");
 
@@ -283,7 +293,7 @@ public:
                                         }
 
                                         bot.send_message(msg.channel_id,
-                                            "**Step 3/4 — Spam Detection: How many messages in a time window should be considered spam?**\n"
+                                            "**Step 3/7 — Spam Detection: How many messages in a time window should be considered spam?**\n"
                                             "Format: `<count> <seconds>` (e.g. `5 2`)\n"
                                             "Current: `" + std::to_string(cfg.spam_threshold_count) + " " + std::to_string(cfg.spam_threshold_seconds) + "`");
 
@@ -306,7 +316,7 @@ public:
                                                 }
 
                                                 bot.send_message(msg.channel_id,
-                                                    "**Step 4/4 — Spam Action: What should happen when spam is detected?**\n"
+                                                    "**Step 4/7 — Spam Action: What should happen when spam is detected?**\n"
                                                     "Options: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (combine with commas, e.g. `delete,warn`)\n"
                                                     "Current: `" + cfg.spam_action + "`");
 
@@ -326,30 +336,75 @@ public:
                                                         }
 
                                                         bot.send_message(msg.channel_id,
-                                                            "**Step 5/5 — Default Profile Action: What should happen when a user joins with no avatar (default profile)?**\n"
-                                                            "Options: `ban`, `kick`, `timeout`, `warn`, `none` (combine with commas, e.g. `kick,warn`)\n"
-                                                            "Current: `" + cfg.default_profile_action + "`");
+                                                            "**Step 5/7 — Mention Guard: How many user mentions over how many messages should trigger the action?**\n"
+                                                            "Format: `<count> <messages>` (e.g. `10 5` = 10 unique pings across 5 messages)\n"
+                                                            "Current: `" + std::to_string(cfg.mentions_threshold_count) + " " + std::to_string(cfg.mentions_threshold_messages) + "`");
 
-                                                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30),
-                                                            [this, &bot, msg, cfg](std::optional<stoatpp::events::Message> rep5) mutable {
-                                                                if (!rep5) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
-                                                                std::string r5 = rep5->content;
-                                                                std::transform(r5.begin(), r5.end(), r5.begin(), ::tolower);
-                                                                if (r5 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45),
+                                                            [this, &bot, msg, cfg](std::optional<stoatpp::events::Message> repM1) mutable {
+                                                                if (!repM1) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
+                                                                std::string rM1 = repM1->content;
+                                                                std::transform(rM1.begin(), rM1.end(), rM1.begin(), ::tolower);
+                                                                if (rM1 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
 
-                                                                if (r5 != "skip") {
-                                                                    if (!is_valid_action(r5)) {
-                                                                        bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
+                                                                if (rM1 != "skip") {
+                                                                    std::istringstream ssM(rM1);
+                                                                    int mc = 0, mm = 0;
+                                                                    if (!(ssM >> mc >> mm) || mc < 1 || mm < 1) {
+                                                                        bot.send_message(msg.channel_id, "⚠️ Invalid format. Expected `<count> <messages>` (e.g. `10 5`). Setup cancelled.");
                                                                         return;
                                                                     }
-                                                                    cfg.default_profile_action = normalise_actions(r5);
+                                                                    cfg.mentions_threshold_count = mc;
+                                                                    cfg.mentions_threshold_messages = mm;
                                                                 }
 
-                                                                if (g_db->save_antiraid_config(cfg)) {
-                                                                    bot.send_message(msg.channel_id, "✅ **Anti-Raid configuration saved!**\n\n" + format_config(cfg));
-                                                                } else {
-                                                                    bot.send_message(msg.channel_id, "❌ Failed to save configuration. Please try again.");
-                                                                }
+                                                                bot.send_message(msg.channel_id,
+                                                                    "**Step 6/7 — Mention Guard Action: What should happen when the mention threshold is exceeded?**\n"
+                                                                    "Options: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (combine with commas, e.g. `delete,warn`)\n"
+                                                                    "Current: `" + cfg.mentions_action + "`");
+
+                                                                bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30),
+                                                                    [this, &bot, msg, cfg](std::optional<stoatpp::events::Message> repM2) mutable {
+                                                                        if (!repM2) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
+                                                                        std::string rM2 = repM2->content;
+                                                                        std::transform(rM2.begin(), rM2.end(), rM2.begin(), ::tolower);
+                                                                        if (rM2 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+
+                                                                        if (rM2 != "skip") {
+                                                                            if (!is_valid_action(rM2)) {
+                                                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas). Setup cancelled.");
+                                                                                return;
+                                                                            }
+                                                                            cfg.mentions_action = normalise_actions(rM2);
+                                                                        }
+
+                                                                        bot.send_message(msg.channel_id,
+                                                                            "**Step 7/7 — Default Profile Action: What should happen when a user joins with no avatar (default profile)?**\n"
+                                                                            "Options: `ban`, `kick`, `timeout`, `warn`, `none` (combine with commas, e.g. `kick,warn`)\n"
+                                                                            "Current: `" + cfg.default_profile_action + "`");
+
+                                                                        bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30),
+                                                                            [this, &bot, msg, cfg](std::optional<stoatpp::events::Message> rep5) mutable {
+                                                                                if (!rep5) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
+                                                                                std::string r5 = rep5->content;
+                                                                                std::transform(r5.begin(), r5.end(), r5.begin(), ::tolower);
+                                                                                if (r5 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+
+                                                                                if (r5 != "skip") {
+                                                                                    if (!is_valid_action(r5)) {
+                                                                                        bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
+                                                                                        return;
+                                                                                    }
+                                                                                    cfg.default_profile_action = normalise_actions(r5);
+                                                                                }
+
+                                                                                if (g_db->save_antiraid_config(cfg)) {
+                                                                                    bot.send_message(msg.channel_id, "✅ **Anti-Raid configuration saved!**\n\n" + format_config(cfg));
+                                                                                } else {
+                                                                                    bot.send_message(msg.channel_id, "❌ Failed to save configuration. Please try again.");
+                                                                                }
+                                                                            });
+                                                                    });
                                                             });
                                                     });
                                             });
@@ -485,6 +540,54 @@ public:
                         return;
                     }
 
+                    // ── MENTION GUARD ────────────────────────────────────────
+                    // .antiraid mentions <count> <messages> [action[,action...]]
+                    if (sub == "mentions" || sub == "mention") {
+                        if (args.size() < 3) {
+                            bot.send_message(msg.channel_id,
+                                "Usage: `.antiraid mentions <count> <messages> [action]`\n"
+                                "Actions: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (combine with commas)\n"
+                                "Example: `.antiraid mentions 10 5 delete,warn` triggers when a user pings 10 users across 5 messages.");
+                            return;
+                        }
+                        try {
+                            int count = std::stoi(args[1]);
+                            int messages = std::stoi(args[2]);
+                            std::string action_raw;
+                            if (args.size() >= 4) {
+                                for (size_t i = 3; i < args.size(); ++i) {
+                                    if (!action_raw.empty()) action_raw += ",";
+                                    action_raw += args[i];
+                                }
+                            } else {
+                                action_raw = cfg.mentions_action;
+                            }
+                            std::transform(action_raw.begin(), action_raw.end(), action_raw.begin(), ::tolower);
+                            std::string action = normalise_actions(action_raw);
+
+                            if (count < 1 || messages < 1) throw std::invalid_argument("out of range");
+                            if (!is_valid_action(action)) {
+                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas).");
+                                return;
+                            }
+
+                            cfg.mentions_threshold_count = count;
+                            cfg.mentions_threshold_messages = messages;
+                            cfg.mentions_action = action;
+
+                            if (g_db->save_antiraid_config(cfg)) {
+                                bot.send_message(msg.channel_id,
+                                    "✅ Mention guard updated: `" + std::to_string(count) + "` user mentions over `" +
+                                    std::to_string(messages) + "` messages → `" + action + "`.");
+                            } else {
+                                bot.send_message(msg.channel_id, "❌ Failed to save configuration.");
+                            }
+                        } catch (...) {
+                            bot.send_message(msg.channel_id, "⚠️ Invalid numbers. Usage: `.antiraid mentions <count> <messages> [action]`");
+                        }
+                        return;
+                    }
+
                     // ── RESET ────────────────────────────────────────────────
                     if (sub == "reset") {
                         cfg.joins_threshold_count = 5;
@@ -494,6 +597,9 @@ public:
                         cfg.spam_threshold_seconds = 2;
                         cfg.spam_action = "none";
                         cfg.default_profile_action = "none";
+                        cfg.mentions_threshold_count = 10;
+                        cfg.mentions_threshold_messages = 5;
+                        cfg.mentions_action = "none";
 
                         if (g_db->save_antiraid_config(cfg)) {
                             bot.send_message(msg.channel_id, "✅ Anti-Raid configuration reset to defaults (all actions: `none`).");
@@ -510,9 +616,10 @@ public:
                         "`.antiraid status` — view current config\n"
                         "`.antiraid join <count> <seconds> [action]` — configure join flood detection\n"
                         "`.antiraid spam <count> <seconds> [action]` — configure spam detection\n"
+                        "`.antiraid mentions <count> <messages> [action]` — configure mention guard\n"
                         "`.antiraid profile <action>` — action on default-profile accounts\n"
                         "`.antiraid reset` — reset all settings to defaults\n\n"
-                        "**Actions:** `ban`, `kick`, `timeout`, `warn`, `delete` (spam only), `none`\n"
+                        "**Actions:** `ban`, `kick`, `timeout`, `warn`, `delete` (spam/mentions only), `none`\n"
                         "**Multiple actions:** separate with commas, e.g. `delete,warn` or `kick,warn`\n"
                         "**Alias:** `.ar`");
                 });
@@ -581,7 +688,7 @@ public:
             }).detach();
         });
 
-        // ── EVENT: on_message (spam detection) ───────────────────────────────
+        // ── EVENT: on_message (spam + mention guard) ──────────────────────────
         bot.on_message([this, &bot](const stoatpp::events::Message& msg) {
             // Must be in a server
             if (msg.server_id.empty() || !g_db) return;
@@ -590,7 +697,9 @@ public:
             if (!cfg_opt) return;
             const auto cfg = *cfg_opt;
 
-            if (cfg.spam_action == "none" || cfg.spam_action.empty()) return;
+            bool is_spam_active = (cfg.spam_action != "none" && !cfg.spam_action.empty());
+            bool is_mentions_active = (cfg.mentions_action != "none" && !cfg.mentions_action.empty());
+            if (!is_spam_active && !is_mentions_active) return;
 
             // Skip bots
             bool is_bot = msg.author.bot;
@@ -609,39 +718,85 @@ public:
             // Skip trusted users (fetched from cache — no blocking call here)
             if (g_db->is_trusted(msg.server_id, msg.author.id, {})) return;
 
-            auto now = std::chrono::steady_clock::now();
-            auto window = std::chrono::seconds(cfg.spam_threshold_seconds);
+            std::string username = msg.author.username;
             std::string key = msg.server_id + ":" + msg.author.id;
 
-            bool triggered = false;
-            int hit_count = 0;
-            {
-                std::lock_guard<std::mutex> lock(spam_mutex_);
-                auto& dq = spam_windows_[key];
-                dq.push_back(now);
+            // ── Check 1: Message Spam ─────────────────────────────────────────
+            if (is_spam_active) {
+                auto now = std::chrono::steady_clock::now();
+                auto window = std::chrono::seconds(cfg.spam_threshold_seconds);
 
-                while (!dq.empty() && (now - dq.front()) > window) {
-                    dq.pop_front();
+                bool triggered = false;
+                int hit_count = 0;
+                {
+                    std::lock_guard<std::mutex> lock(spam_mutex_);
+                    auto& dq = spam_windows_[key];
+                    dq.push_back(now);
+
+                    while (!dq.empty() && (now - dq.front()) > window) {
+                        dq.pop_front();
+                    }
+
+                    hit_count = static_cast<int>(dq.size());
+                    if (hit_count >= cfg.spam_threshold_count) {
+                        dq.clear();
+                        triggered = true;
+                    }
                 }
 
-                hit_count = static_cast<int>(dq.size());
-                if (hit_count >= cfg.spam_threshold_count) {
-                    dq.clear();
-                    triggered = true;
+                if (triggered) {
+                    std::string details = std::to_string(hit_count) + " messages in " +
+                                          std::to_string(cfg.spam_threshold_seconds) + "s window.";
+                    execute_antiraid_action(bot, msg.server_id, msg.author.id, username,
+                                            cfg.spam_action,
+                                            "Message Spam",
+                                            details,
+                                            msg.channel_id,
+                                            msg.id);
                 }
             }
 
-            if (triggered) {
-                std::string username = msg.author.username;
-                std::string details = std::to_string(hit_count) + " messages in " +
-                                      std::to_string(cfg.spam_threshold_seconds) + "s window.";
-                // Pass channel_id and msg_id so the "delete" action can remove the triggering message
-                execute_antiraid_action(bot, msg.server_id, msg.author.id, username,
-                                        cfg.spam_action,
-                                        "Message Spam",
-                                        details,
-                                        msg.channel_id,
-                                        msg.id);
+            // ── Check 2: Mention Guard ────────────────────────────────────────
+            if (is_mentions_active) {
+                // Count unique user mentions in this message (exclude author and bot)
+                std::unordered_set<std::string> unique_mentions;
+                for (const auto& m_id : msg.mentions) {
+                    if (m_id != msg.author.id && m_id != bot.current_user().id) {
+                        unique_mentions.insert(m_id);
+                    }
+                }
+                int current_msg_mentions = static_cast<int>(unique_mentions.size());
+
+                bool triggered = false;
+                int total_mentions = 0;
+                {
+                    std::lock_guard<std::mutex> lock(mention_mutex_);
+                    auto& dq = mention_windows_[key];
+                    dq.push_back(current_msg_mentions);
+
+                    // Keep only the last N messages in the window
+                    while (static_cast<int>(dq.size()) > cfg.mentions_threshold_messages) {
+                        dq.pop_front();
+                    }
+
+                    for (int m : dq) total_mentions += m;
+
+                    if (total_mentions >= cfg.mentions_threshold_count) {
+                        dq.clear();
+                        triggered = true;
+                    }
+                }
+
+                if (triggered) {
+                    std::string details = std::to_string(total_mentions) + " user mention(s) over " +
+                                          std::to_string(cfg.mentions_threshold_messages) + " message(s).";
+                    execute_antiraid_action(bot, msg.server_id, msg.author.id, username,
+                                            cfg.mentions_action,
+                                            "Mention Spam",
+                                            details,
+                                            msg.channel_id,
+                                            msg.id);
+                }
             }
         });
     }

@@ -659,8 +659,16 @@ int main(int argc, char *argv[]) {
       }
     });
 
-    // Shifting status timer (runs every 90 seconds)
-    bot.start_timer(
+    // Shifting status timer (runs every 90 seconds).
+    // Cancel any previous timer from an earlier on_ready (reconnect scenario).
+    static std::atomic<uint64_t> status_timer_id{0};
+    {
+        uint64_t old_id = status_timer_id.exchange(0);
+        if (old_id != 0) {
+            bot.stop_timer(old_id);
+        }
+    }
+    uint64_t new_timer_id = bot.start_timer(
         [&bot, staging](stoatpp::timer t) {
           static int status_index = 1;
           std::string status_text;
@@ -721,6 +729,7 @@ int main(int argc, char *argv[]) {
           status_index = (status_index + 1) % 7;
         },
         90);
+    status_timer_id.store(new_timer_id);
 
     // Fix historical DB rows where bot users were mis-tagged as is_bot=FALSE.
     if (bronx::g_db) {

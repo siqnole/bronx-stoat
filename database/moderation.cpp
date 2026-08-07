@@ -166,12 +166,14 @@ namespace bronx {
     std::string esc_joins_act = escape_string(ar.joins_action);
     std::string esc_spam_act = escape_string(ar.spam_action);
     std::string esc_profile_act = escape_string(ar.default_profile_action);
+    std::string esc_mentions_act = escape_string(ar.mentions_action);
 
     std::string query =
         "INSERT INTO antiraid_configs (server_id, joins_threshold_count, "
         "joins_threshold_seconds, joins_action, "
         "spam_threshold_count, spam_threshold_seconds, spam_action, "
-        "default_profile_action) VALUES ("
+        "default_profile_action, mentions_threshold_count, "
+        "mentions_threshold_messages, mentions_action) VALUES ("
         "'" +
         esc_srv + "', " + std::to_string(ar.joins_threshold_count) + ", " +
         std::to_string(ar.joins_threshold_seconds) +
@@ -181,8 +183,10 @@ namespace bronx {
         std::to_string(ar.spam_threshold_seconds) +
         ", "
         "'" +
-        esc_spam_act + "', '" + esc_profile_act +
-        "') "
+        esc_spam_act + "', '" + esc_profile_act + "', " +
+        std::to_string(ar.mentions_threshold_count) + ", " +
+        std::to_string(ar.mentions_threshold_messages) + ", '" +
+        esc_mentions_act + "') "
         "ON DUPLICATE KEY UPDATE "
         "joins_threshold_count = VALUES(joins_threshold_count), "
         "joins_threshold_seconds = VALUES(joins_threshold_seconds), "
@@ -190,7 +194,10 @@ namespace bronx {
         "spam_threshold_count = VALUES(spam_threshold_count), "
         "spam_threshold_seconds = VALUES(spam_threshold_seconds), "
         "spam_action = VALUES(spam_action), "
-        "default_profile_action = VALUES(default_profile_action)";
+        "default_profile_action = VALUES(default_profile_action), "
+        "mentions_threshold_count = VALUES(mentions_threshold_count), "
+        "mentions_threshold_messages = VALUES(mentions_threshold_messages), "
+        "mentions_action = VALUES(mentions_action)";
 
     if (mysql_query(mysql_, query.c_str())) {
       std::cerr << "[bronx db] failed to save antiraid config: "
@@ -1406,7 +1413,8 @@ namespace bronx {
     if (!mysql_) return false;
     std::string q = "SELECT server_id, joins_threshold_count, joins_threshold_seconds, "
                     "joins_action, spam_threshold_count, spam_threshold_seconds, "
-                    "spam_action, default_profile_action FROM antiraid_configs WHERE server_id = '" + escape_string(server_id) + "'";
+                    "spam_action, default_profile_action, mentions_threshold_count, "
+                    "mentions_threshold_messages, mentions_action FROM antiraid_configs WHERE server_id = '" + escape_string(server_id) + "'";
     if (mysql_query(mysql_, q.c_str()) == 0) {
       MYSQL_RES *res = mysql_store_result(mysql_);
       if (res) {
@@ -1422,6 +1430,9 @@ namespace bronx {
           ar.spam_threshold_seconds = row[5] ? std::stoi(row[5]) : 2;
           ar.spam_action = row[6] ? row[6] : "none";
           ar.default_profile_action = row[7] ? row[7] : "none";
+          ar.mentions_threshold_count = row[8] ? std::stoi(row[8]) : 10;
+          ar.mentions_threshold_messages = row[9] ? std::stoi(row[9]) : 5;
+          ar.mentions_action = row[10] ? row[10] : "none";
           ar_cache_[server_id] = ar;
         } else {
           ar_cache_.erase(server_id);

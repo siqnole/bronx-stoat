@@ -734,7 +734,10 @@ namespace bronx {
         "  spam_threshold_count INT NOT NULL DEFAULT 5,"
         "  spam_threshold_seconds INT NOT NULL DEFAULT 2,"
         "  spam_action VARCHAR(100) NOT NULL DEFAULT 'none',"
-        "  default_profile_action VARCHAR(100) NOT NULL DEFAULT 'none'"
+        "  default_profile_action VARCHAR(100) NOT NULL DEFAULT 'none',"
+        "  mentions_threshold_count INT NOT NULL DEFAULT 10,"
+        "  mentions_threshold_messages INT NOT NULL DEFAULT 5,"
+        "  mentions_action VARCHAR(100) NOT NULL DEFAULT 'none'"
         ")";
     if (mysql_query(mysql_, create_ar.c_str())) {
       std::cerr << "[bronx db] failed to create table 'antiraid_configs': "
@@ -769,6 +772,12 @@ namespace bronx {
     mysql_query(mysql_,
                 "ALTER TABLE antiraid_configs MODIFY COLUMN "
                 "default_profile_action VARCHAR(100) NOT NULL DEFAULT 'none'");
+    mysql_query(mysql_, "ALTER TABLE antiraid_configs ADD COLUMN IF NOT EXISTS "
+                        "mentions_threshold_count INT NOT NULL DEFAULT 10");
+    mysql_query(mysql_, "ALTER TABLE antiraid_configs ADD COLUMN IF NOT EXISTS "
+                        "mentions_threshold_messages INT NOT NULL DEFAULT 5");
+    mysql_query(mysql_, "ALTER TABLE antiraid_configs ADD COLUMN IF NOT EXISTS "
+                        "mentions_action VARCHAR(100) NOT NULL DEFAULT 'none'");
 
     // Create Table recurring_messages
     std::string create_rm =
@@ -1711,7 +1720,8 @@ namespace bronx {
         "SELECT server_id, joins_threshold_count, joins_threshold_seconds, "
         "joins_action, "
         "spam_threshold_count, spam_threshold_seconds, spam_action, "
-        "default_profile_action FROM antiraid_configs";
+        "default_profile_action, mentions_threshold_count, "
+        "mentions_threshold_messages, mentions_action FROM antiraid_configs";
     if (mysql_query(mysql_, select_ar.c_str()) == 0) {
       MYSQL_RES *ar_res = mysql_store_result(mysql_);
       if (ar_res) {
@@ -1728,6 +1738,9 @@ namespace bronx {
           ar.spam_threshold_seconds = row[5] ? std::stoi(row[5]) : 2;
           ar.spam_action = row[6] ? row[6] : "none";
           ar.default_profile_action = row[7] ? row[7] : "none";
+          ar.mentions_threshold_count = row[8] ? std::stoi(row[8]) : 10;
+          ar.mentions_threshold_messages = row[9] ? std::stoi(row[9]) : 5;
+          ar.mentions_action = row[10] ? row[10] : "none";
           ar_cache_[s_id] = ar;
         }
         mysql_free_result(ar_res);

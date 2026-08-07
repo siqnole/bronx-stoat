@@ -48,6 +48,9 @@ struct AntiRaidConfig {
     int spam_threshold_seconds = 2;
     std::string spam_action = "none";
     std::string default_profile_action = "none";
+    int mentions_threshold_count = 10;
+    int mentions_threshold_messages = 5;
+    std::string mentions_action = "none";
 };
 
 struct HoneypotConfig {
