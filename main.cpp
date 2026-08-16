@@ -426,7 +426,7 @@ int main(int argc, char *argv[]) {
   cfg.enable_default_help = false;
   cfg.dispatch_commands_on_edit = true;
   cfg.case_insensitive_commands = true;
-  cfg.ws_ping_interval_ms = 7000;
+  cfg.ws_ping_interval_ms = 3000;  // server kills idle connections at ~5s; ping every 3s
 
   cfg.command_prefix = ".";
   if (const char *pfx = std::getenv("COMMAND_PREFIX")) {
