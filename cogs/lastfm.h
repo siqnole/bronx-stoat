@@ -198,7 +198,7 @@ public:
             {"[subcommand]", "[args...]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is currently unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is currently unavailable.");
                     return;
                 }
 
@@ -208,7 +208,7 @@ public:
                 // --- 1. SET SUBCOMMAND ---
                 if (sub == "set" || sub == "link") {
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "❌ Usage: `.fm set <lastfm_username>`");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Usage: `.fm set <lastfm_username>`");
                         return;
                     }
                     std::string lf_user = args[1];
@@ -216,13 +216,13 @@ public:
                         int64_t dummy_pc = 0;
                         std::string dummy_img = "";
                         if (!fetch_user_info(lf_user, dummy_pc, dummy_img)) {
-                            bot.send_message(msg.channel_id, "❌ Could not find Last.fm user `" + lf_user + "`. Make sure the username is correct.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not find Last.fm user `" + lf_user + "`. Make sure the username is correct.");
                             return;
                         }
                         if (g_db->save_lastfm_link(msg.author.id, lf_user)) {
-                            bot.send_message(msg.channel_id, "✅ Successfully linked your account to Last.fm username **" + lf_user + "**!");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Successfully linked your account to Last.fm username **" + lf_user + "**!");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Verified but failed to write your link to the database.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Verified but failed to write your link to the database.");
                         }
                     }).detach();
                     return;
@@ -237,9 +237,9 @@ public:
                             return;
                         }
                         if (g_db->delete_lastfm_link(msg.author.id)) {
-                            bot.send_message(msg.channel_id, "✅ Successfully unlinked your Last.fm account.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Successfully unlinked your Last.fm account.");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ Failed to unlink account from database.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to unlink account from database.");
                         }
                     }).detach();
                     return;
@@ -282,7 +282,7 @@ public:
                             // caller
                             auto link = g_db->get_lastfm_link(msg.author.id);
                             if (!link) {
-                                bot.send_message(msg.channel_id, "⚠️ You haven't linked your Last.fm account yet. Use `.fm set <username>`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You haven't linked your Last.fm account yet. Use `.fm set <username>`.");
                                 return;
                             }
                             resolved_lf_user = link->lastfm_username;
@@ -323,7 +323,7 @@ public:
 
                         auto top_art = fetch_top_artists(resolved_lf_user, period, limit);
                         if (top_art.empty()) {
-                            bot.send_message(msg.channel_id, "❌ Could not retrieve top artists for Last.fm user `" + resolved_lf_user + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not retrieve top artists for Last.fm user `" + resolved_lf_user + "`.");
                             return;
                         }
 
@@ -360,7 +360,7 @@ public:
                 // --- 4. COMPARE SUBCOMMAND ---
                 if (sub == "compare" || sub == "comp") {
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "❌ Usage: `.fm compare <@user|username>`");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Usage: `.fm compare <@user|username>`");
                         return;
                     }
                     std::string target_query = args[1];
@@ -368,7 +368,7 @@ public:
                         // resolve self
                         auto self_link = g_db->get_lastfm_link(msg.author.id);
                         if (!self_link) {
-                            bot.send_message(msg.channel_id, "⚠️ You haven't linked your Last.fm account yet. Use `.fm set <username>`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You haven't linked your Last.fm account yet. Use `.fm set <username>`.");
                             return;
                         }
 
@@ -408,7 +408,7 @@ public:
                         }
 
                         if (self_link->lastfm_username == target_lf_user) {
-                            bot.send_message(msg.channel_id, "❌ You cannot compare yourself to the same Last.fm account.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " You cannot compare yourself to the same Last.fm account.");
                             return;
                         }
 
@@ -417,7 +417,7 @@ public:
                         auto target_artists = fetch_top_artists(target_lf_user, "overall", 50);
 
                         if (self_artists.empty() || target_artists.empty()) {
-                            bot.send_message(msg.channel_id, "❌ Could not retrieve scrobble details to perform compatibility comparison.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not retrieve scrobble details to perform compatibility comparison.");
                             return;
                         }
 
@@ -612,7 +612,7 @@ public:
                     if (target_query.empty()) {
                         auto link = g_db->get_lastfm_link(msg.author.id);
                         if (!link) {
-                            bot.send_message(msg.channel_id, "⚠️ You haven't linked your Last.fm account yet. Use `.fm set <username>`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You haven't linked your Last.fm account yet. Use `.fm set <username>`.");
                             return;
                         }
                         resolved_lf_user = link->lastfm_username;
@@ -655,7 +655,7 @@ public:
 
                     auto track_opt = fetch_recent_track(resolved_lf_user);
                     if (!track_opt) {
-                        bot.send_message(msg.channel_id, "❌ Could not fetch recent tracks for user `" + resolved_lf_user + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not fetch recent tracks for user `" + resolved_lf_user + "`.");
                         return;
                     }
 

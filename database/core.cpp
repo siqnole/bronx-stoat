@@ -1434,6 +1434,16 @@ namespace bronx {
                         "  base_odds DOUBLE NOT NULL DEFAULT 0.50"
                         ")");
 
+    mysql_query(mysql_, "CREATE TABLE IF NOT EXISTS geoguessr_stats ("
+                        "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+                        "  points BIGINT NOT NULL DEFAULT 0,"
+                        "  correct_countries INT NOT NULL DEFAULT 0,"
+                        "  exact_cities INT NOT NULL DEFAULT 0,"
+                        "  games_played INT NOT NULL DEFAULT 0,"
+                        "  current_streak INT NOT NULL DEFAULT 0,"
+                        "  max_streak INT NOT NULL DEFAULT 0"
+                        ")");
+
     // Load existing prefixes into cache
     std::string select_query = "SELECT target_type, target_id, prefixes, "
                                "default_enabled FROM prefixes";

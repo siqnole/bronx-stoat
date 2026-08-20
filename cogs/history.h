@@ -25,15 +25,15 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling history...\n";
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used inside a server channel.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used inside a server channel.");
                     return;
                 }
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
                 if (args.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ Usage: `.history [user | command]`\nExample: `.history @user` or `.history ban`");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Usage: `.history [user | command]`\nExample: `.history @user` or `.history ban`");
                     return;
                 }
 
@@ -124,11 +124,11 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling modhistory...\n";
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used inside a server channel.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used inside a server channel.");
                     return;
                 }
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
@@ -155,8 +155,8 @@ public:
                         if (a == "Ban")     return "🔨";
                         if (a == "Kick")    return "👢";
                         if (a == "Timeout") return "🔇";
-                        if (a == "Warn")    return "⚠️";
-                        if (a == "Unban")   return "✅";
+                        if (a == "Warn")    return "" + bronx::emj_warning + "";
+                        if (a == "Unban")   return "" + bronx::emj_yes + "";
                         if (a == "Jail")    return "⛓️";
                         if (a == "Unjail")  return "🔓";
                         return "🛡️";
@@ -206,7 +206,7 @@ public:
                 } else {
                     helpers::resolve_user(bot, msg.server_id, args[0], [&bot, msg, proceed_mod_history](stoatpp::models::User target_user, stoatpp::models::Member, bool success) {
                         if (!success) {
-                            bot.send_message(msg.channel_id, "⚠️ Could not resolve target user.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Could not resolve target user.");
                             return;
                         }
                         proceed_mod_history(target_user.id);
@@ -317,8 +317,8 @@ public:
                                 if (a == "Ban")     return "🔨";
                                 if (a == "Kick")    return "👢";
                                 if (a == "Timeout") return "🔇";
-                                if (a == "Warn")    return "⚠️";
-                                if (a == "Unban")   return "✅";
+                                if (a == "Warn")    return "" + bronx::emj_warning + "";
+                                if (a == "Unban")   return "" + bronx::emj_yes + "";
                                 if (a == "Jail")    return "⛓️";
                                 if (a == "Unjail")  return "🔓";
                                 return "🛡️";

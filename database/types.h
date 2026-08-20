@@ -285,6 +285,16 @@ struct FishingUser {
     int perm_cd_reduction = 0;
 };
 
+struct GeoStats {
+    std::string user_id;
+    int64_t points = 0;
+    int correct_countries = 0;
+    int exact_cities = 0;
+    int games_played = 0;
+    int current_streak = 0;
+    int max_streak = 0;
+};
+
 struct GuildLevelingConfig {
     std::string server_id;
     bool enabled = false;

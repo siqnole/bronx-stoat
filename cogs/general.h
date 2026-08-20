@@ -162,14 +162,14 @@ public:
            std::cout << "[bronx command] handling permcheck...\n";
            if (msg.server_id.empty()) {
              bot.send_message(msg.channel_id,
-                              "⚠️ This command can only be used in a server.");
+                              "" + bronx::emj_warning + " This command can only be used in a server.");
              return;
            }
 
            auto server_opt = bot.get_server(msg.server_id);
            if (!server_opt) {
              bot.send_message(msg.channel_id,
-                              "⚠️ Failed to fetch server details.");
+                              "" + bronx::emj_warning + " Failed to fetch server details.");
              return;
            }
 
@@ -179,7 +179,7 @@ public:
                                        bool success) {
                  if (!success) {
                    bot.send_message(msg.channel_id,
-                                    "⚠️ Failed to fetch bot member details.");
+                                    "" + bronx::emj_warning + " Failed to fetch bot member details.");
                    return;
                  }
 
@@ -258,9 +258,9 @@ public:
                      bool has_perm =
                          bot.has_permission(*server_opt, bot_member, req.mask);
                      if (has_perm) {
-                       desc += "✅ **" + req.name + "**\n";
+                       desc += "" + bronx::emj_yes + " **" + req.name + "**\n";
                      } else {
-                       desc += "❌ **" + req.name + "** *(missing)*\n";
+                       desc += "" + bronx::emj_no + " **" + req.name + "** *(missing)*\n";
                        module_ok = false;
                        overall_perfect = false;
                      }
@@ -272,9 +272,9 @@ public:
                    desc += "🎉 **All permissions are correctly configured!** "
                            "Bronx has all the required access in this server.";
                  } else {
-                   desc += "⚠️ **Warning:** Some permissions are missing. Bronx "
+                   desc += "" + bronx::emj_warning + " **Warning:** Some permissions are missing. Bronx "
                            "might not function correctly for modules marked "
-                           "with ❌.";
+                           "with " + bronx::emj_no + ".";
                  }
 
                  embed.set_description(desc);
@@ -343,18 +343,18 @@ public:
             const std::vector<std::string> &args) {
            std::cout << "[bronx command] handling dashboard request...\n";
            if (!bronx::g_db) {
-             bot.send_message(msg.channel_id, "⚠️ db connection unavailable.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " db connection unavailable.");
              return;
            }
 
            if (!args.empty()) {
              if (msg.server_id.empty()) {
-               bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server.");
                return;
              }
              // Restrict to server owner
              if (!bot.is_server_owner(msg.server_id, msg.author.id)) {
-               bot.send_message(msg.channel_id, "❌ Only the server owner can manage dashboard access.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_no + " Only the server owner can manage dashboard access.");
                return;
              }
 
@@ -368,12 +368,12 @@ public:
              bool is_allowed = false;
              if (bronx::g_db->toggle_dashboard_allowed_user(msg.server_id, target_user_id, is_allowed)) {
                if (is_allowed) {
-                 bot.send_message(msg.channel_id, "✅ Allowed <@" + target_user_id + "> to see/edit this server on the dashboard.");
+                 bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Allowed <@" + target_user_id + "> to see/edit this server on the dashboard.");
                } else {
-                 bot.send_message(msg.channel_id, "✅ Removed dashboard access for <@" + target_user_id + ">.");
+                 bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed dashboard access for <@" + target_user_id + ">.");
                }
              } else {
-               bot.send_message(msg.channel_id, "⚠️ Failed to update dashboard access in database.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update dashboard access in database.");
              }
              return;
            }
@@ -388,7 +388,7 @@ public:
                user_id, msg.author.username);
            if (token.empty()) {
              bot.send_message(msg.channel_id,
-                              "⚠️ Failed to generate access token.");
+                              "" + bronx::emj_warning + " Failed to generate access token.");
              return;
            }
 
@@ -429,7 +429,7 @@ public:
                        } else {
                          bot.send_message(
                              msg.channel_id,
-                             "⚠️ Unable to DM token. Please allow Direct "
+                             "" + bronx::emj_warning + " Unable to DM token. Please allow Direct "
                              "Messages from Bronx in privacy settings.");
                        }
                      });
@@ -437,7 +437,7 @@ public:
                }
              }
              bot.send_message(msg.channel_id,
-                              "⚠️ Unable to open DM channel. Please check your "
+                              "" + bronx::emj_warning + " Unable to open DM channel. Please check your "
                               "Direct Message privacy settings.");
            }).detach();
           },
@@ -522,7 +522,7 @@ public:
            if (start == std::string::npos) {
              bot.send_message(
                  msg.channel_id,
-                 "⚠️ Usage: `.poll [title] [option1] [option2] ...`\n"
+                 "" + bronx::emj_warning + " Usage: `.poll [title] [option1] [option2] ...`\n"
                  "You can use separators like `|`, `/`, `-`, or newlines. "
                  "Custom emojis can be added like `:emoji: option`.");
              return;
@@ -555,14 +555,14 @@ public:
 
            if (raw_options.empty()) {
              bot.send_message(msg.channel_id,
-                              "⚠️ Please specify at least one option. Example: "
+                              "" + bronx::emj_warning + " Please specify at least one option. Example: "
                               "`.poll \"Favorite day?\" Saturday | Sunday`");
              return;
            }
 
            if (raw_options.size() > 10) {
              bot.send_message(msg.channel_id,
-                              "⚠️ A poll can have a maximum of 10 options.");
+                              "" + bronx::emj_warning + " A poll can have a maximum of 10 options.");
              return;
            }
 
@@ -575,7 +575,7 @@ public:
            }
 
            if (parsed_options.empty()) {
-             bot.send_message(msg.channel_id, "⚠️ No valid options found.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid options found.");
              return;
            }
 
@@ -638,7 +638,7 @@ public:
                err_payload.content = " ";
                stoatpp::models::Embed err_embed;
                err_embed.set_colour("#E5989B")
-                   .set_title("❌ Error")
+                   .set_title("" + bronx::emj_no + " Error")
                    .set_description(
                        "Invalid dice expression: `" + arg +
                        "`. Please use format like `6`, `d20`, or `4d6`.");
@@ -653,7 +653,7 @@ public:
                err_payload.content = " ";
                stoatpp::models::Embed err_embed;
                err_embed.set_colour("#E5989B")
-                   .set_title("❌ Error")
+                   .set_title("" + bronx::emj_no + " Error")
                    .set_description(
                        "You cannot roll more than 100 dice at once.");
                err_payload.add_embed(err_embed);

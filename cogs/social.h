@@ -694,11 +694,11 @@ public:
         // Shared Command Logic
         auto handle_social = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args, const std::string& platform) {
             if (msg.server_id.empty()) {
-                bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                 return;
             }
             if (!g_db) {
-                bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                 return;
             }
 
@@ -731,9 +731,9 @@ public:
                     sub.seen_items = "[]";
 
                     if (g_db->add_social_sub(sub)) {
-                        bot.send_message(msg.channel_id, "✅ Now following **" + handle + "** on **" + platform + "**! Posts will be sent to this channel. Sub ID is **" + std::to_string(sub.id) + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Now following **" + handle + "** on **" + platform + "**! Posts will be sent to this channel. Sub ID is **" + std::to_string(sub.id) + "**.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save subscription to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save subscription to database.");
                     }
                 }
                 else if (subcommand == "remove") {
@@ -745,17 +745,17 @@ public:
                         int id = std::stoi(args[1]);
                         auto sub = g_db->get_social_sub_by_id(id, msg.server_id);
                         if (!sub || sub->platform != platform) {
-                            bot.send_message(msg.channel_id, "⚠️ Subscription not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Subscription not found.");
                             return;
                         }
 
                         if (g_db->remove_social_sub(id, msg.server_id)) {
-                            bot.send_message(msg.channel_id, "✅ Stopped following channel.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Stopped following channel.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to remove subscription.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to remove subscription.");
                         }
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid subscription ID format.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid subscription ID format.");
                     }
                 }
                 else if (subcommand == "target") {
@@ -767,7 +767,7 @@ public:
                         int id = std::stoi(args[1]);
                         auto sub = g_db->get_social_sub_by_id(id, msg.server_id);
                         if (!sub || sub->platform != platform) {
-                            bot.send_message(msg.channel_id, "⚠️ Subscription not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Subscription not found.");
                             return;
                         }
 
@@ -777,12 +777,12 @@ public:
                         }
 
                         if (g_db->update_social_sub_channels(id, msg.server_id, target_channel)) {
-                            bot.send_message(msg.channel_id, "✅ Target channel updated to <#" + target_channel + ">.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Target channel updated to <#" + target_channel + ">.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update target channel.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update target channel.");
                         }
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid format.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid format.");
                     }
                 }
                 else if (subcommand == "events") {
@@ -794,18 +794,18 @@ public:
                         int id = std::stoi(args[1]);
                         auto sub = g_db->get_social_sub_by_id(id, msg.server_id);
                         if (!sub || sub->platform != platform) {
-                            bot.send_message(msg.channel_id, "⚠️ Subscription not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Subscription not found.");
                             return;
                         }
 
                         std::string evs = args[2];
                         if (g_db->update_social_sub_events(id, msg.server_id, evs)) {
-                            bot.send_message(msg.channel_id, "✅ Followed events updated to: `" + evs + "`");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Followed events updated to: `" + evs + "`");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update events list.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update events list.");
                         }
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid format.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid format.");
                     }
                 }
                 else if (subcommand == "list") {
@@ -830,7 +830,7 @@ public:
                         int id = std::stoi(args[1]);
                         auto sub = g_db->get_social_sub_by_id(id, msg.server_id);
                         if (!sub || sub->platform != platform) {
-                            bot.send_message(msg.channel_id, "⚠️ Subscription not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Subscription not found.");
                             return;
                         }
 
@@ -838,11 +838,11 @@ public:
                         bot.send_message(msg.channel_id, "🔄 Running simulated feed test...");
                         check_and_post_social_sub(bot, *sub, true, ev_type, [&bot, msg](int posted, std::string err) {
                             if (!err.empty()) {
-                                bot.send_message(msg.channel_id, "⚠️ Test failed: " + err);
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Test failed: " + err);
                             }
                         });
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid subscription ID.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid subscription ID.");
                     }
                 }
                 else if (subcommand == "edit") {
@@ -861,7 +861,7 @@ public:
                         int id = std::stoi(id_str);
                         auto sub = g_db->get_social_sub_by_id(id, msg.server_id);
                         if (!sub || sub->platform != platform) {
-                            bot.send_message(msg.channel_id, "⚠️ Subscription not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Subscription not found.");
                             return;
                         }
 
@@ -871,7 +871,7 @@ public:
                         auto pairs = parse_pairs(pairs_str);
 
                         if (pairs.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key-value pairs found.");
                             return;
                         }
 
@@ -894,12 +894,12 @@ public:
 
                         ec.embed_json = emb.dump();
                         if (g_db->save_social_embed(ec)) {
-                            bot.send_message(msg.channel_id, "✅ Embed customization saved for event `" + ev_type + "`!");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Embed customization saved for event `" + ev_type + "`!");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save customization.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save customization.");
                         }
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid format or subscription ID.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid format or subscription ID.");
                     }
                 }
                 else if (subcommand == "json") {
@@ -917,7 +917,7 @@ public:
                         int id = std::stoi(id_str);
                         auto sub = g_db->get_social_sub_by_id(id, msg.server_id);
                         if (!sub || sub->platform != platform) {
-                            bot.send_message(msg.channel_id, "⚠️ Subscription not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Subscription not found.");
                             return;
                         }
 
@@ -935,12 +935,12 @@ public:
 
                         ec.embed_json = parsed_emb.dump();
                         if (g_db->save_social_embed(ec)) {
-                            bot.send_message(msg.channel_id, "✅ Custom JSON embed configuration imported!");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom JSON embed configuration imported!");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save embed JSON.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save embed JSON.");
                         }
                     } catch (const std::exception& ex) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(ex.what()));
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid JSON format: " + std::string(ex.what()));
                     }
                 }
                 else if (subcommand == "reset") {
@@ -953,17 +953,17 @@ public:
                         std::string ev_type = args[2];
                         auto sub = g_db->get_social_sub_by_id(id, msg.server_id);
                         if (!sub || sub->platform != platform) {
-                            bot.send_message(msg.channel_id, "⚠️ Subscription not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Subscription not found.");
                             return;
                         }
 
                         if (g_db->delete_social_embed(id, ev_type)) {
-                            bot.send_message(msg.channel_id, "✅ Embed customization reset to default.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Embed customization reset to default.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to reset customization.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to reset customization.");
                         }
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid parameters.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid parameters.");
                     }
                 }
                 else {
@@ -974,11 +974,11 @@ public:
             if (requires_permission) {
                 bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, run_cmd](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify permissions.");
                         return;
                     }
                     if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Permission error: you need to be trusted or have Manage Server permission to manage social feeds.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need to be trusted or have Manage Server permission to manage social feeds.");
                         return;
                     }
                     run_cmd();

@@ -53,7 +53,7 @@ public:
 
                 auto cfg_opt = g_db->get_guild_leveling_config(msg.server_id);
                 if (!cfg_opt || !cfg_opt->enabled) {
-                    bot.send_message(msg.channel_id, "⚠️ Leveling is currently disabled in this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Leveling is currently disabled in this server.");
                     return;
                 }
 
@@ -130,7 +130,7 @@ public:
                 if (!is_authorized) {
                     bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, server_opt, args](stoatpp::models::Member member, bool ok) {
                         if (!ok || !bot.has_permission(*server_opt, member, stoatpp::permissions::ManageServer)) {
-                            bot.send_message(msg.channel_id, "❌ You do not have permissions to manage leveling settings (Manage Server required).");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " You do not have permissions to manage leveling settings (Manage Server required).");
                             return;
                         }
                         // Proceed to subcommand handler
@@ -216,7 +216,7 @@ private:
         }
 
         if (args.size() < 3 && action != "bgimage") {
-            bot.send_message(msg.channel_id, "❌ Please specify a value. Use `" + pfx + "level edit` to see options.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Please specify a value. Use `" + pfx + "level edit` to see options.");
             return;
         }
 
@@ -228,25 +228,25 @@ private:
             if (val_lower == "image" || val_lower == "embed" || val_lower == "text") {
                 urc.style = val_lower;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Style updated to `" + val_lower + "`.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Style updated to `" + val_lower + "`.");
             } else {
-                bot.send_message(msg.channel_id, "❌ Invalid style. Choose from `image`, `embed`, or `text`.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid style. Choose from `image`, `embed`, or `text`.");
             }
         }
         else if (action == "bgcolor") {
             if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
                 urc.bg_color = std::nullopt;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Background color reset to default.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Background color reset to default.");
             } else {
                 if (val[0] != '#' && val.length() == 6) val = "#" + val;
                 chart::RGBA dummy;
                 if (chart::parse_hex_color(val, dummy)) {
                     urc.bg_color = val;
                     g_db->save_user_rank_card(urc);
-                    bot.send_message(msg.channel_id, "✅ Background color updated to `" + val + "`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Background color updated to `" + val + "`.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Invalid hex color format. Example: `#0e0e11`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid hex color format. Example: `#0e0e11`.");
                 }
             }
         }
@@ -266,7 +266,7 @@ private:
             if (img_url.empty() || img_url == "none" || img_url == "default" || img_url == "clear") {
                 urc.bg_image = std::nullopt;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Background image reset to default.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Background image reset to default.");
             } else {
                 std::string uploaded = helpers::upload_avatar(bot, img_url);
                 if (!uploaded.empty()) {
@@ -276,9 +276,9 @@ private:
                     }
                     urc.bg_image = uploaded;
                     g_db->save_user_rank_card(urc);
-                    bot.send_message(msg.channel_id, "✅ Background image set successfully.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Background image set successfully.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to process background image.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to process background image.");
                 }
             }
         }
@@ -286,16 +286,16 @@ private:
             if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
                 urc.bar_active = std::nullopt;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Active bar color reset to default.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Active bar color reset to default.");
             } else {
                 if (val[0] != '#' && val.length() == 6) val = "#" + val;
                 chart::RGBA dummy;
                 if (chart::parse_hex_color(val, dummy)) {
                     urc.bar_active = val;
                     g_db->save_user_rank_card(urc);
-                    bot.send_message(msg.channel_id, "✅ Active bar color updated to `" + val + "`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Active bar color updated to `" + val + "`.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Invalid hex color format.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid hex color format.");
                 }
             }
         }
@@ -303,16 +303,16 @@ private:
             if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
                 urc.bar_dimmed = std::nullopt;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Dimmed bar color reset to default.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Dimmed bar color reset to default.");
             } else {
                 if (val[0] != '#' && val.length() == 6) val = "#" + val;
                 chart::RGBA dummy;
                 if (chart::parse_hex_color(val, dummy)) {
                     urc.bar_dimmed = val;
                     g_db->save_user_rank_card(urc);
-                    bot.send_message(msg.channel_id, "✅ Dimmed bar color updated to `" + val + "`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Dimmed bar color updated to `" + val + "`.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Invalid hex color format.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid hex color format.");
                 }
             }
         }
@@ -320,16 +320,16 @@ private:
             if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
                 urc.text_color = std::nullopt;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Text color reset to default.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Text color reset to default.");
             } else {
                 if (val[0] != '#' && val.length() == 6) val = "#" + val;
                 chart::RGBA dummy;
                 if (chart::parse_hex_color(val, dummy)) {
                     urc.text_color = val;
                     g_db->save_user_rank_card(urc);
-                    bot.send_message(msg.channel_id, "✅ Text color updated to `" + val + "`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Text color updated to `" + val + "`.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Invalid hex color format.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid hex color format.");
                 }
             }
         }
@@ -337,11 +337,11 @@ private:
             if (val_lower == "none" || val_lower == "default" || val_lower == "clear") {
                 urc.font_name = std::nullopt;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Font family reset to default.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Font family reset to default.");
             } else {
                 urc.font_name = val;
                 g_db->save_user_rank_card(urc);
-                bot.send_message(msg.channel_id, "✅ Font family updated to `" + val + "`.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Font family updated to `" + val + "`.");
             }
         } else {
             send_edit_help();
@@ -360,7 +360,7 @@ private:
 
         auto cfg_opt = g_db->get_guild_leveling_config(msg.server_id);
         if (!cfg_opt || !cfg_opt->enabled) {
-            bot.send_message(msg.channel_id, "⚠️ Leveling is currently disabled in this server.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Leveling is currently disabled in this server.");
             return;
         }
 
@@ -555,14 +555,14 @@ private:
                 }
 
                 if (png_bytes.empty()) {
-                    bot.send_message(channel_id, "❌ Failed to render rank card.");
+                    bot.send_message(channel_id, "" + bronx::emj_no + " Failed to render rank card.");
                     return;
                 }
 
                 // Upload to Autumn
                 std::string file_id = chart::upload_chart(bot, png_bytes, "rank_card.png");
                 if (file_id.empty()) {
-                    bot.send_message(channel_id, "❌ Failed to upload rank card to CDN.");
+                    bot.send_message(channel_id, "" + bronx::emj_no + " Failed to upload rank card to CDN.");
                     return;
                 }
 
@@ -637,7 +637,7 @@ private:
         g_db->create_guild_leveling_config(msg.server_id);
         auto cfg_opt = g_db->get_guild_leveling_config(msg.server_id);
         if (!cfg_opt) {
-            bot.send_message(msg.channel_id, "⚠️ Failed to resolve guild leveling config.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to resolve guild leveling config.");
             return;
         }
         auto cfg = *cfg_opt;
@@ -645,17 +645,17 @@ private:
         if (sub == "enable") {
             cfg.enabled = true;
             if (g_db->update_guild_leveling_config(cfg)) {
-                bot.send_message(msg.channel_id, "✅ Leveling system enabled!");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leveling system enabled!");
             } else {
-                bot.send_message(msg.channel_id, "❌ Failed to update settings.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to update settings.");
             }
         }
         else if (sub == "disable") {
             cfg.enabled = false;
             if (g_db->update_guild_leveling_config(cfg)) {
-                bot.send_message(msg.channel_id, "✅ Leveling system disabled!");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leveling system disabled!");
             } else {
-                bot.send_message(msg.channel_id, "❌ Failed to update settings.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to update settings.");
             }
         }
         else if (sub == "xprange") {
@@ -674,35 +674,35 @@ private:
                         int min_xp = std::stoi(range_arg.substr(0, dash_pos));
                         int max_xp = std::stoi(range_arg.substr(dash_pos + 1));
                         if (min_xp <= 0 || max_xp <= 0 || min_xp > max_xp) {
-                            bot.send_message(msg.channel_id, "❌ Invalid XP range. Must be positive numbers, e.g. `10-20`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid XP range. Must be positive numbers, e.g. `10-20`.");
                             return;
                         }
                         cfg.min_xp_per_message = min_xp;
                         cfg.max_xp_per_message = max_xp;
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "❌ Invalid range format. Try `15-25`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid range format. Try `15-25`.");
                         return;
                     }
                 } else {
                     try {
                         int xp = std::stoi(range_arg);
                         if (xp <= 0) {
-                            bot.send_message(msg.channel_id, "❌ XP must be positive.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " XP must be positive.");
                             return;
                         }
                         cfg.min_xp_per_message = xp;
                         cfg.max_xp_per_message = xp;
                     } catch (...) {
-                        bot.send_message(msg.channel_id, "❌ Invalid XP range format.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid XP range format.");
                         return;
                     }
                 }
             }
 
             if (g_db->update_guild_leveling_config(cfg)) {
-                bot.send_message(msg.channel_id, "✅ XP gain range set to **" + std::to_string(cfg.min_xp_per_message) + "-" + std::to_string(cfg.max_xp_per_message) + "** XP per message.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " XP gain range set to **" + std::to_string(cfg.min_xp_per_message) + "-" + std::to_string(cfg.max_xp_per_message) + "** XP per message.");
             } else {
-                bot.send_message(msg.channel_id, "❌ Failed to update settings.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to update settings.");
             }
         }
         else if (sub == "role") {
@@ -722,12 +722,12 @@ private:
                 try {
                     int l = std::stoi(args[2]);
                     if (l <= 0) {
-                        bot.send_message(msg.channel_id, "❌ Level must be greater than 0.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Level must be greater than 0.");
                         return;
                     }
                     lvl = static_cast<uint32_t>(l);
                 } catch (...) {
-                    bot.send_message(msg.channel_id, "❌ Invalid level number.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid level number.");
                     return;
                 }
 
@@ -747,7 +747,7 @@ private:
                 }
 
                 if (!found) {
-                    bot.send_message(msg.channel_id, "❌ Could not find specified role in this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not find specified role in this server.");
                     return;
                 }
 
@@ -758,9 +758,9 @@ private:
                 reward.role_name = role_name;
 
                 if (g_db->create_level_role(reward)) {
-                    bot.send_message(msg.channel_id, "✅ Added level reward: reaching **Level " + std::to_string(lvl) + "** will award role `<%" + role_id + ">`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Added level reward: reaching **Level " + std::to_string(lvl) + "** will award role `<%" + role_id + ">`.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to add level role reward.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to add level role reward.");
                 }
             }
             else if (role_sub == "remove") {
@@ -772,14 +772,14 @@ private:
                 try {
                     lvl = std::stoul(args[2]);
                 } catch (...) {
-                    bot.send_message(msg.channel_id, "❌ Invalid level.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid level.");
                     return;
                 }
 
                 if (g_db->delete_level_role(msg.server_id, lvl)) {
-                    bot.send_message(msg.channel_id, "✅ Removed level role reward for level **" + std::to_string(lvl) + "**.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed level role reward for level **" + std::to_string(lvl) + "**.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to delete level role reward.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to delete level role reward.");
                 }
             }
             else if (role_sub == "sticky") {
@@ -794,14 +794,14 @@ private:
                 } else if (sticky_arg == "off" || sticky_arg == "false" || sticky_arg == "0") {
                     cfg.sticky_roles = false;
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Invalid sticky value. Choose `on` or `off`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid sticky value. Choose `on` or `off`.");
                     return;
                 }
 
                 if (g_db->update_guild_leveling_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ Role stickiness set to **" + std::string(cfg.sticky_roles ? "on" : "off") + "**. " + (cfg.sticky_roles ? "(previous level roles are kept)" : "(previous level roles are cleaned up on level-up)"));
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Role stickiness set to **" + std::string(cfg.sticky_roles ? "on" : "off") + "**. " + (cfg.sticky_roles ? "(previous level roles are kept)" : "(previous level roles are cleaned up on level-up)"));
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to update settings.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to update settings.");
                 }
             }
         }
@@ -826,15 +826,15 @@ private:
                 }
 
                 std::string out = "⚙️ **Server Leveling Settings Preview**\n\n"
-                                  "• **System Enabled**: " + std::string(cfg.enabled ? "✅ Yes" : "❌ No") + "\n"
+                                  "• **System Enabled**: " + std::string(cfg.enabled ? "" + bronx::emj_yes + " Yes" : "" + bronx::emj_no + " No") + "\n"
                                   "• **XP gain range**: " + std::to_string(cfg.min_xp_per_message) + "-" + std::to_string(cfg.max_xp_per_message) + " XP\n"
                                   "• **XP Message Cooldown**: " + std::to_string(cfg.xp_cooldown_seconds) + " seconds\n"
                                   "• **Minimum character length**: " + std::to_string(cfg.min_message_chars) + " characters\n"
                                   "• **Maximum character length**: " + std::to_string(cfg.max_message_chars) + " characters\n"
-                                  "• **Announce Level-Ups**: " + std::string(cfg.announce_levelup ? "✅ Yes" : "❌ No") + "\n"
+                                  "• **Announce Level-Ups**: " + std::string(cfg.announce_levelup ? "" + bronx::emj_yes + " Yes" : "" + bronx::emj_no + " No") + "\n"
                                   "• **Announcement Channel**: " + chan_label + "\n"
                                   "• **Announcement Message Template**: `" + cfg.announcement_message + "`\n"
-                                  "• **Sticky Role Rewards**: " + std::string(cfg.sticky_roles ? "✅ Yes (keep old)" : "❌ No (cleanup old)") + "\n\n"
+                                  "• **Sticky Role Rewards**: " + std::string(cfg.sticky_roles ? "" + bronx::emj_yes + " Yes (keep old)" : "" + bronx::emj_no + " No (cleanup old)") + "\n\n"
                                   "🏆 **Level Role Rewards:**\n" + rewards_desc;
 
                 bot.send_message(msg.channel_id, out);
@@ -847,17 +847,17 @@ private:
                 try {
                     int cd = std::stoi(args[2]);
                     if (cd < 0) {
-                        bot.send_message(msg.channel_id, "❌ Cooldown cannot be negative.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Cooldown cannot be negative.");
                         return;
                     }
                     cfg.xp_cooldown_seconds = cd;
                     if (g_db->update_guild_leveling_config(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Cooldown updated to **" + std::to_string(cd) + "** seconds.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Cooldown updated to **" + std::to_string(cd) + "** seconds.");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ Failed to save changes.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save changes.");
                     }
                 } catch (...) {
-                    bot.send_message(msg.channel_id, "❌ Invalid cooldown number.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid cooldown number.");
                 }
             }
             else if (cfg_sub == "minchars") {
@@ -868,17 +868,17 @@ private:
                 try {
                     int mc = std::stoi(args[2]);
                     if (mc < 0) {
-                        bot.send_message(msg.channel_id, "❌ Minimum characters cannot be negative.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Minimum characters cannot be negative.");
                         return;
                     }
                     cfg.min_message_chars = mc;
                     if (g_db->update_guild_leveling_config(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Minimum character length set to **" + std::to_string(mc) + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Minimum character length set to **" + std::to_string(mc) + "**.");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ Failed to save changes.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save changes.");
                     }
                 } catch (...) {
-                    bot.send_message(msg.channel_id, "❌ Invalid characters count.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid characters count.");
                 }
             }
             else if (cfg_sub == "maxchars") {
@@ -889,17 +889,17 @@ private:
                 try {
                     int mc = std::stoi(args[2]);
                     if (mc < 0) {
-                        bot.send_message(msg.channel_id, "❌ Maximum characters cannot be negative.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Maximum characters cannot be negative.");
                         return;
                     }
                     cfg.max_message_chars = mc;
                     if (g_db->update_guild_leveling_config(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Maximum character length set to **" + std::to_string(mc) + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Maximum character length set to **" + std::to_string(mc) + "**.");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ Failed to save changes.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save changes.");
                     }
                 } catch (...) {
-                    bot.send_message(msg.channel_id, "❌ Invalid characters count.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid characters count.");
                 }
             }
             else if (cfg_sub == "announce") {
@@ -914,14 +914,14 @@ private:
                 } else if (ann_arg == "off" || ann_arg == "false" || ann_arg == "0") {
                     cfg.announce_levelup = false;
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Choose `on` or `off`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Choose `on` or `off`.");
                     return;
                 }
 
                 if (g_db->update_guild_leveling_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ Level-up announcement set to **" + std::string(cfg.announce_levelup ? "enabled" : "disabled") + "**.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Level-up announcement set to **" + std::string(cfg.announce_levelup ? "enabled" : "disabled") + "**.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to save changes.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save changes.");
                 }
             }
             else if (cfg_sub == "channel") {
@@ -932,16 +932,16 @@ private:
                 std::string chan_arg = args[2];
                 if (chan_arg == "none" || chan_arg == "clear") {
                     cfg.announcement_channel = std::nullopt;
-                    bot.send_message(msg.channel_id, "✅ Level-up announcement channel set to default *Current channel*.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Level-up announcement channel set to default *Current channel*.");
                 } else if (chan_arg == "here") {
                     cfg.announcement_channel = msg.channel_id;
-                    bot.send_message(msg.channel_id, "✅ Level-up announcement channel set to current channel (<#" + msg.channel_id + ">).");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Level-up announcement channel set to current channel (<#" + msg.channel_id + ">).");
                 } else {
                     if (chan_arg.rfind("<#", 0) == 0 && chan_arg.back() == '>') {
                         chan_arg = chan_arg.substr(2, chan_arg.size() - 3);
                     }
                     cfg.announcement_channel = chan_arg;
-                    bot.send_message(msg.channel_id, "✅ Level-up announcement channel set to <#" + chan_arg + ">.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Level-up announcement channel set to <#" + chan_arg + ">.");
                 }
 
                 g_db->update_guild_leveling_config(cfg);
@@ -958,31 +958,31 @@ private:
                 }
                 std::string val_msg = (p != std::string::npos && p < msg.content.size()) ? msg.content.substr(p) : "";
                 if (val_msg.empty()) {
-                    bot.send_message(msg.channel_id, "❌ Custom message cannot be empty.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Custom message cannot be empty.");
                     return;
                 }
 
                 cfg.announcement_message = val_msg;
                 if (g_db->update_guild_leveling_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ Level-up custom message updated!");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Level-up custom message updated!");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to save changes.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save changes.");
                 }
             }
             else if (cfg_sub == "reset") {
                 Database::GuildLevelingConfig defaults;
                 defaults.server_id = msg.server_id;
                 if (g_db->update_guild_leveling_config(defaults)) {
-                    bot.send_message(msg.channel_id, "✅ Leveling config reset to default settings.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leveling config reset to default settings.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to reset settings.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to reset settings.");
                 }
             }
             else if (cfg_sub == "resetdata") {
                 if (g_db->reset_guild_xp(msg.server_id)) {
-                    bot.send_message(msg.channel_id, "✅ Cleared all server members' XP data.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Cleared all server members' XP data.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to clear XP data.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to clear XP data.");
                 }
             }
         } else {

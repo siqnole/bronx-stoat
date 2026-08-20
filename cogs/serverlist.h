@@ -36,11 +36,11 @@ public:
             {"<subcommand>", "[args...]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server.");
                     return;
                 }
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
@@ -131,11 +131,11 @@ public:
                 if (subcommand == "setup" || subcommand == "set" || subcommand == "config" || subcommand == "submit" || subcommand == "bump") {
                     bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg, subcommand, args, pfx](stoatpp::models::Member member, bool ok) {
                         if (!ok) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to verify permissions.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify permissions.");
                             return;
                         }
                         if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                            bot.send_message(msg.channel_id, "⚠️ You need **Manage Server** permission to modify listing configuration.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You need **Manage Server** permission to modify listing configuration.");
                             return;
                         }
 
@@ -180,15 +180,15 @@ public:
 
                         if (subcommand == "submit") {
                             if (listing.mode == "disabled") {
-                                bot.send_message(msg.channel_id, "⚠️ Listing is currently disabled. Use `.list set mode <website|bump|both>` before submitting.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Listing is currently disabled. Use `.list set mode <website|bump|both>` before submitting.");
                                 return;
                             }
                             if (listing.description.empty()) {
-                                bot.send_message(msg.channel_id, "⚠️ Please provide a description before submitting.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Please provide a description before submitting.");
                                 return;
                             }
                             if (listing.invite_url.empty()) {
-                                bot.send_message(msg.channel_id, "⚠️ Please configure an invite URL before submitting.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Please configure an invite URL before submitting.");
                                 return;
                             }
 
@@ -223,7 +223,7 @@ public:
                                     bot.send_message(staff_chan, staff_payload);
                                 } catch (...) {}
                             }
-                            bot.send_message(msg.channel_id, "✅ **Submission received!** Staff will review it shortly.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Submission received!** Staff will review it shortly.");
                             return;
                         }
 
@@ -247,7 +247,7 @@ public:
                             if (key == "mode") {
                                 std::transform(val.begin(), val.end(), val.begin(), ::tolower);
                                 if (val != "website" && val != "bump" && val != "both" && val != "disabled") {
-                                    bot.send_message(msg.channel_id, "⚠️ Invalid mode. Must be one of: `website`, `bump`, `both`, `disabled`.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid mode. Must be one of: `website`, `bump`, `both`, `disabled`.");
                                     return;
                                 }
                                 listing.mode = val;
@@ -263,7 +263,7 @@ public:
                                 // Validate: must be empty (clear) or a 26-char ULID
                                 if (!chan_id.empty() && !(chan_id.size() == 26 &&
                                     chan_id.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos)) {
-                                    bot.send_message(msg.channel_id, "⚠️ Invalid channel. Please **mention** the channel (e.g. `<#channel_id>`), or use `none` to clear it.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel. Please **mention** the channel (e.g. `<#channel_id>`), or use `none` to clear it.");
                                     return;
                                 }
                                 listing.advertising_channel_id = chan_id;
@@ -366,7 +366,7 @@ public:
                                         }
 
                                         if (embed.empty()) {
-                                            bot.send_message(msg.channel_id, "⚠️ Invalid format. Paste raw JSON, or type fields as:\ntitle:text\ndescription:text\ncolour:hex\nimage:link");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid format. Paste raw JSON, or type fields as:\ntitle:text\ndescription:text\ncolour:hex\nimage:link");
                                             return;
                                         }
                                         listing.embed_json = embed.dump();
@@ -374,30 +374,30 @@ public:
                                 }
                                 needs_reapproval = true;
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Unknown setting key. Use: `mode`, `channel`, `tags`, `desc`, `invite`, `embed`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown setting key. Use: `mode`, `channel`, `tags`, `desc`, `invite`, `embed`.");
                                 return;
                             }
 
                             if (needs_reapproval && listing.status == "approved") {
                                 listing.status = "pending";
-                                bot.send_message(msg.channel_id, "⚠️ **Notice:** Changing tags, description, invite, or custom embed requires re-approval. Status reset to **pending**.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " **Notice:** Changing tags, description, invite, or custom embed requires re-approval. Status reset to **pending**.");
                             }
 
                             if (g_db->save_server_listing(listing)) {
-                                bot.send_message(msg.channel_id, "✅ Setting `" + key + "` successfully updated.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Setting `" + key + "` successfully updated.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save setting.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting.");
                             }
                             return;
                         }
 
                         if (subcommand == "bump") {
                             if (listing.status != "approved") {
-                                bot.send_message(msg.channel_id, "⚠️ Your server listing is not approved yet. Use `.list submit` to submit it for review.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Your server listing is not approved yet. Use `.list submit` to submit it for review.");
                                 return;
                             }
                             if (listing.mode != "bump" && listing.mode != "both" && listing.mode != "website") {
-                                bot.send_message(msg.channel_id, "⚠️ Bumping is not enabled for your server. Set your listing mode to `website`, `bump`, or `both` using `.list set mode both`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Bumping is not enabled for your server. Set your listing mode to `website`, `bump`, or `both` using `.list set mode both`.");
                                 return;
                             }
 
@@ -420,7 +420,7 @@ public:
                             g_db->save_server_listing(listing);
 
                             if (listing.mode == "website") {
-                                bot.send_message(msg.channel_id, "✅ **Bumped!** Your server listing has been bumped on the website.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Bumped!** Your server listing has been bumped on the website.");
                                 return;
                             }
 
@@ -526,7 +526,7 @@ public:
                                 sent++;
                             }
 
-                            bot.send_message(msg.channel_id, "✅ **Bumped!** Your server ad has been broadcast to **" + std::to_string(sent) + "** other participating servers' advertising channels.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Bumped!** Your server ad has been broadcast to **" + std::to_string(sent) + "** other participating servers' advertising channels.");
                             return;
                         }
 
@@ -534,13 +534,13 @@ public:
                             bot.send_message(msg.channel_id, "💬 **Server List Setup Wizard**\nLet's configure your server listing.\n\n**Step 1/6**: What listing/advertising mode would you like to enable?\nOptions: `website`, `bump`, `both`, `disabled`.");
                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, listing](std::optional<stoatpp::events::Message> r1) mutable {
                                 if (!r1 || r1->content == "cancel") {
-                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                     return;
                                 }
                                 std::string mode = r1->content;
                                 std::transform(mode.begin(), mode.end(), mode.begin(), ::tolower);
                                 if (mode != "website" && mode != "bump" && mode != "both" && mode != "disabled") {
-                                    bot.send_message(msg.channel_id, "⚠️ Invalid mode. Setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid mode. Setup canceled.");
                                     return;
                                 }
                                 listing.mode = mode;
@@ -548,7 +548,7 @@ public:
                                 bot.send_message(msg.channel_id, "💬 **Server List Setup Wizard**\n**Step 2/6**: Mention the channel where other servers' bump ads should be sent, or reply `skip` to skip/none.");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, listing](std::optional<stoatpp::events::Message> r2) mutable {
                                     if (!r2 || r2->content == "cancel") {
-                                        bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                         return;
                                     }
                                     if (r2->content != "skip") {
@@ -563,7 +563,7 @@ public:
                                         bool valid_chan = (chan_id.size() == 26 &&
                                             chan_id.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
                                         if (!valid_chan) {
-                                            bot.send_message(msg.channel_id, "⚠️ That doesn't look like a valid channel. Please **mention** the channel (e.g. `<#channel_id>`). Setup canceled.");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " That doesn't look like a valid channel. Please **mention** the channel (e.g. `<#channel_id>`). Setup canceled.");
                                             return;
                                         }
                                         listing.advertising_channel_id = chan_id;
@@ -572,7 +572,7 @@ public:
                                     bot.send_message(msg.channel_id, "💬 **Server List Setup Wizard**\n**Step 3/6**: Enter a few tags for your server, separated by spaces (e.g. `gaming programming fun`), or reply `skip`.");
                                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, listing](std::optional<stoatpp::events::Message> r3) mutable {
                                         if (!r3 || r3->content == "cancel") {
-                                            bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                             return;
                                         }
                                         if (r3->content != "skip") {
@@ -582,7 +582,7 @@ public:
                                         bot.send_message(msg.channel_id, "💬 **Server List Setup Wizard**\n**Step 4/6**: Type a short description of your server (1-2 sentences), or reply `skip`.");
                                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, listing](std::optional<stoatpp::events::Message> r4) mutable {
                                             if (!r4 || r4->content == "cancel") {
-                                                bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                 return;
                                             }
                                             if (r4->content != "skip") {
@@ -592,7 +592,7 @@ public:
                                             bot.send_message(msg.channel_id, "💬 **Server List Setup Wizard**\n**Step 5/6**: Paste a public invite link for your server (e.g. `https://stoat.gg/...`), or reply `skip`.");
                                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, listing](std::optional<stoatpp::events::Message> r5) mutable {
                                                 if (!r5 || r5->content == "cancel") {
-                                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                     return;
                                                 }
                                                 if (r5->content != "skip") {
@@ -606,7 +606,7 @@ public:
                                                 bot.send_message(msg.channel_id, "💬 **Server List Setup Wizard**\n**Step 6/6**: If you want a custom ad embed, type its details now using this format (or upload an image attachment, or reply `skip` for none):\n```\ntitle: title text here\ndescription: description and stuff\ncolour: random/green/#00ff00/00ff00\nimage: link/attachment/none\n```");
                                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(120), [this, &bot, msg, listing](std::optional<stoatpp::events::Message> r6) mutable {
                                                     if (!r6 || r6->content == "cancel") {
-                                                        bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                         return;
                                                     }
                                                     if (r6->content != "skip") {
@@ -690,9 +690,9 @@ public:
 
                                                     listing.status = "pending"; // Reset to pending after complete setup
                                                     if (g_db->save_server_listing(listing)) {
-                                                        bot.send_message(msg.channel_id, "✅ **Setup complete!** Run `.list submit` to submit your listing for staff review.");
+                                                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Setup complete!** Run `.list submit` to submit your listing for staff review.");
                                                     } else {
-                                                        bot.send_message(msg.channel_id, "⚠️ Failed to save listing configuration.");
+                                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save listing configuration.");
                                                     }
                                                 });
                                             });
@@ -710,7 +710,7 @@ public:
                 if (subcommand == "approve" || subcommand == "deny") {
                     std::string staff_chan = get_staff_channel_id();
                     if (!staff_chan.empty() && msg.channel_id != staff_chan && !bot.is_owner(msg.author.id)) {
-                        bot.send_message(msg.channel_id, "⚠️ Review commands can only be run by staff in the designated review channel.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Review commands can only be run by staff in the designated review channel.");
                         return;
                     }
 
@@ -724,7 +724,7 @@ public:
                     auto verify_staff_and_run = [this, &bot, msg, subcommand, target_srv, args]() {
                         auto listing_opt = g_db->get_server_listing(target_srv);
                         if (!listing_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Server listing for ID `" + target_srv + "` not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Server listing for ID `" + target_srv + "` not found.");
                             return;
                         }
                         auto listing = *listing_opt;
@@ -732,7 +732,7 @@ public:
                         if (subcommand == "approve") {
                             listing.status = "approved";
                             if (g_db->save_server_listing(listing)) {
-                                bot.send_message(msg.channel_id, "✅ Server listing for **" + listing.name + "** has been approved!");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Server listing for **" + listing.name + "** has been approved!");
                                 
                                 auto target_srv_details = bot.get_server(target_srv);
                                 if (target_srv_details && !target_srv_details->owner.empty()) {
@@ -740,12 +740,12 @@ public:
                                         auto dm_res = bot.rest().open_dm(target_srv_details->owner);
                                         if (dm_res.success()) {
                                             std::string dm_chan = dm_res.body["_id"].get<std::string>();
-                                            bot.send_message(dm_chan, "✅ Your server listing/ad for **" + listing.name + "** has been approved!");
+                                            bot.send_message(dm_chan, "" + bronx::emj_yes + " Your server listing/ad for **" + listing.name + "** has been approved!");
                                         }
                                     }).detach();
                                 }
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save status update.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save status update.");
                             }
                         } else {
                             listing.status = "denied";
@@ -758,7 +758,7 @@ public:
                                 if (!reason.empty()) reason.pop_back();
                             }
                             if (g_db->save_server_listing(listing)) {
-                                bot.send_message(msg.channel_id, "❌ Server listing for **" + listing.name + "** has been denied.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Server listing for **" + listing.name + "** has been denied.");
                                 
                                 auto target_srv_details = bot.get_server(target_srv);
                                 if (target_srv_details && !target_srv_details->owner.empty()) {
@@ -766,12 +766,12 @@ public:
                                         auto dm_res = bot.rest().open_dm(target_srv_details->owner);
                                         if (dm_res.success()) {
                                             std::string dm_chan = dm_res.body["_id"].get<std::string>();
-                                            bot.send_message(dm_chan, "❌ Your server listing/ad for **" + listing.name + "** has been denied. Reason: " + reason);
+                                            bot.send_message(dm_chan, "" + bronx::emj_no + " Your server listing/ad for **" + listing.name + "** has been denied. Reason: " + reason);
                                         }
                                     }).detach();
                                 }
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save status update.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save status update.");
                             }
                         }
                     };
@@ -783,14 +783,14 @@ public:
                             if (ok && is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
                                 verify_staff_and_run();
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Permission error: you need Manage Server permission to review listings.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need Manage Server permission to review listings.");
                             }
                         });
                     }
                     return;
                 }
 
-                bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, set, config, submit, bump.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use setup, set, config, submit, bump.");
             },
             "Utility"
         });

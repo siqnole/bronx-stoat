@@ -117,7 +117,7 @@ public:
                 int index = 1;
                 if (!args.empty()) {
                     try { index = std::stoi(args[0]); } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid number.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid number.");
                         return;
                     }
                 }
@@ -173,7 +173,7 @@ public:
                 int index = 1;
                 if (!args.empty()) {
                     try { index = std::stoi(args[0]); } catch (...) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid number.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid number.");
                         return;
                     }
                 }
@@ -251,7 +251,7 @@ public:
                     bot.send_message(msg.channel_id, "📭 Nothing to clear.");
                     return;
                 }
-                bot.send_message(msg.channel_id, "✅ Snipe caches cleared for this channel.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Snipe caches cleared for this channel.");
             },
             "Moderation",
             stoatpp::permissions::ManageMessages

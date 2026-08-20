@@ -133,17 +133,17 @@ public:
                                 std::string def_pfx = bot.config().command_prefix;
                                 if (enable) {
                                     bot.send_message(msg.channel_id,
-                                        "✅ default prefix `" + def_pfx + "` is now **enabled** — "
+                                        "" + bronx::emj_yes + " default prefix `" + def_pfx + "` is now **enabled** — "
                                         "the bot will respond to both server custom prefixes and `" + def_pfx + "`.");
                                 } else {
                                     auto server_pfx = g_db->get_prefixes("server", msg.server_id);
                                     if (server_pfx.empty()) {
                                         bot.send_message(msg.channel_id,
-                                            "⚠️ no custom server prefixes are set. the default prefix `" + def_pfx + "` will remain active "
+                                            "" + bronx::emj_warning + " no custom server prefixes are set. the default prefix `" + def_pfx + "` will remain active "
                                             "until you add a custom server prefix first (`.prefix add <prefix>`).");
                                     } else {
                                         bot.send_message(msg.channel_id,
-                                            "✅ default prefix `" + def_pfx + "` is now **disabled** — "
+                                            "" + bronx::emj_yes + " default prefix `" + def_pfx + "` is now **disabled** — "
                                             "the bot will only respond to custom server prefixes.");
                                     }
                                 }

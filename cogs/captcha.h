@@ -157,20 +157,20 @@ public:
                 std::string png_bytes = render_captcha_image(captcha_code);
 
                 if (png_bytes.empty()) {
-                    bot.send_message(msg.channel_id, "❌ Failed to render CAPTCHA image.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to render CAPTCHA image.");
                     return;
                 }
 
                 // Upload to Autumn CDN
                 std::string file_id = chart::upload_chart(bot, png_bytes, "captcha.png");
                 if (file_id.empty()) {
-                    bot.send_message(msg.channel_id, "❌ Failed to upload CAPTCHA to CDN.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to upload CAPTCHA to CDN.");
                     return;
                 }
 
                 // Send embed with captcha attachment
                 stoatpp::models::MessagePayload payload;
-                payload.content = "⚠️ **Verification Required**\n"
+                payload.content = "" + bronx::emj_warning + " **Verification Required**\n"
                                   "Please type the letters and numbers shown in the image below to prove you are human.\n"
                                   "You have **45 seconds** to reply!";
                 payload.add_attachment(file_id);
@@ -190,9 +190,9 @@ public:
                     std::transform(user_input.begin(), user_input.end(), user_input.begin(), ::toupper);
 
                     if (user_input == captcha_code) {
-                        bot.send_message(msg.channel_id, "✅ **Verification Successful!** You have passed the CAPTCHA check.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Verification Successful!** You have passed the CAPTCHA check.");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ **Verification Failed!** The text you entered did not match. Please run `.captcha` to try again.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " **Verification Failed!** The text you entered did not match. Please run `.captcha` to try again.");
                     }
                 });
             },

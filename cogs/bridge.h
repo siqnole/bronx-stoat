@@ -228,7 +228,7 @@ public:
             {},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (!bronx::g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
@@ -241,7 +241,7 @@ public:
                         out += "• **Discord ID**: " + (link_opt->discord_id.empty() ? "*None*" : "`" + link_opt->discord_id + "`") + "\n";
                         bot.send_message(msg.channel_id, out);
                     } else {
-                        std::string out = "❌ **You do not have any linked accounts.**\n\n"
+                        std::string out = "" + bronx::emj_no + " **You do not have any linked accounts.**\n\n"
                                           "To link with another platform:\n"
                                           "1. Type `.link generate` to get a 6-digit link code.\n"
                                           "2. Go to Fluxer or Discord and type `.link redeem <code>`.";
@@ -266,7 +266,7 @@ public:
                     send_json(req);
                 } else if (args[0] == "redeem") {
                     if (args.size() < 2) {
-                        bot.send_message(msg.channel_id, "❌ Please specify the code: `.link redeem <code>`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Please specify the code: `.link redeem <code>`.");
                         return;
                     }
                     std::string code = args[1];
@@ -278,7 +278,7 @@ public:
                             if (err.empty()) {
                                 bot.send_message(channel_id, "🎉 **Success!** Your accounts have been linked.");
                             } else {
-                                bot.send_message(channel_id, "❌ **Link Error:** " + err);
+                                bot.send_message(channel_id, "" + bronx::emj_no + " **Link Error:** " + err);
                             }
                         };
                     }
@@ -315,11 +315,11 @@ public:
                 if (subcommand == "add") {
                     bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg, args](stoatpp::models::Member member, bool success) {
                         if (!success) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                             return;
                         }
                         if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                            bot.send_message(msg.channel_id, "⚠️ Permission error: you must be an administrator or trusted user to manage bridges.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you must be an administrator or trusted user to manage bridges.");
                             return;
                         }
 
@@ -341,7 +341,7 @@ public:
                                                                          "⏳ This code will expire in 5 minutes.");
                                         bot.send_message(channel_id, "📩 **Bridge Code Sent!** Check your DMs (<@" + user_id + ">) for the verification code.");
                                     } else {
-                                        bot.send_message(channel_id, "⚠️ Could not open a DM. Please enable DMs from server members.");
+                                        bot.send_message(channel_id, "" + bronx::emj_warning + " Could not open a DM. Please enable DMs from server members.");
                                     }
                                 };
                             }
@@ -361,7 +361,7 @@ public:
                                     if (err.empty()) {
                                         bot.send_message(channel_id, "🎉 **Success!** Channel has been successfully bridged to `" + other_channel_id + "` on **" + other_platform + "**!");
                                     } else {
-                                        bot.send_message(channel_id, "❌ **Bridge Error:** " + err);
+                                        bot.send_message(channel_id, "" + bronx::emj_no + " **Bridge Error:** " + err);
                                     }
                                 };
                             }
@@ -378,11 +378,11 @@ public:
                 else if (subcommand == "remove") {
                     bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg](stoatpp::models::Member member, bool success) {
                         if (!success) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                             return;
                         }
                         if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                            bot.send_message(msg.channel_id, "⚠️ Permission error: you must be an administrator or trusted user to manage bridges.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you must be an administrator or trusted user to manage bridges.");
                             return;
                         }
 
@@ -394,7 +394,7 @@ public:
                                 if (err.empty()) {
                                     bot.send_message(channel_id, "🎉 **Success!** This channel has been unbridged.");
                                 } else {
-                                    bot.send_message(channel_id, "❌ **Bridge Error:** " + err);
+                                    bot.send_message(channel_id, "" + bronx::emj_no + " **Bridge Error:** " + err);
                                 }
                             };
                         }
@@ -432,7 +432,7 @@ public:
                 }
                 else if (subcommand == "info") {
                     if (msg.replies.empty()) {
-                        bot.send_message(msg.channel_id, "❌ Please reply to a message to check its bridge info.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Please reply to a message to check its bridge info.");
                         return;
                     }
                     std::string replied_msg_id = msg.replies[0];
@@ -473,7 +473,7 @@ public:
                                         }
                                         bot.send_message(channel_id, out);
                                     } else {
-                                        bot.send_message(channel_id, "❌ Message not found.");
+                                        bot.send_message(channel_id, "" + bronx::emj_no + " Message not found.");
                                     }
                                 }).detach();
                             }
@@ -539,7 +539,7 @@ public:
 
                                 bot.send_message(channel_id, out);
                             } else {
-                                bot.send_message(channel_id, "❌ **Bridge Error:** This channel is not bridged.");
+                                bot.send_message(channel_id, "" + bronx::emj_no + " **Bridge Error:** This channel is not bridged.");
                             }
                         };
                     }
@@ -1007,7 +1007,7 @@ private:
         }
         else if (type == "bridge_removed_notification") {
             std::string channel_id = j["channel_id"].get<std::string>();
-            bot.send_message(channel_id, "⚠️ This channel has been unbridged.");
+            bot.send_message(channel_id, "" + bronx::emj_warning + " This channel has been unbridged.");
         }
     }
 

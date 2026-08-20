@@ -268,11 +268,11 @@ public:
 
                 if (msg.server_id.empty()) {
                     bot.send_message(msg.channel_id,
-                        "⚠️ This command can only be used in a server.");
+                        "" + bronx::emj_warning + " This command can only be used in a server.");
                     return;
                 }
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
@@ -303,7 +303,7 @@ public:
                         desc += "\n**Current config:**\n"
                             "Channel: " + (c.channel_id.empty() ? "*not set*" : "<#" + c.channel_id + ">") + "\n"
                             "Next number: **" + std::to_string(c.current_number + 1) + "**\n"
-                            "Passive: " + (c.passive ? "✅ yes" : "❌ no") + "\n"
+                            "Passive: " + (c.passive ? "" + bronx::emj_yes + " yes" : "" + bronx::emj_no + " no") + "\n"
                             "Highest count: **" + std::to_string(c.highest_count) + "**";
                     }
                     embed["description"] = desc;
@@ -373,7 +373,7 @@ public:
                         std::string query = args[1];
                         helpers::resolve_user(bot, msg.server_id, query, [msg, &bot](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success_resolve) {
                             if (!success_resolve) {
-                                bot.send_message(msg.channel_id, "⚠️ User not found.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " User not found.");
                                 return;
                             }
                             auto stats = g_db->get_counting_stats(msg.server_id, target_user.id);
@@ -418,12 +418,12 @@ public:
                 bot.fetch_member(msg.server_id, msg.author.id,
                     [this, &bot, msg, args, sub, pfx](stoatpp::models::Member member, bool ok) {
                         if (!ok) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to verify permissions.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify permissions.");
                             return;
                         }
                         if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
                             bot.send_message(msg.channel_id,
-                                "⚠️ You need **Manage Server** permission to configure counting.");
+                                "" + bronx::emj_warning + " You need **Manage Server** permission to configure counting.");
                             return;
                         }
 
@@ -450,9 +450,9 @@ public:
 
                             if (g_db->save_counting_config(cfg)) {
                                 bot.send_message(msg.channel_id,
-                                    "✅ Counting channel set to <#" + chan_id + ">. Count starts at **1**.");
+                                    "" + bronx::emj_yes + " Counting channel set to <#" + chan_id + ">. Count starts at **1**.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save config.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save config.");
                             }
                             return;
                         }
@@ -466,7 +466,7 @@ public:
                             }
                             int64_t n = 0;
                             try { n = std::stoll(args[1]); } catch (...) {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid number.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid number.");
                                 return;
                             }
                             // current_number is the last confirmed count; next expected = n
@@ -475,9 +475,9 @@ public:
                             cfg.last_user_id   = "";
                             if (g_db->save_counting_config(cfg)) {
                                 bot.send_message(msg.channel_id,
-                                    "✅ Count reset. Next expected number: **" + std::to_string(n) + "**.");
+                                    "" + bronx::emj_yes + " Count reset. Next expected number: **" + std::to_string(n) + "**.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save config.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save config.");
                             }
                             return;
                         }
@@ -497,9 +497,9 @@ public:
                                 cfg.fail_role_id       = "";
                                 cfg.fail_role_duration = 0;
                                 if (g_db->save_counting_config(cfg))
-                                    bot.send_message(msg.channel_id, "✅ Fail role cleared.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Fail role cleared.");
                                 else
-                                    bot.send_message(msg.channel_id, "⚠️ Failed to save config.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save config.");
                                 return;
                             }
 
@@ -520,7 +520,7 @@ public:
                                     }
                                     if (!found && !is_positive_int(args[1])) {
                                         bot.send_message(msg.channel_id,
-                                            "⚠️ Role not found. Mention the role or provide its ID.");
+                                            "" + bronx::emj_warning + " Role not found. Mention the role or provide its ID.");
                                         return;
                                     }
                                 }
@@ -531,7 +531,7 @@ public:
                                 dur = parse_duration_secs(args[2]);
                                 if (dur == 0) {
                                     bot.send_message(msg.channel_id,
-                                        "⚠️ Invalid duration format (e.g. `30m`, `1h`, `2d`).");
+                                        "" + bronx::emj_warning + " Invalid duration format (e.g. `30m`, `1h`, `2d`).");
                                     return;
                                 }
                             }
@@ -539,11 +539,11 @@ public:
                             cfg.fail_role_id       = role_id;
                             cfg.fail_role_duration = dur;
                             if (g_db->save_counting_config(cfg)) {
-                                std::string resp = "✅ Fail role set to <%" + role_id + ">";
+                                std::string resp = "" + bronx::emj_yes + " Fail role set to <%" + role_id + ">";
                                 resp += dur == 0 ? " (permanent)." : " for " + format_duration(dur) + ".";
                                 bot.send_message(msg.channel_id, resp);
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save config.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save config.");
                             }
                             return;
                         }
@@ -553,11 +553,11 @@ public:
                             cfg.passive = !cfg.passive;
                             if (g_db->save_counting_config(cfg)) {
                                 bot.send_message(msg.channel_id,
-                                    std::string("✅ Passive mode ") + (cfg.passive
+                                    std::string("" + bronx::emj_yes + " Passive mode ") + (cfg.passive
                                         ? "**enabled** — wrong numbers are silently ignored; non-numbers allowed freely."
-                                        : "**disabled** — wrong numbers break the count (❌); non-numbers are deleted to keep the channel clean."));
+                                        : "**disabled** — wrong numbers break the count (" + bronx::emj_no + "); non-numbers are deleted to keep the channel clean."));
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save config.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save config.");
                             }
                             return;
                         }
@@ -567,11 +567,11 @@ public:
                             cfg.warn_double_count = !cfg.warn_double_count;
                             if (g_db->save_counting_config(cfg)) {
                                 bot.send_message(msg.channel_id,
-                                    std::string("✅ Double-count warning ") + (cfg.warn_double_count
-                                        ? "**enabled** — users who count twice in a row get a ⚠️ warning instead of immediately breaking the count."
+                                    std::string("" + bronx::emj_yes + " Double-count warning ") + (cfg.warn_double_count
+                                        ? "**enabled** — users who count twice in a row get a " + bronx::emj_warning + " warning instead of immediately breaking the count."
                                         : "**disabled** — double-counts immediately break the count."));
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save config.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save config.");
                             }
                             return;
                         }
@@ -587,8 +587,8 @@ public:
                                 "• **Next expected:** **" + std::to_string(cfg.current_number + 1) + "**\n"
                                 "• **Highest count:** **" + std::to_string(cfg.highest_count) + "**\n"
                                 "• **Fail role:** " + (cfg.fail_role_id.empty() ? "*none*" : "<%" + cfg.fail_role_id + "> (" + format_duration(cfg.fail_role_duration) + ")") + "\n"
-                                "• **Passive mode:** " + (cfg.passive ? "✅ yes" : "❌ no") + "\n"
-                                "• **Double-count warning:** " + (cfg.warn_double_count ? "✅ yes" : "❌ no");
+                                "• **Passive mode:** " + (cfg.passive ? "" + bronx::emj_yes + " yes" : "" + bronx::emj_no + " no") + "\n"
+                                "• **Double-count warning:** " + (cfg.warn_double_count ? "" + bronx::emj_yes + " yes" : "" + bronx::emj_no + " no");
                             embed["description"] = desc;
                             payload.embeds.push_back(embed);
                             bot.send_message(msg.channel_id, payload);
@@ -596,7 +596,7 @@ public:
                         }
 
                         bot.send_message(msg.channel_id,
-                            "⚠️ Unknown subcommand. Run `" + pfx + "count` to see all options.");
+                            "" + bronx::emj_warning + " Unknown subcommand. Run `" + pfx + "count` to see all options.");
                     });
             },
             "Utility"
@@ -639,7 +639,7 @@ public:
                 }
                 g_db->counting_increment_correct(ev.server_id, ev.author.id);
 
-                // React ✅ in strict mode; passive mode stays silent
+                // React " + bronx::emj_yes + " in strict mode; passive mode stays silent
                 if (!cfg.passive) {
                     bot.rest().add_reaction(ev.channel_id, ev.id, "01KK7EC8VP8CMKZW8SB64TCVTC");
                 }
@@ -652,16 +652,16 @@ public:
 
             bool same_user = (ev.author.id == cfg.last_user_id);
 
-            // Warning mode: ⚠️ react + message but do NOT reset the count
+            // Warning mode: " + bronx::emj_warning + " react + message but do NOT reset the count
             if (same_user && cfg.warn_double_count) {
                 bot.rest().add_reaction(ev.channel_id, ev.id, "01KK7ECQ187S2FZ2X3JS65R9PW");
                 stoatpp::models::MessagePayload warn_payload;
-                warn_payload.content = "⚠️ <@" + ev.author.id + "> you can't count twice in a row! Let someone else go next.";
+                warn_payload.content = "" + bronx::emj_warning + " <@" + ev.author.id + "> you can't count twice in a row! Let someone else go next.";
                 bot.send_message(ev.channel_id, warn_payload);
                 return;
             }
 
-            // Strict mode: react ❌, announce, reset (never delete the message)
+            // Strict mode: react " + bronx::emj_no + ", announce, reset (never delete the message)
             bot.rest().add_reaction(ev.channel_id, ev.id, "01KK7ECH9ES9SRSB9REFGKZMFB");
 
             std::string reason = same_user

@@ -142,7 +142,7 @@ private:
                     auto r = bot.rest().open_dm(user_id);
                     if (r.success() && r.body.contains("_id")) {
                         std::string dm_id = r.body["_id"].get<std::string>();
-                        bot.send_message(dm_id, "⚠️ **Anti-Raid Warning**\nYou have been flagged by the automated anti-raid system.\n**Rule triggered:** " + rule + "\n**Details:** " + details);
+                        bot.send_message(dm_id, "" + bronx::emj_warning + " **Anti-Raid Warning**\nYou have been flagged by the automated anti-raid system.\n**Rule triggered:** " + rule + "\n**Details:** " + details);
                     }
                     if (!logged) { logged = true; do_log(); }
                 }).detach();
@@ -166,7 +166,7 @@ private:
         std::string enabled_mark =
             (cfg.joins_action != "none" || cfg.spam_action != "none" ||
              cfg.default_profile_action != "none" || cfg.mentions_action != "none")
-            ? "✅ **Enabled**" : "⚠️ **Inactive** (all actions set to `none`)";
+            ? "" + bronx::emj_yes + " **Enabled**" : "" + bronx::emj_warning + " **Inactive** (all actions set to `none`)";
         return "🛡️ **Anti-Raid Configuration**\n" +
                enabled_mark + "\n\n" +
                "**Join Flood Detection**\n" +
@@ -198,24 +198,24 @@ public:
                 std::cout << "[bronx command] handling antiraid...\n";
 
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server.");
                     return;
                 }
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database unavailable.");
                     return;
                 }
 
                 // Permission check
                 bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg, args](stoatpp::models::Member member, bool ok) {
                     if (!ok) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify your member details.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your member details.");
                         return;
                     }
 
                     if (!can_manage_antiraid(bot, msg.server_id, msg.author.id, member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Only the server owner, trusted users, or administrators may manage anti-raid settings.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Only the server owner, trusted users, or administrators may manage anti-raid settings.");
                         return;
                     }
 
@@ -259,13 +259,13 @@ public:
                                 if (!rep1) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                 std::string r1 = rep1->content;
                                 std::transform(r1.begin(), r1.end(), r1.begin(), ::tolower);
-                                if (r1 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                if (r1 == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup cancelled."); return; }
 
                                 if (r1 != "skip") {
                                     std::istringstream ss(r1);
                                     int c = 0, s = 0;
                                     if (!(ss >> c >> s) || c < 1 || s < 1) {
-                                        bot.send_message(msg.channel_id, "⚠️ Invalid format. Expected `<count> <seconds>`. Setup cancelled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid format. Expected `<count> <seconds>`. Setup cancelled.");
                                         return;
                                     }
                                     cfg.joins_threshold_count = c;
@@ -282,11 +282,11 @@ public:
                                         if (!rep2) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                         std::string r2 = rep2->content;
                                         std::transform(r2.begin(), r2.end(), r2.begin(), ::tolower);
-                                        if (r2 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                        if (r2 == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup cancelled."); return; }
 
                                         if (r2 != "skip") {
                                             if (!is_valid_action(r2)) {
-                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
                                                 return;
                                             }
                                             cfg.joins_action = normalise_actions(r2);
@@ -302,13 +302,13 @@ public:
                                                 if (!rep3) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                                 std::string r3 = rep3->content;
                                                 std::transform(r3.begin(), r3.end(), r3.begin(), ::tolower);
-                                                if (r3 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                                if (r3 == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup cancelled."); return; }
 
                                                 if (r3 != "skip") {
                                                     std::istringstream ss(r3);
                                                     int c = 0, s = 0;
                                                     if (!(ss >> c >> s) || c < 1 || s < 1) {
-                                                        bot.send_message(msg.channel_id, "⚠️ Invalid format. Expected `<count> <seconds>`. Setup cancelled.");
+                                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid format. Expected `<count> <seconds>`. Setup cancelled.");
                                                         return;
                                                     }
                                                     cfg.spam_threshold_count = c;
@@ -325,11 +325,11 @@ public:
                                                         if (!rep4) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                                         std::string r4 = rep4->content;
                                                         std::transform(r4.begin(), r4.end(), r4.begin(), ::tolower);
-                                                        if (r4 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                                        if (r4 == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup cancelled."); return; }
 
                                                         if (r4 != "skip") {
                                                             if (!is_valid_action(r4)) {
-                                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas). Setup cancelled.");
+                                                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas). Setup cancelled.");
                                                                 return;
                                                             }
                                                             cfg.spam_action = normalise_actions(r4);
@@ -345,13 +345,13 @@ public:
                                                                 if (!repM1) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                                                 std::string rM1 = repM1->content;
                                                                 std::transform(rM1.begin(), rM1.end(), rM1.begin(), ::tolower);
-                                                                if (rM1 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                                                if (rM1 == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup cancelled."); return; }
 
                                                                 if (rM1 != "skip") {
                                                                     std::istringstream ssM(rM1);
                                                                     int mc = 0, mm = 0;
                                                                     if (!(ssM >> mc >> mm) || mc < 1 || mm < 1) {
-                                                                        bot.send_message(msg.channel_id, "⚠️ Invalid format. Expected `<count> <messages>` (e.g. `10 5`). Setup cancelled.");
+                                                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid format. Expected `<count> <messages>` (e.g. `10 5`). Setup cancelled.");
                                                                         return;
                                                                     }
                                                                     cfg.mentions_threshold_count = mc;
@@ -368,11 +368,11 @@ public:
                                                                         if (!repM2) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                                                         std::string rM2 = repM2->content;
                                                                         std::transform(rM2.begin(), rM2.end(), rM2.begin(), ::tolower);
-                                                                        if (rM2 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                                                        if (rM2 == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup cancelled."); return; }
 
                                                                         if (rM2 != "skip") {
                                                                             if (!is_valid_action(rM2)) {
-                                                                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas). Setup cancelled.");
+                                                                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas). Setup cancelled.");
                                                                                 return;
                                                                             }
                                                                             cfg.mentions_action = normalise_actions(rM2);
@@ -388,20 +388,20 @@ public:
                                                                                 if (!rep5) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                                                                 std::string r5 = rep5->content;
                                                                                 std::transform(r5.begin(), r5.end(), r5.begin(), ::tolower);
-                                                                                if (r5 == "cancel") { bot.send_message(msg.channel_id, "❌ Setup cancelled."); return; }
+                                                                                if (r5 == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup cancelled."); return; }
 
                                                                                 if (r5 != "skip") {
                                                                                     if (!is_valid_action(r5)) {
-                                                                                        bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
+                                                                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas). Setup cancelled.");
                                                                                         return;
                                                                                     }
                                                                                     cfg.default_profile_action = normalise_actions(r5);
                                                                                 }
 
                                                                                 if (g_db->save_antiraid_config(cfg)) {
-                                                                                    bot.send_message(msg.channel_id, "✅ **Anti-Raid configuration saved!**\n\n" + format_config(cfg));
+                                                                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Anti-Raid configuration saved!**\n\n" + format_config(cfg));
                                                                                 } else {
-                                                                                    bot.send_message(msg.channel_id, "❌ Failed to save configuration. Please try again.");
+                                                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save configuration. Please try again.");
                                                                                 }
                                                                             });
                                                                     });
@@ -441,7 +441,7 @@ public:
 
                             if (count < 1 || seconds < 1) throw std::invalid_argument("out of range");
                             if (!is_valid_action(action)) {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas).");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas).");
                                 return;
                             }
 
@@ -451,12 +451,12 @@ public:
 
                             if (g_db->save_antiraid_config(cfg)) {
                                 bot.send_message(msg.channel_id,
-                                    "✅ Join flood detection updated: `" + std::to_string(count) + "` joins in `" + std::to_string(seconds) + "s` → `" + action + "`.");
+                                    "" + bronx::emj_yes + " Join flood detection updated: `" + std::to_string(count) + "` joins in `" + std::to_string(seconds) + "s` → `" + action + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "❌ Failed to save configuration.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save configuration.");
                             }
                         } catch (...) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid numbers. Usage: `.antiraid join <count> <seconds> [action]`");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid numbers. Usage: `.antiraid join <count> <seconds> [action]`");
                         }
                         return;
                     }
@@ -489,7 +489,7 @@ public:
 
                             if (count < 1 || seconds < 1) throw std::invalid_argument("out of range");
                             if (!is_valid_action(action)) {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas).");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas).");
                                 return;
                             }
 
@@ -499,12 +499,12 @@ public:
 
                             if (g_db->save_antiraid_config(cfg)) {
                                 bot.send_message(msg.channel_id,
-                                    "✅ Spam detection updated: `" + std::to_string(count) + "` messages in `" + std::to_string(seconds) + "s` → `" + action + "`.");
+                                    "" + bronx::emj_yes + " Spam detection updated: `" + std::to_string(count) + "` messages in `" + std::to_string(seconds) + "s` → `" + action + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "❌ Failed to save configuration.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save configuration.");
                             }
                         } catch (...) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid numbers. Usage: `.antiraid spam <count> <seconds> [action]`");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid numbers. Usage: `.antiraid spam <count> <seconds> [action]`");
                         }
                         return;
                     }
@@ -528,14 +528,14 @@ public:
                         std::transform(action_raw.begin(), action_raw.end(), action_raw.begin(), ::tolower);
                         std::string action = normalise_actions(action_raw);
                         if (!is_valid_action(action)) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas).");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `none` (or combine with commas).");
                             return;
                         }
                         cfg.default_profile_action = action;
                         if (g_db->save_antiraid_config(cfg)) {
-                            bot.send_message(msg.channel_id, "✅ Default profile actions set to `" + action + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Default profile actions set to `" + action + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ Failed to save configuration.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save configuration.");
                         }
                         return;
                     }
@@ -567,7 +567,7 @@ public:
 
                             if (count < 1 || messages < 1) throw std::invalid_argument("out of range");
                             if (!is_valid_action(action)) {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas).");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Choose: `ban`, `kick`, `timeout`, `warn`, `delete`, `none` (or combine with commas).");
                                 return;
                             }
 
@@ -577,13 +577,13 @@ public:
 
                             if (g_db->save_antiraid_config(cfg)) {
                                 bot.send_message(msg.channel_id,
-                                    "✅ Mention guard updated: `" + std::to_string(count) + "` user mentions over `" +
+                                    "" + bronx::emj_yes + " Mention guard updated: `" + std::to_string(count) + "` user mentions over `" +
                                     std::to_string(messages) + "` messages → `" + action + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "❌ Failed to save configuration.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save configuration.");
                             }
                         } catch (...) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid numbers. Usage: `.antiraid mentions <count> <messages> [action]`");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid numbers. Usage: `.antiraid mentions <count> <messages> [action]`");
                         }
                         return;
                     }
@@ -602,9 +602,9 @@ public:
                         cfg.mentions_action = "none";
 
                         if (g_db->save_antiraid_config(cfg)) {
-                            bot.send_message(msg.channel_id, "✅ Anti-Raid configuration reset to defaults (all actions: `none`).");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Anti-Raid configuration reset to defaults (all actions: `none`).");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ Failed to reset configuration.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to reset configuration.");
                         }
                         return;
                     }

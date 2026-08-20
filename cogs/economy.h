@@ -943,7 +943,7 @@ public:
 
                     if (answer != "higher" && answer != "h" && answer != "lower" && answer != "l") {
                         g_db->update_balances(msg.author.id, -bet, 0);
-                        bot.send_message(msg.channel_id, "❌ Invalid guess! You lost your bet of **" + std::to_string(bet) + "** coins.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid guess! You lost your bet of **" + std::to_string(bet) + "** coins.");
                         return;
                     }
 
@@ -963,7 +963,7 @@ public:
                         desc += "🎉 Correct! You won **" + std::to_string(bet) + "** coins!";
                     } else {
                         g_db->update_balances(msg.author.id, -bet, 0);
-                        desc += "❌ Incorrect! You lost **" + std::to_string(bet) + "** coins.";
+                        desc += "" + bronx::emj_no + " Incorrect! You lost **" + std::to_string(bet) + "** coins.";
                     }
                     embed.set_description(desc);
                     payload.add_embed(embed);
@@ -992,13 +992,13 @@ public:
                 int64_t required = 250000 * (self->prestige + 1);
 
                 if (networth < required) {
-                    bot.send_message(msg.channel_id, "❌ **Prestige Requirements Not Met**\n"
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " **Prestige Requirements Not Met**\n"
                                                      "You need a net worth of **" + std::to_string(required) + "** coins to prestige to level **" + std::to_string(self->prestige + 1) + "**.\n"
                                                      "Your current net worth is **" + std::to_string(networth) + "** coins.");
                     return;
                 }
 
-                bot.send_message(msg.channel_id, "⚠️ **Confirm Prestige Level " + std::to_string(self->prestige + 1) + "**\n"
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " **Confirm Prestige Level " + std::to_string(self->prestige + 1) + "**\n"
                                                  "Prestiging resets your **wallet** and **bank** balance to **0**!\n"
                                                  "In return, you will gain:\n"
                                                  "- Permanent **+15%** earnings multiplier (new total: **+" + std::to_string((self->prestige + 1) * 15) + "%**)\n"
@@ -1022,7 +1022,7 @@ public:
                         int64_t current_networth = current->wallet + current->bank;
                         int64_t req = 250000 * (current->prestige + 1);
                         if (current_networth < req) {
-                            bot.send_message(msg.channel_id, "❌ Your net worth has changed and you no longer meet the prestige requirement.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Your net worth has changed and you no longer meet the prestige requirement.");
                             return;
                         }
 
@@ -1033,10 +1033,10 @@ public:
                                                              "Congratulations <@" + msg.author.id + ">, you have prestiged to level **" + std::to_string(new_prestige) + "**!\n"
                                                              "Your new bank limit is **" + std::to_string(new_limit) + "** coins, and your earnings are boosted by **+" + std::to_string(new_prestige * 15) + "%**!");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ An error occurred while prestiging. Please try again.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " An error occurred while prestiging. Please try again.");
                         }
                     } else {
-                        bot.send_message(msg.channel_id, "❌ Confirmation failed. Prestige cancelled.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Confirmation failed. Prestige cancelled.");
                     }
                 });
             },
@@ -1238,7 +1238,7 @@ public:
                         }
                     }
                     if (!found) {
-                        bot.send_message(msg.channel_id, "❌ Item `" + item_id + "` not found in general shop. Use `.shop` to see available items or `.fish shop` for fishing items.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Item `" + item_id + "` not found in general shop. Use `.shop` to see available items or `.fish shop` for fishing items.");
                         return;
                     }
                 }
@@ -1246,7 +1246,7 @@ public:
                 int64_t total_cost = unit_cost * qty;
                 auto user = g_db->get_economy_user(msg.author.id);
                 if (!user || user->wallet < total_cost) {
-                    bot.send_message(msg.channel_id, "❌ You do not have enough coins in your wallet. Total cost: **" + std::to_string(total_cost) + "** coins.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " You do not have enough coins in your wallet. Total cost: **" + std::to_string(total_cost) + "** coins.");
                     return;
                 }
 
@@ -1289,7 +1289,7 @@ public:
                     if (g_db->activate_item(msg.author.id, "robbery_guard", 86400)) {
                         bot.send_message(msg.channel_id, "🛡️ **Robbery Guard Activated!** You are protected against all robbery attempts for the next 24 hours.");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ You do not own a Robbery Guard! Buy one in `.shop`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " You do not own a Robbery Guard! Buy one in `.shop`.");
                     }
                     return;
                 }
@@ -1298,12 +1298,12 @@ public:
                     if (g_db->activate_item(msg.author.id, "reverse_card", 86400)) {
                         bot.send_message(msg.channel_id, "💥 **Uno Reverse Card Armed!** For the next 24 hours, anyone attempting to rob you will be counter-robbed!");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ You do not own an Uno Reverse Card! Buy one in `.shop`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " You do not own an Uno Reverse Card! Buy one in `.shop`.");
                     }
                     return;
                 }
 
-                bot.send_message(msg.channel_id, "❌ Item `" + item_id + "` cannot be activated directly or is not owned.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Item `" + item_id + "` cannot be activated directly or is not owned.");
             },
             "Economy"
         });
@@ -1326,7 +1326,7 @@ public:
                 std::string target_uid = resolve_user_id(args[0]);
 
                 if (!g_db->use_item_charge(msg.author.id, "item_detector")) {
-                    bot.send_message(msg.channel_id, "❌ You do not have an Item Detector with available uses! Purchase one in `.shop`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " You do not have an Item Detector with available uses! Purchase one in `.shop`.");
                     return;
                 }
 

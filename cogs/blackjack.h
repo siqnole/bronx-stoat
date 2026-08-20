@@ -633,7 +633,7 @@ public:
                     }
 
                     std::string bet_str = (bet > 0) ? "**" + std::to_string(bet) + "** coins" : "fun (no bet)";
-                    std::string invite_msg = "<@" + target_uid + ">, you have been challenged to a **blackjack** duel by <@" + msg.author.id + "> for " + bet_str + "!\nReact with ✅ to accept or ❌ to decline.";
+                    std::string invite_msg = "<@" + target_uid + ">, you have been challenged to a **blackjack** duel by <@" + msg.author.id + "> for " + bet_str + "!\nReact with " + bronx::emj_yes + " to accept or " + bronx::emj_no + " to decline.";
 
                     bot.send_message(msg.channel_id, invite_msg, [this, msg, target_uid, bet, &bot](stoatpp::models::Message res, bool success) {
                         if (success) {
@@ -649,9 +649,9 @@ public:
                                 active_challenges_[res.id] = challenge;
                             }
 
-                            bot.react_to_message(msg.channel_id, res.id, "✅");
+                            bot.react_to_message(msg.channel_id, res.id, "" + bronx::emj_yes + "");
                             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                            bot.react_to_message(msg.channel_id, res.id, "❌");
+                            bot.react_to_message(msg.channel_id, res.id, "" + bronx::emj_no + "");
 
                             std::thread([this, &bot, channel_id = msg.channel_id, msg_id = res.id]() {
                                 std::this_thread::sleep_for(std::chrono::seconds(60));
@@ -772,13 +772,13 @@ public:
                 std::lock_guard<std::mutex> lock(challenge_mutex_);
                 auto it = active_challenges_.find(e.id);
                 if (it != active_challenges_.end() && e.user_id == it->second.target_id) {
-                    if (e.emoji_id == "✅") {
+                    if (e.emoji_id == "" + bronx::emj_yes + "") {
                         it->second.accepted = true;
                         challenge = it->second;
                         active_challenges_.erase(it);
                         is_challenge = true;
                         accepted = true;
-                    } else if (e.emoji_id == "❌") {
+                    } else if (e.emoji_id == "" + bronx::emj_no + "") {
                         challenge = it->second;
                         active_challenges_.erase(it);
                         is_challenge = true;
@@ -789,10 +789,10 @@ public:
 
             if (is_challenge) {
                 if (accepted) {
-                    bot.send_message(challenge.channel_id, "✅ <@" + challenge.target_id + "> accepted the challenge!");
+                    bot.send_message(challenge.channel_id, "" + bronx::emj_yes + " <@" + challenge.target_id + "> accepted the challenge!");
                     start_pvp_game(bot, challenge);
                 } else {
-                    bot.send_message(challenge.channel_id, "❌ <@" + challenge.target_id + "> declined the challenge.");
+                    bot.send_message(challenge.channel_id, "" + bronx::emj_no + " <@" + challenge.target_id + "> declined the challenge.");
                 }
                 return;
             }

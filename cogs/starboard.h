@@ -555,13 +555,13 @@ public:
            if (msg.server_id.empty()) {
              bot.send_message(
                  msg.channel_id,
-                 "❌ this command can only be used inside a server.");
+                 "" + bronx::emj_no + " this command can only be used inside a server.");
              return;
            }
 
            if (!g_db) {
              bot.send_message(msg.channel_id,
-                              "❌ database connection is not initialized.");
+                              "" + bronx::emj_no + " database connection is not initialized.");
              return;
            }
 
@@ -713,10 +713,10 @@ public:
            if (subcommand == "create") {
              if (g_db->create_starboard(msg.server_id, board_name)) {
                bot.send_message(msg.channel_id,
-                                "✅ successfully created starboard board **" +
+                                "" + bronx::emj_yes + " successfully created starboard board **" +
                                     board_name + "**!");
              } else {
-               bot.send_message(msg.channel_id, "❌ failed to create board.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to create board.");
              }
              return;
            }
@@ -724,10 +724,10 @@ public:
            if (subcommand == "delete") {
              if (g_db->delete_starboard(msg.server_id, board_name)) {
                bot.send_message(msg.channel_id,
-                                "✅ successfully deleted starboard board **" +
+                                "" + bronx::emj_yes + " successfully deleted starboard board **" +
                                     board_name + "**.");
              } else {
-               bot.send_message(msg.channel_id, "❌ failed to delete board.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to delete board.");
              }
              return;
            }
@@ -736,7 +736,7 @@ public:
            auto board_opt = g_db->get_starboard(msg.server_id, board_name);
            if (!board_opt) {
              bot.send_message(msg.channel_id,
-                              "❌ starboard board `" + board_name +
+                              "" + bronx::emj_no + " starboard board `" + board_name +
                                   "` does not exist. Use `" + pfx +
                                   "board create " + board_name + "` first.");
              return;
@@ -756,26 +756,26 @@ public:
                val = std::stoi(sub_args[0]);
              } catch (...) {
                bot.send_message(msg.channel_id,
-                                "❌ invalid threshold value. Must be a valid "
+                                "" + bronx::emj_no + " invalid threshold value. Must be a valid "
                                 "positive number.");
                return;
              }
 
              if (val <= 0) {
                bot.send_message(msg.channel_id,
-                                "❌ threshold must be greater than 0.");
+                                "" + bronx::emj_no + " threshold must be greater than 0.");
                return;
              }
 
              if (g_db->set_starboard_threshold(msg.server_id, board_name,
                                                val)) {
                bot.send_message(msg.channel_id,
-                                "✅ successfully set threshold for board **" +
+                                "" + bronx::emj_yes + " successfully set threshold for board **" +
                                     board_name + "** to **" +
                                     std::to_string(val) + "**.");
              } else {
                bot.send_message(msg.channel_id,
-                                "❌ failed to update threshold.");
+                                "" + bronx::emj_no + " failed to update threshold.");
              }
              return;
            }
@@ -802,11 +802,11 @@ public:
              if (g_db->set_starboard_channel(msg.server_id, board_name,
                                              target_channel)) {
                bot.send_message(msg.channel_id,
-                                "✅ successfully set channel for board **" +
+                                "" + bronx::emj_yes + " successfully set channel for board **" +
                                     board_name + "** to <#" + target_channel +
                                     ">.");
              } else {
-               bot.send_message(msg.channel_id, "❌ failed to update channel.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to update channel.");
              }
              return;
            }
@@ -838,10 +838,10 @@ public:
                  display_list += starboard_helpers::display_emoji(item);
                }
                bot.send_message(msg.channel_id,
-                                "✅ successfully set emojis for board **" +
+                                "" + bronx::emj_yes + " successfully set emojis for board **" +
                                     board_name + "** to: " + display_list);
              } else {
-               bot.send_message(msg.channel_id, "❌ failed to update emojis.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to update emojis.");
              }
              return;
            }
@@ -870,19 +870,19 @@ public:
                allow = true;
              } else {
                bot.send_message(msg.channel_id,
-                                "❌ invalid self setting. Use `on` or `off`.");
+                                "" + bronx::emj_no + " invalid self setting. Use `on` or `off`.");
                return;
              }
 
              if (g_db->set_starboard_self(msg.server_id, board_name, allow)) {
                bot.send_message(
                    msg.channel_id,
-                   "✅ successfully set self-reactions for board **" +
+                   "" + bronx::emj_yes + " successfully set self-reactions for board **" +
                        board_name + "** to **" + (allow ? "on" : "off") +
                        "**.");
              } else {
                bot.send_message(msg.channel_id,
-                                "❌ failed to update self-reactions setting.");
+                                "" + bronx::emj_no + " failed to update self-reactions setting.");
              }
              return;
            }
@@ -912,7 +912,7 @@ public:
              } else {
                bot.send_message(
                    msg.channel_id,
-                   "❌ invalid delete setting. Use `on` or `off`.");
+                   "" + bronx::emj_no + " invalid delete setting. Use `on` or `off`.");
                return;
              }
 
@@ -920,13 +920,13 @@ public:
                      msg.server_id, board_name, enable)) {
                bot.send_message(
                    msg.channel_id,
-                   "✅ successfully set delete-below-threshold for board **" +
+                   "" + bronx::emj_yes + " successfully set delete-below-threshold for board **" +
                        board_name + "** to **" + (enable ? "on" : "off") +
                        "**.");
              } else {
                bot.send_message(
                    msg.channel_id,
-                   "❌ failed to update delete-below-threshold setting.");
+                   "" + bronx::emj_no + " failed to update delete-below-threshold setting.");
              }
              return;
            }
@@ -1000,12 +1000,12 @@ public:
                                                             board_name, true);
                if (ok1 && ok2 && ok3 && ok4) {
                  bot.send_message(msg.channel_id,
-                                  "✅ successfully reset all templates to "
+                                  "" + bronx::emj_yes + " successfully reset all templates to "
                                   "default settings for board **" +
                                       board_name + "**.");
                } else {
                  bot.send_message(msg.channel_id,
-                                  "❌ failed to reset templates.");
+                                  "" + bronx::emj_no + " failed to reset templates.");
                }
                return;
              }
@@ -1013,7 +1013,7 @@ public:
              if (key == "embed") {
                if (sub_args.size() < 2) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Usage: `" + pfx + "board " + board_name +
+                                  "" + bronx::emj_no + " Usage: `" + pfx + "board " + board_name +
                                       " message embed <on|off>`");
                  return;
                }
@@ -1029,12 +1029,12 @@ public:
                                                      enable)) {
                  bot.send_message(
                      msg.channel_id,
-                     "✅ successfully " +
+                     "" + bronx::emj_yes + " successfully " +
                          std::string(enable ? "enabled" : "disabled") +
                          " embed for board **" + board_name + "**.");
                } else {
                  bot.send_message(msg.channel_id,
-                                  "❌ failed to update embed setting.");
+                                  "" + bronx::emj_no + " failed to update embed setting.");
                }
                return;
              }
@@ -1042,7 +1042,7 @@ public:
              if (key == "content" || key == "title" || key == "description") {
                if (sub_args.size() < 2) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Usage: `" + pfx + "board " + board_name +
+                                  "" + bronx::emj_no + " Usage: `" + pfx + "board " + board_name +
                                       " message " + key + " <template>`");
                  return;
                }
@@ -1106,19 +1106,19 @@ public:
                if (g_db->set_starboard_message_config(msg.server_id, board_name,
                                                       key, value)) {
                  bot.send_message(msg.channel_id,
-                                  "✅ successfully updated message template `" +
+                                  "" + bronx::emj_yes + " successfully updated message template `" +
                                       key + "` for board **" + board_name +
                                       "**.");
                } else {
                  bot.send_message(msg.channel_id,
-                                  "❌ failed to update message template.");
+                                  "" + bronx::emj_no + " failed to update message template.");
                }
                return;
              }
 
              bot.send_message(
                  msg.channel_id,
-                 "❌ invalid message key. Valid keys are: `content`, `title`, "
+                 "" + bronx::emj_no + " invalid message key. Valid keys are: `content`, `title`, "
                  "`description`, `embed`, `clear`.");
              return;
            }

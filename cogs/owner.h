@@ -20,7 +20,7 @@ private:
 
     bool check_owner(stoatpp::cluster& bot, const stoatpp::events::Message& msg) {
         if (!bot.is_owner(msg.author.id)) {
-            bot.send_message(msg.channel_id, "⚠️ This command is restricted to the bot owner.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command is restricted to the bot owner.");
             return false;
         }
         return true;
@@ -221,7 +221,7 @@ public:
                 if (g_db->save_custom_shop_item(item)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully created custom item `" + item.item_id + "` (**" + item.name + "**) for **" + std::to_string(item.cost) + "** coins!");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to save custom item to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save custom item to database.");
                 }
             },
             "Owner"
@@ -268,7 +268,7 @@ public:
                     }
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully created custom rod `" + r.rod_id + "` (**" + r.name + "**)!");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to save custom rod to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save custom rod to database.");
                 }
             },
             "Owner"
@@ -316,7 +316,7 @@ public:
                     }
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully created custom bait `" + b.bait_id + "` (**" + b.name + "**)!");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to save custom bait to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save custom bait to database.");
                 }
             },
             "Owner"
@@ -356,7 +356,7 @@ public:
                     }
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully created custom fish species `" + f.fish_id + "` (**" + f.name + "** | " + f.rarity + ")!");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to save custom fish to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save custom fish to database.");
                 }
             },
             "Owner"
@@ -392,7 +392,7 @@ public:
                 if (g_db->add_user_economy_item(target_uid, item_id, qty, uses, duration)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Granted **" + std::to_string(qty) + "x " + item_id + "** to <@" + target_uid + ">.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to give item to user.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to give item to user.");
                 }
             },
             "Owner"
@@ -425,7 +425,7 @@ public:
                 if (g_db->remove_user_economy_item(target_uid, item_id, qty)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Removed **" + std::to_string(qty) + "x " + item_id + "** from <@" + target_uid + ">.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ User does not own specified item or error occurred.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " User does not own specified item or error occurred.");
                 }
             },
             "Owner"
@@ -452,7 +452,7 @@ public:
                 if (g_db->unlock_rod(target_uid, rod_id)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Unlocked rod `" + rod_id + "` for <@" + target_uid + ">.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to unlock rod for user.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to unlock rod for user.");
                 }
             },
             "Owner"
@@ -481,7 +481,7 @@ public:
                 if (g_db->add_bait(target_uid, bait_id, qty)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Added **" + std::to_string(qty) + "** `" + bait_id + "` bait to <@" + target_uid + ">.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to add bait.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to add bait.");
                 }
             },
             "Owner"
@@ -514,7 +514,7 @@ public:
                 if (g_db->add_fish_to_inventory(target_uid, fish_id, fish_id, "Custom", 0.01, weight, value)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Added fish `" + fish_id + "` (" + std::to_string(weight) + " kg, $" + std::to_string(value) + " coins) to <@" + target_uid + ">'s bucket.");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to add fish to inventory.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to add fish to inventory.");
                 }
             },
             "Owner"
@@ -564,14 +564,14 @@ public:
                 std::string srv_id = args[0];
                 auto listing_opt = g_db->get_server_listing(srv_id);
                 if (!listing_opt) {
-                    bot.send_message(msg.channel_id, "❌ No server listing found with ID `" + srv_id + "`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " No server listing found with ID `" + srv_id + "`.");
                     return;
                 }
 
                 if (g_db->delete_server_listing(srv_id)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully deleted server listing for `" + listing_opt->name + "` (`" + srv_id + "`).");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to delete server listing from database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to delete server listing from database.");
                 }
             },
             "Owner"
@@ -603,7 +603,7 @@ public:
 
                 auto listing_opt = g_db->get_server_listing(srv_id);
                 if (!listing_opt) {
-                    bot.send_message(msg.channel_id, "❌ No server listing found with ID `" + srv_id + "`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " No server listing found with ID `" + srv_id + "`.");
                     return;
                 }
 
@@ -614,7 +614,7 @@ public:
                 } else if (field == "mode") {
                     std::transform(val.begin(), val.end(), val.begin(), ::tolower);
                     if (val != "website" && val != "bump" && val != "both" && val != "disabled") {
-                        bot.send_message(msg.channel_id, "❌ Invalid mode. Must be one of: `website`, `bump`, `both`, `disabled`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid mode. Must be one of: `website`, `bump`, `both`, `disabled`.");
                         return;
                     }
                     listing.mode = val;
@@ -629,19 +629,19 @@ public:
                 } else if (field == "status") {
                     std::transform(val.begin(), val.end(), val.begin(), ::tolower);
                     if (val != "pending" && val != "approved" && val != "rejected") {
-                        bot.send_message(msg.channel_id, "❌ Invalid status. Must be one of: `pending`, `approved`, `rejected`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid status. Must be one of: `pending`, `approved`, `rejected`.");
                         return;
                     }
                     listing.status = val;
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Unknown field `" + field + "`. Fields: `name`, `mode`, `tags`, `description`, `invite_url`, `channel_id`, `status`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Unknown field `" + field + "`. Fields: `name`, `mode`, `tags`, `description`, `invite_url`, `channel_id`, `status`.");
                     return;
                 }
 
                 if (g_db->save_server_listing(listing)) {
                     bot.send_message(msg.channel_id, "👑 **Owner Action:** Successfully updated field `" + field + "` for server listing `" + listing.name + "` (`" + srv_id + "`).");
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to save updated server listing to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to save updated server listing to database.");
                 }
             },
             "Owner"
@@ -721,24 +721,24 @@ public:
                 std::string target_uid = resolve_user_id(args[0]);
 
                 if (bot.is_owner(target_uid)) {
-                    bot.send_message(msg.channel_id, "⚠️ You cannot ignore the bot owner.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You cannot ignore the bot owner.");
                     return;
                 }
 
                 if (target_uid == bot.current_user().id) {
-                    bot.send_message(msg.channel_id, "⚠️ You cannot ignore the bot itself.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You cannot ignore the bot itself.");
                     return;
                 }
 
                 bool is_now_ignored = false;
                 if (g_db->toggle_user_ignored(target_uid, is_now_ignored)) {
                     if (is_now_ignored) {
-                        bot.send_message(msg.channel_id, "✅ User <@" + target_uid + "> is now globally ignored.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " User <@" + target_uid + "> is now globally ignored.");
                     } else {
-                        bot.send_message(msg.channel_id, "✅ User <@" + target_uid + "> is no longer globally ignored.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " User <@" + target_uid + "> is no longer globally ignored.");
                     }
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to toggle ignore status in database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to toggle ignore status in database.");
                 }
             },
             "Owner"

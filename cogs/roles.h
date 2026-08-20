@@ -196,7 +196,7 @@ public:
                                 }
                                 summary += "• Created role **" + name + "**" + (!role_id.empty() ? " (`" + role_id + "`)" : "") + (!color.empty() ? " with color `" + color + "`" : "") + "\n";
                             } else {
-                                summary += "• ❌ Failed to create role **" + name + "**: " + res.error_message() + "\n";
+                                summary += "• " + bronx::emj_no + " Failed to create role **" + name + "**: " + res.error_message() + "\n";
                             }
                         }
                         auto fresh_res = bot.rest().get_server(msg.server_id);
@@ -379,11 +379,11 @@ public:
                                     edit_fields["colour"] = old_col;
                                 }
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Role **" + matched.name + "** currently has a solid color (`" + old_col + "`), not a gradient. Please specify multiple hex colors along with the angle, e.g., `!role edit " + matched.name + " " + angle_update + " #ff0000 #0000ff`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Role **" + matched.name + "** currently has a solid color (`" + old_col + "`), not a gradient. Please specify multiple hex colors along with the angle, e.g., `!role edit " + matched.name + " " + angle_update + " #ff0000 #0000ff`.");
                                 return;
                             }
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Role **" + matched.name + "** does not currently have a color. Please specify colors along with the angle, e.g., `!role edit " + matched.name + " " + angle_update + " #ff0000 #0000ff`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Role **" + matched.name + "** does not currently have a color. Please specify colors along with the angle, e.g., `!role edit " + matched.name + " " + angle_update + " #ff0000 #0000ff`.");
                             return;
                         }
                     }
@@ -396,9 +396,9 @@ public:
                     std::thread([&bot, msg, matched, edit_fields]() {
                         auto res = bot.rest().edit_role(msg.server_id, matched.id, edit_fields);
                         if (res.success()) {
-                            bot.send_message(msg.channel_id, "✅ Successfully updated role **" + matched.name + "**.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Successfully updated role **" + matched.name + "**.");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ Failed to update role: " + res.error_message());
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to update role: " + res.error_message());
                         }
                     }).detach();
                     return;
@@ -744,7 +744,7 @@ public:
                                 std::string target_label = res.user_mention.empty() ? "`" + res.query + "`" : res.user_mention;
                                 desc += target_label + " ,";
                                 if (!res.status_err.empty()) {
-                                    desc += " ⚠️ " + res.status_err + "\n";
+                                    desc += " " + bronx::emj_warning + " " + res.status_err + "\n";
                                 } else {
                                     desc += " no changes applied.\n";
                                 }
@@ -787,7 +787,7 @@ public:
                                         std::string target_label = res.user_mention.empty() ? "`" + res.query + "`" : res.user_mention;
                                         desc += target_label + " ,";
                                         if (!res.status_err.empty()) {
-                                            desc += " ⚠️ " + res.status_err + "\n";
+                                            desc += " " + bronx::emj_warning + " " + res.status_err + "\n";
                                         } else {
                                             bool changed = false;
                                             for (const auto& r_name : res.removed_roles) {

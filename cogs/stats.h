@@ -117,7 +117,7 @@ public:
                         return;
                     } else {
                         if (msg.server_id.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ Channel-level stats can only be viewed inside a server.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Channel-level stats can only be viewed inside a server.");
                             return;
                         }
                         
@@ -162,7 +162,7 @@ public:
                 bool is_global_arg = (clean_args.size() > 1 && (clean_args[1] == "g" || clean_args[1] == "global" || clean_args[1] == "all"));
 
                 if (msg.server_id.empty() && !clean_args.empty() && clean_args[0] != "top" && clean_args[0] != "t" && !(is_cmd_arg && is_global_arg)) {
-                    bot.send_message(msg.channel_id, "⚠️ Non-global stats commands can only be used inside a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Non-global stats commands can only be used inside a server.");
                     return;
                 }
 
@@ -222,7 +222,7 @@ public:
                 if (sub == "chart") {
 #ifdef BRONX_CHART_ENABLED
                     if (msg.server_id.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ chart stats can only be used inside a server.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " chart stats can only be used inside a server.");
                         return;
                     }
 
@@ -311,13 +311,13 @@ public:
                                 }
 
                                 if (png.empty()) {
-                                    bot.edit_message(channel_id_copy, status_msg_id, "⚠️ chart rendering failed.");
+                                    bot.edit_message(channel_id_copy, status_msg_id, "" + bronx::emj_warning + " chart rendering failed.");
                                     return;
                                 }
 
                                 std::string autumn_id = chart::upload_chart(bot, png, chart_type + "_chart.png");
                                 if (autumn_id.empty()) {
-                                    bot.edit_message(channel_id_copy, status_msg_id, "⚠️ failed to upload chart to autumn.");
+                                    bot.edit_message(channel_id_copy, status_msg_id, "" + bronx::emj_warning + " failed to upload chart to autumn.");
                                     return;
                                 }
 
@@ -332,14 +332,14 @@ public:
 
                             } catch (const std::exception& ex) {
                                 std::cerr << "[bronx chart] exception: " << ex.what() << "\n";
-                                bot.edit_message(channel_id_copy, status_msg_id, "⚠️ chart error: " + std::string(ex.what()));
+                                bot.edit_message(channel_id_copy, status_msg_id, "" + bronx::emj_warning + " chart error: " + std::string(ex.what()));
                             }
                         }).detach();
                     });
                     return;
 #else
                     bot.send_message(msg.channel_id,
-                        "⚠️ chart rendering is not enabled in this build (Cairo not found at compile time).");
+                        "" + bronx::emj_warning + " chart rendering is not enabled in this build (Cairo not found at compile time).");
                     return;
 #endif
                 }
@@ -407,7 +407,7 @@ public:
                 }
                 else if (sub == "top") {
                     if (msg.server_id.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ run this inside a server, or use `.stats top g` for the global leaderboard.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " run this inside a server, or use `.stats top g` for the global leaderboard.");
                         return;
                     }
 
@@ -494,7 +494,7 @@ public:
                                 payload.add_embed(embed);
                                 bot.edit_message(channel_id_copy, status_msg_id, payload);
                             } catch (const std::exception& ex) {
-                                bot.edit_message(channel_id_copy, status_msg_id, "⚠️ members chart error: " + std::string(ex.what()));
+                                bot.edit_message(channel_id_copy, status_msg_id, "" + bronx::emj_warning + " members chart error: " + std::string(ex.what()));
                             }
                         }).detach();
                     });
@@ -560,7 +560,7 @@ public:
                                 payload.add_embed(embed);
                                 bot.edit_message(channel_id_copy, status_msg_id, payload);
                             } catch (const std::exception& ex) {
-                                bot.edit_message(channel_id_copy, status_msg_id, "⚠️ channels chart error: " + std::string(ex.what()));
+                                bot.edit_message(channel_id_copy, status_msg_id, "" + bronx::emj_warning + " channels chart error: " + std::string(ex.what()));
                             }
                         }).detach();
                     });
@@ -582,7 +582,7 @@ public:
                 else if (sub == "commands") {
 #ifdef BRONX_CHART_ENABLED
                     if (!global_top && msg.server_id.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ Server command stats can only be used inside a server. Use `.stats command g` for global command stats.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Server command stats can only be used inside a server. Use `.stats command g` for global command stats.");
                         return;
                     }
 
@@ -646,14 +646,14 @@ public:
                                 payload.add_embed(embed);
                                 bot.edit_message(channel_id_copy, status_msg_id, payload);
                             } catch (const std::exception& ex) {
-                                bot.edit_message(channel_id_copy, status_msg_id, "⚠️ commands chart error: " + std::string(ex.what()));
+                                bot.edit_message(channel_id_copy, status_msg_id, "" + bronx::emj_warning + " commands chart error: " + std::string(ex.what()));
                             }
                         }).detach();
                     });
                     return;
 #else
                     if (!global_top && msg.server_id.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ Server command stats can only be used inside a server. Use `.stats command g` for global command stats.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Server command stats can only be used inside a server. Use `.stats command g` for global command stats.");
                         return;
                     }
 

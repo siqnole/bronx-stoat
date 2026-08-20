@@ -190,7 +190,7 @@ private:
                     // Delete the user's triggering reply to keep the chat extremely clean
                     bot.delete_message(channel_id, reply->id);
                 } else {
-                    bot.send_message(channel_id, "❌ <@" + reply->author.id + "> tried to claim but typed the wrong word! The opportunity was lost.", [&bot, channel_id](auto prompt, bool ok) {
+                    bot.send_message(channel_id, "" + bronx::emj_no + " <@" + reply->author.id + "> tried to claim but typed the wrong word! The opportunity was lost.", [&bot, channel_id](auto prompt, bool ok) {
                         if (ok) {
                             std::thread([&bot, channel_id, prompt]() {
                                 std::this_thread::sleep_for(std::chrono::seconds(5));
@@ -254,7 +254,7 @@ public:
             {},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (!bot.is_owner(msg.author.id)) {
-                    bot.send_message(msg.channel_id, "❌ Only the bot owner can manually trigger QTEs.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Only the bot owner can manually trigger QTEs.");
                     return;
                 }
 

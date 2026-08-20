@@ -197,7 +197,7 @@ public:
         }
 
         std::string bet_str = (bet > 0) ? "**" + std::to_string(bet) + "** coins" : "fun (no bet)";
-        std::string invite_msg = "<@" + target_id + ">, you have been challenged to a **" + game_type + "** duel by <@" + challenger_id + "> for " + bet_str + "!\nReact with ✅ to accept or ❌ to decline.";
+        std::string invite_msg = "<@" + target_id + ">, you have been challenged to a **" + game_type + "** duel by <@" + challenger_id + "> for " + bet_str + "!\nReact with " + bronx::emj_yes + " to accept or " + bronx::emj_no + " to decline.";
         
         bot.send_message(channel_id, invite_msg, [this, game_type, challenger_id, target_id, channel_id, bet, &bot](stoatpp::models::Message res, bool success) {
             if (success) {
@@ -216,9 +216,9 @@ public:
                     active_challenges_[res.id] = challenge;
                 }
                 
-                bot.react_to_message(channel_id, res.id, "✅");
+                bot.react_to_message(channel_id, res.id, "" + bronx::emj_yes + "");
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                bot.react_to_message(channel_id, res.id, "❌");
+                bot.react_to_message(channel_id, res.id, "" + bronx::emj_no + "");
                 
                 std::thread([this, &bot, channel_id, msg_id = res.id]() {
                     std::this_thread::sleep_for(std::chrono::seconds(60));
@@ -331,7 +331,7 @@ public:
             
             if (content == "spin") {
                 if ((active_player == p1 && p1_spun) || (active_player == p2 && p2_spun)) {
-                    bot.send_message(challenge.channel_id, "❌ You have already spun the cylinder once! You must shoot.");
+                    bot.send_message(challenge.channel_id, "" + bronx::emj_no + " You have already spun the cylinder once! You must shoot.");
                     continue;
                 }
                 
@@ -362,7 +362,7 @@ public:
                     std::swap(active_player, waiting_player);
                 }
             } else {
-                bot.send_message(challenge.channel_id, "❌ Invalid input. Please type `shoot` or `spin`.");
+                bot.send_message(challenge.channel_id, "" + bronx::emj_no + " Invalid input. Please type `shoot` or `spin`.");
             }
         }
     }
@@ -413,7 +413,7 @@ public:
                     
                     if (content == "spin") {
                         if (spun) {
-                            bot.send_message(msg.channel_id, "❌ You have already spun once! You must shoot.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " You have already spun once! You must shoot.");
                             continue;
                         }
                         spun = true;
@@ -433,7 +433,7 @@ public:
                             active_player = "bot";
                         }
                     } else {
-                        bot.send_message(msg.channel_id, "❌ Invalid input. Please type `shoot` or `spin`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid input. Please type `shoot` or `spin`.");
                     }
                 } else {
                     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -476,13 +476,13 @@ public:
                 std::lock_guard<std::mutex> lock(duel_mutex_);
                 auto it = active_challenges_.find(e.id);
                 if (it != active_challenges_.end() && e.user_id == it->second.target_id) {
-                    if (e.emoji_id == "✅") {
+                    if (e.emoji_id == "" + bronx::emj_yes + "") {
                         it->second.accepted = true;
                         challenge = it->second;
                         active_challenges_.erase(it);
                         found = true;
                         accepted = true;
-                    } else if (e.emoji_id == "❌") {
+                    } else if (e.emoji_id == "" + bronx::emj_no + "") {
                         challenge = it->second;
                         active_challenges_.erase(it);
                         found = true;
@@ -493,10 +493,10 @@ public:
             
             if (found) {
                 if (accepted) {
-                    bot.send_message(challenge.channel_id, "✅ <@" + challenge.target_id + "> accepted the challenge!");
+                    bot.send_message(challenge.channel_id, "" + bronx::emj_yes + " <@" + challenge.target_id + "> accepted the challenge!");
                     start_duel_game(bot, challenge);
                 } else {
-                    bot.send_message(challenge.channel_id, "❌ <@" + challenge.target_id + "> declined the challenge.");
+                    bot.send_message(challenge.channel_id, "" + bronx::emj_no + " <@" + challenge.target_id + "> declined the challenge.");
                 }
             }
 
@@ -506,7 +506,7 @@ public:
                 for (auto& kv : active_tea_games_) {
                     auto& game = kv.second;
                     if (!game.active && game.message_id == e.id && game.channel_id == e.channel_id) {
-                        if (e.emoji_id == "✅") {
+                        if (e.emoji_id == "" + bronx::emj_yes + "") {
                             if (std::find(game.players.begin(), game.players.end(), e.user_id) == game.players.end()) {
                                 game.players.push_back(e.user_id);
                                 bot.send_message(game.channel_id, "<@" + e.user_id + "> joined the tea party! (" + std::to_string(game.players.size()) + " players)");
@@ -531,7 +531,7 @@ public:
                         std::transform(content.begin(), content.end(), content.begin(), ::tolower);
                         if (content == ".cancel") {
                             it->second.cancelled = true;
-                            bot.send_message(msg.channel_id, "❌ The tea game lobby was cancelled by the host.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " The tea game lobby was cancelled by the host.");
                             active_tea_games_.erase(it);
                             return;
                         }
@@ -553,11 +553,11 @@ public:
                                 std::string pattern = (game.type == "blacktea") ? game.global_pattern : game.patterns[uid];
                                 if (cleaned.find(pattern) != std::string::npos) {
                                     if (game.used_words.count(cleaned)) {
-                                        bot.send_reply(msg, "❌ That word was already used in this game!");
+                                        bot.send_reply(msg, "" + bronx::emj_no + " That word was already used in this game!");
                                     } else {
                                         game.used_words.insert(cleaned);
                                         game.responded[uid] = true;
-                                        bot.react_to_message(msg.channel_id, msg.id, "✅");
+                                        bot.react_to_message(msg.channel_id, msg.id, "" + bronx::emj_yes + "");
                                     }
                                 }
                             }
@@ -823,7 +823,7 @@ public:
                             bot.send_message(msg.channel_id, "🎉 Correct! You unscrambled the word and got **" + std::to_string(random_reward) + "** coins for fun!");
                         }
                     } else {
-                        bot.send_message(msg.channel_id, "❌ Time's up or incorrect! The word was **" + entry.word + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Time's up or incorrect! The word was **" + entry.word + "**.");
                     }
                 }).detach();
             },
@@ -945,7 +945,7 @@ public:
                 {
                     std::lock_guard<std::mutex> lock(wordle_mutex_);
                     if (active_wordle_games_.count(msg.channel_id)) {
-                        bot.send_message(msg.channel_id, "⚠️ There is already an active Wordle game in this channel. Finish it first!");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " There is already an active Wordle game in this channel. Finish it first!");
                         return;
                     }
                 }
@@ -1014,7 +1014,7 @@ public:
                 }
             } else {
                 std::string loss_desc = (b.bet_amount > 0) ? "**" + std::to_string(b.bet_amount) + "** coins" : "for fun";
-                roll_desc += "❌ " + player_mention + " lost " + loss_desc + ".\n";
+                roll_desc += "" + bronx::emj_no + " " + player_mention + " lost " + loss_desc + ".\n";
             }
         }
 
@@ -1038,7 +1038,7 @@ public:
         game.active = false;
 
         std::string title = (type == "blacktea") ? "☕ blacktea - lobby" : "🍵 whitetea - lobby";
-        std::string desc = "Waiting for players! React with ✅ to join this tea party.\n"
+        std::string desc = "Waiting for players! React with " + bronx::emj_yes + " to join this tea party.\n"
                            "Need at least 3 players. Lobby closes in 30 seconds.\n"
                            "Host can type `.cancel` in chat to cancel.";
 
@@ -1048,7 +1048,7 @@ public:
                     std::lock_guard<std::mutex> lock(tea_mutex_);
                     active_tea_games_[channel_id].message_id = res.id;
                 }
-                bot.react_to_message(channel_id, res.id, "✅");
+                bot.react_to_message(channel_id, res.id, "" + bronx::emj_yes + "");
 
                 std::thread([this, &bot, channel_id]() {
                     std::this_thread::sleep_for(std::chrono::seconds(30));
@@ -1069,7 +1069,7 @@ public:
             if (it->second.cancelled) return;
             
             if (it->second.players.size() < 3) {
-                bot.send_message(channel_id, "❌ Not enough players joined (minimum 3 required). Lobby cancelled.");
+                bot.send_message(channel_id, "" + bronx::emj_no + " Not enough players joined (minimum 3 required). Lobby cancelled.");
                 active_tea_games_.erase(it);
                 return;
             }
@@ -1336,7 +1336,7 @@ public:
     void run_wordle(stoatpp::cluster& bot, const stoatpp::events::Message& msg, int word_len) {
         std::string secret = pick_wordle_word(word_len);
         if (secret.empty()) {
-            bot.send_message(msg.channel_id, "⚠️ Could not find a word of length " + std::to_string(word_len) + ". Try 5.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Could not find a word of length " + std::to_string(word_len) + ". Try 5.");
             return;
         }
 
@@ -1437,7 +1437,7 @@ public:
                 std::string raw = sanitize_word(response->content);
                 if ((int)raw.size() != word_len) {
                     bot.send_message(msg.channel_id,
-                        "⚠️ Your guess must be exactly " + std::to_string(word_len) + " letters. Try again!",
+                        "" + bronx::emj_warning + " Your guess must be exactly " + std::to_string(word_len) + " letters. Try again!",
                         [&bot, cid = msg.channel_id](stoatpp::models::Message m, bool ok) {
                             if (ok) {
                                 std::this_thread::sleep_for(std::chrono::seconds(4));
@@ -1452,7 +1452,7 @@ public:
                 for (char c : raw) { if (!std::isalpha((unsigned char)c)) { all_alpha = false; break; } }
                 if (!all_alpha) {
                     bot.send_message(msg.channel_id,
-                        "⚠️ Guess must contain only letters. Try again!",
+                        "" + bronx::emj_warning + " Guess must contain only letters. Try again!",
                         [&bot, cid = msg.channel_id](stoatpp::models::Message m, bool ok) {
                             if (ok) {
                                 std::this_thread::sleep_for(std::chrono::seconds(4));

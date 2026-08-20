@@ -1104,7 +1104,7 @@ public:
     } else {
       for (const auto *f : tier_fish) {
         bool has = caught_ids.count(f->id) > 0;
-        desc += (has ? "✅ " : "🔒 ");
+        desc += (has ? "" + bronx::emj_yes + " " : "🔒 ");
         desc += "**" + f->name + "** (`" + f->id + "`)";        
         if (has) {
           desc += " — " + format_double(f->base_weight_min, 1) + "kg-" +
@@ -1119,7 +1119,7 @@ public:
     }
     desc += "\n*Page " + std::to_string(page_idx + 1) +
             " of 10 | React ◀ ▶ to browse rarities*\n"
-            "*✅ = caught at least once  |  🔒 = not yet caught*";
+            "*" + bronx::emj_yes + " = caught at least once  |  🔒 = not yet caught*";
     embed.set_description(desc);
     payload.embeds.push_back(embed.to_json());
     return payload;
@@ -1595,7 +1595,7 @@ public:
              return;
            }
 
-           bot.send_message(msg.channel_id, "❌ You do not own a rod or bait of type `" + target + "`.");
+           bot.send_message(msg.channel_id, "" + bronx::emj_no + " You do not own a rod or bait of type `" + target + "`.");
          },
          "Economy"});
 
@@ -1645,23 +1645,23 @@ public:
              if (args[0] == "equip" || args[0] == "use") {
                if (args.size() < 2) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Usage: `.pets equip <pet_id>`");
+                                  "" + bronx::emj_no + " Usage: `.pets equip <pet_id>`");
                  return;
                }
                if (!g_db->has_user_pet(msg.author.id, args[1])) {
                  bot.send_message(msg.channel_id,
-                                  "❌ You do not own that pet!");
+                                  "" + bronx::emj_no + " You do not own that pet!");
                  return;
                }
                u.active_pet_id = args[1];
                g_db->update_fishing_user(u);
                bot.send_message(msg.channel_id,
-                                "✅ Equipped pet companion `" + args[1] + "`!");
+                                "" + bronx::emj_yes + " Equipped pet companion `" + args[1] + "`!");
                return;
              } else if (args[0] == "unequip") {
                u.active_pet_id = "none";
                g_db->update_fishing_user(u);
-               bot.send_message(msg.channel_id, "✅ Unequipped pet companion.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Unequipped pet companion.");
                return;
              }
            }
@@ -1692,14 +1692,14 @@ public:
              if (pdef) {
                if (u.event_tokens < pdef->event_token_cost) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Requires " +
+                                  "" + bronx::emj_no + " Requires " +
                                       std::to_string(pdef->event_token_cost) +
                                       " Event Tokens 🎫.");
                  return;
                }
                if (g_db->has_user_pet(msg.author.id, item_target)) {
                  bot.send_message(msg.channel_id,
-                                  "❌ You already own this pet!");
+                                  "" + bronx::emj_no + " You already own this pet!");
                  return;
                }
                u.event_tokens -= pdef->event_token_cost;
@@ -1713,7 +1713,7 @@ public:
              if (item_target == "perm_luck") {
                if (u.event_tokens < 100) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Costs 100 Event Tokens 🎫.");
+                                  "" + bronx::emj_no + " Costs 100 Event Tokens 🎫.");
                  return;
                }
                u.event_tokens -= 100;
@@ -1725,7 +1725,7 @@ public:
              } else if (item_target == "perm_value") {
                if (u.event_tokens < 150) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Costs 150 Event Tokens 🎫.");
+                                  "" + bronx::emj_no + " Costs 150 Event Tokens 🎫.");
                  return;
                }
                u.event_tokens -= 150;
@@ -1738,7 +1738,7 @@ public:
              } else if (item_target == "perm_weight") {
                if (u.event_tokens < 150) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Costs 150 Event Tokens 🎫.");
+                                  "" + bronx::emj_no + " Costs 150 Event Tokens 🎫.");
                  return;
                }
                u.event_tokens -= 150;
@@ -1751,7 +1751,7 @@ public:
              } else if (item_target == "perm_cd") {
                if (u.event_tokens < 200) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Costs 200 Event Tokens 🎫.");
+                                  "" + bronx::emj_no + " Costs 200 Event Tokens 🎫.");
                  return;
                }
                u.event_tokens -= 200;
@@ -1764,7 +1764,7 @@ public:
              } else if (item_target == "summer_sunfish") {
                if (u.event_tokens < 30) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Costs 30 Event Tokens 🎫.");
+                                  "" + bronx::emj_no + " Costs 30 Event Tokens 🎫.");
                  return;
                }
                u.event_tokens -= 30;
@@ -1778,7 +1778,7 @@ public:
                return;
              }
              bot.send_message(msg.channel_id,
-                              "❌ Unknown event item `" + item_target + "`.");
+                              "" + bronx::emj_no + " Unknown event item `" + item_target + "`.");
              return;
            }
            auto payload = render_event_shop_page(msg.author.id);
@@ -1932,10 +1932,10 @@ public:
               equip_sessions_.erase(e.id);
               lock.unlock();
 
-              bot.send_message(e.channel_id, "✅ <@" + author_id + "> successfully equipped **" + item_name + "**!");
+              bot.send_message(e.channel_id, "" + bronx::emj_yes + " <@" + author_id + "> successfully equipped **" + item_name + "**!");
               
               stoatpp::models::MessagePayload clear_payload;
-              clear_payload.content = "✅ Equipped **" + item_name + "**!";
+              clear_payload.content = "" + bronx::emj_yes + " Equipped **" + item_name + "**!";
               bot.edit_message(e.channel_id, e.id, clear_payload);
               return;
             }
@@ -1956,7 +1956,7 @@ public:
          [this](stoatpp::cluster &bot, const stoatpp::events::Message &msg,
                 const std::vector<std::string> &args) {
            if (!g_db) {
-             bot.send_message(msg.channel_id, "❌ Database connection unavailable.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_no + " Database connection unavailable.");
              return;
            }
 
@@ -2096,7 +2096,7 @@ public:
                response += "\n💰 **Total Claimed**: `" + std::to_string(total_coins_gained) + " coins` and `" +
                            std::to_string(total_tokens_gained) + " Prestige Tokens`!";
              } else {
-               response += "❌ No new rewards to claim. Make sure you've caught all fish in a rarity tier to unlock its reward! (Check status using `.fishdex`)";
+               response += "" + bronx::emj_no + " No new rewards to claim. Make sure you've caught all fish in a rarity tier to unlock its reward! (Check status using `.fishdex`)";
              }
 
              bot.send_message(msg.channel_id, response);
@@ -2318,7 +2318,7 @@ public:
 
              // Minimum / recommended gear requirements
              if (matched_fish->rarity == "Multivertic") {
-               desc += "⚠️ **Special Requirement**: Requires `Multiversal Singularity Rod` or `Multivertic Omnipotent Rod` to catch!\n\n";
+               desc += "" + bronx::emj_warning + " **Special Requirement**: Requires `Multiversal Singularity Rod` or `Multivertic Omnipotent Rod` to catch!\n\n";
              }
 
              // Show catch rates across a few popular baits (using current user gear)
@@ -2374,7 +2374,7 @@ public:
              return;
            }
 
-           bot.send_message(msg.channel_id, "❌ Could not find a fish species or bait matching `" + query + "`.");
+           bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not find a fish species or bait matching `" + query + "`.");
          },
          "Economy"});
 
@@ -2421,7 +2421,7 @@ public:
              int bait_qty = g_db->get_bait_count(msg.author.id, u.bait_id);
              if (bait_qty <= 0) {
                bot.send_message(msg.channel_id,
-                                "❌ You have run out of your active bait (**" +
+                                "" + bronx::emj_no + " You have run out of your active bait (**" +
                                     bait->name +
                                     "**)! Use `.fish bait <bait_id>` or buy "
                                     "more in `.fish shop`.");
@@ -2766,7 +2766,7 @@ public:
 
               if (has_prestige_fish) {
                 bot.send_message(msg.channel_id,
-                                 "⚠️ **Warning**: You have a fish required for your next prestige level in your bucket (**" + prestige_fish_name + "**)! "
+                                 "" + bronx::emj_warning + " **Warning**: You have a fish required for your next prestige level in your bucket (**" + prestige_fish_name + "**)! "
                                  "Do you still want to sell it? Type `yes` to confirm and sell all/selected, or `no` to cancel.");
 
                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [this, &bot, msg, args](std::optional<stoatpp::events::Message> reply) {
@@ -2780,7 +2780,7 @@ public:
                   if (ans == "yes" || ans == "y" || ans == "confirm") {
                     execute_sell(bot, msg, args);
                   } else {
-                    bot.send_message(msg.channel_id, "❌ Sale cancelled.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Sale cancelled.");
                   }
                 });
                 return;
@@ -2850,7 +2850,7 @@ public:
 
                  if (u.fish_prestige < r.req_prestige) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Requires Fishing Prestige **" +
+                                    "" + bronx::emj_no + " Requires Fishing Prestige **" +
                                         std::to_string(r.req_prestige) + "**.");
                    return;
                  }
@@ -2858,7 +2858,7 @@ public:
                  if (r.cost > 0) {
                    if (eco.wallet < r.cost) {
                      bot.send_message(msg.channel_id,
-                                      "❌ You do not have enough coins (" +
+                                      "" + bronx::emj_no + " You do not have enough coins (" +
                                           std::to_string(r.cost) +
                                           " required).");
                      return;
@@ -2868,7 +2868,7 @@ public:
                    if (u.prestige_tokens < r.token_cost) {
                      bot.send_message(
                          msg.channel_id,
-                         "❌ You do not have enough Prestige Tokens (" +
+                         "" + bronx::emj_no + " You do not have enough Prestige Tokens (" +
                              std::to_string(r.token_cost) + " required).");
                      return;
                    }
@@ -2891,7 +2891,7 @@ public:
                if (b.id == item_id) {
                  if (u.fish_prestige < b.req_prestige) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Requires Fishing Prestige **" +
+                                    "" + bronx::emj_no + " Requires Fishing Prestige **" +
                                         std::to_string(b.req_prestige) + "**.");
                    return;
                  }
@@ -2903,7 +2903,7 @@ public:
                  if (total_coins > 0) {
                    if (eco.wallet < total_coins) {
                      bot.send_message(msg.channel_id,
-                                      "❌ You do not have enough coins (" +
+                                      "" + bronx::emj_no + " You do not have enough coins (" +
                                           std::to_string(total_coins) +
                                           " required).");
                      return;
@@ -2913,7 +2913,7 @@ public:
                    if (u.prestige_tokens < total_tokens) {
                      bot.send_message(
                          msg.channel_id,
-                         "❌ You do not have enough Prestige Tokens (" +
+                         "" + bronx::emj_no + " You do not have enough Prestige Tokens (" +
                              std::to_string(total_tokens) + " required).");
                      return;
                    }
@@ -2936,7 +2936,7 @@ public:
                  if (ef.cost > 0) {
                    if (eco.wallet < ef.cost) {
                      bot.send_message(msg.channel_id,
-                                      "❌ You do not have enough coins (" +
+                                      "" + bronx::emj_no + " You do not have enough coins (" +
                                           std::to_string(ef.cost) +
                                           " required).");
                      return;
@@ -2946,7 +2946,7 @@ public:
                    if (u.prestige_tokens < ef.token_cost) {
                      bot.send_message(
                          msg.channel_id,
-                         "❌ You do not have enough Prestige Tokens (" +
+                         "" + bronx::emj_no + " You do not have enough Prestige Tokens (" +
                              std::to_string(ef.token_cost) + " required).");
                      return;
                    }
@@ -2963,7 +2963,7 @@ public:
              }
 
              bot.send_message(msg.channel_id,
-                              "❌ Unknown item ID `" + raw_item_id +
+                              "" + bronx::emj_no + " Unknown item ID `" + raw_item_id +
                                   "`. Check `.fish shop` for item IDs.");
              return;
            }
@@ -2980,7 +2980,7 @@ public:
 
              if (!g_db->has_unlocked_rod(msg.author.id, target_rod)) {
                bot.send_message(msg.channel_id,
-                                "❌ You have not unlocked this rod yet.");
+                                "" + bronx::emj_no + " You have not unlocked this rod yet.");
                return;
              }
              auto u_opt = g_db->get_fishing_user(msg.author.id);
@@ -3015,7 +3015,7 @@ public:
              int qty = g_db->get_bait_count(msg.author.id, target_bait);
              if (qty <= 0) {
                bot.send_message(msg.channel_id,
-                                "❌ You do not own any bait of type `" +
+                                "" + bronx::emj_no + " You do not own any bait of type `" +
                                     target_bait + "`.");
                return;
              }
@@ -3219,7 +3219,7 @@ public:
                if (u.total_catches < req_catches || eco.wallet < req_coins || !has_qualifying_fish) {
                  bot.send_message(
                      msg.channel_id,
-                     "❌ You do not meet the Fishing Prestige requirements.");
+                     "" + bronx::emj_no + " You do not meet the Fishing Prestige requirements.");
                  return;
                }
 
@@ -3242,7 +3242,7 @@ public:
                                       std::to_string(u.fish_prestige * 25) +
                                       "%** across all rods!");
                } else {
-                 bot.send_message(msg.channel_id, "❌ Failed to consume required prestige fish from your bucket.");
+                 bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to consume required prestige fish from your bucket.");
                }
                return;
              }
@@ -3351,7 +3351,7 @@ public:
              if (args.size() >= 2 && (args[1] == "equip" || args[1] == "use")) {
                if (args.size() < 3) {
                  bot.send_message(msg.channel_id,
-                                  "❌ Usage: `.fish pets equip <pet_id>`");
+                                  "" + bronx::emj_no + " Usage: `.fish pets equip <pet_id>`");
                  return;
                }
                auto u_opt = g_db->get_fishing_user(msg.author.id);
@@ -3360,13 +3360,13 @@ public:
                auto u = *u_opt;
                if (!g_db->has_user_pet(msg.author.id, args[2])) {
                  bot.send_message(msg.channel_id,
-                                  "❌ You do not own that pet!");
+                                  "" + bronx::emj_no + " You do not own that pet!");
                  return;
                }
                u.active_pet_id = args[2];
                g_db->update_fishing_user(u);
                bot.send_message(msg.channel_id,
-                                "✅ Equipped pet companion `" + args[2] + "`!");
+                                "" + bronx::emj_yes + " Equipped pet companion `" + args[2] + "`!");
                return;
              } else if (args.size() >= 2 && args[1] == "unequip") {
                auto u_opt = g_db->get_fishing_user(msg.author.id);
@@ -3375,7 +3375,7 @@ public:
                auto u = *u_opt;
                u.active_pet_id = "none";
                g_db->update_fishing_user(u);
-               bot.send_message(msg.channel_id, "✅ Unequipped pet companion.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Unequipped pet companion.");
                return;
              }
              auto payload = render_pets_page(msg.author.id);
@@ -3397,14 +3397,14 @@ public:
                if (pdef) {
                  if (u.event_tokens < pdef->event_token_cost) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Requires " +
+                                    "" + bronx::emj_no + " Requires " +
                                         std::to_string(pdef->event_token_cost) +
                                         " Event Tokens 🎫.");
                    return;
                  }
                  if (g_db->has_user_pet(msg.author.id, item_target)) {
                    bot.send_message(msg.channel_id,
-                                    "❌ You already own this pet!");
+                                    "" + bronx::emj_no + " You already own this pet!");
                    return;
                  }
                  u.event_tokens -= pdef->event_token_cost;
@@ -3418,7 +3418,7 @@ public:
                if (item_target == "perm_luck") {
                  if (u.event_tokens < 100) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Costs 100 Event Tokens 🎫.");
+                                    "" + bronx::emj_no + " Costs 100 Event Tokens 🎫.");
                    return;
                  }
                  u.event_tokens -= 100;
@@ -3431,7 +3431,7 @@ public:
                } else if (item_target == "perm_value") {
                  if (u.event_tokens < 150) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Costs 150 Event Tokens 🎫.");
+                                    "" + bronx::emj_no + " Costs 150 Event Tokens 🎫.");
                    return;
                  }
                  u.event_tokens -= 150;
@@ -3444,7 +3444,7 @@ public:
                } else if (item_target == "perm_weight") {
                  if (u.event_tokens < 150) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Costs 150 Event Tokens 🎫.");
+                                    "" + bronx::emj_no + " Costs 150 Event Tokens 🎫.");
                    return;
                  }
                  u.event_tokens -= 150;
@@ -3457,7 +3457,7 @@ public:
                } else if (item_target == "perm_cd") {
                  if (u.event_tokens < 200) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Costs 200 Event Tokens 🎫.");
+                                    "" + bronx::emj_no + " Costs 200 Event Tokens 🎫.");
                    return;
                  }
                  u.event_tokens -= 200;
@@ -3470,7 +3470,7 @@ public:
                } else if (item_target == "summer_sunfish") {
                  if (u.event_tokens < 30) {
                    bot.send_message(msg.channel_id,
-                                    "❌ Costs 30 Event Tokens 🎫.");
+                                    "" + bronx::emj_no + " Costs 30 Event Tokens 🎫.");
                    return;
                  }
                  u.event_tokens -= 30;
@@ -3484,7 +3484,7 @@ public:
                  return;
                }
                bot.send_message(msg.channel_id,
-                                "❌ Unknown event item `" + item_target + "`.");
+                                "" + bronx::emj_no + " Unknown event item `" + item_target + "`.");
                return;
              }
              auto payload = render_event_shop_page(msg.author.id);
@@ -3495,7 +3495,7 @@ public:
             if (sub == "gift") {
               if (args.size() < 4) {
                 bot.send_message(msg.channel_id,
-                                 "❌ Usage:\n"
+                                 "" + bronx::emj_no + " Usage:\n"
                                  "• `.fish gift <@user> fish <fish_id>`\n"
                                  "• `.fish gift <@user> bait <bait_id> <quantity>`\n"
                                  "• `.fish gift <@user> tokens <quantity>`");
@@ -3508,13 +3508,13 @@ public:
 
               helpers::resolve_user(bot, msg.server_id, target_query, [this, &bot, msg, gift_type, args](stoatpp::models::User target_user, stoatpp::models::Member, bool success) {
                 if (!success) {
-                  bot.send_message(msg.channel_id, "❌ Could not resolve recipient user.");
+                  bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not resolve recipient user.");
                   return;
                 }
 
                 std::string recipient_id = target_user.id;
                 if (recipient_id == msg.author.id) {
-                  bot.send_message(msg.channel_id, "❌ You cannot gift items to yourself!");
+                  bot.send_message(msg.channel_id, "" + bronx::emj_no + " You cannot gift items to yourself!");
                   return;
                 }
 
@@ -3523,7 +3523,7 @@ public:
                   try {
                     fish_id = std::stoull(args[3]);
                   } catch (...) {
-                    bot.send_message(msg.channel_id, "❌ Invalid fish ID. Specify the numeric ID (e.g. from `.fish bucket`).");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid fish ID. Specify the numeric ID (e.g. from `.fish bucket`).");
                     return;
                   }
 
@@ -3540,14 +3540,14 @@ public:
                   }
 
                   if (!owns_fish) {
-                    bot.send_message(msg.channel_id, "❌ You do not own a fish with ID #" + std::to_string(fish_id) + " in your bucket.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " You do not own a fish with ID #" + std::to_string(fish_id) + " in your bucket.");
                     return;
                   }
 
                   if (g_db->transfer_fish(fish_id, msg.author.id, recipient_id)) {
                     bot.send_message(msg.channel_id, "🎁 Successfully gifted **" + fish_desc + "** to <@" + recipient_id + ">!");
                   } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to transfer fish.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to transfer fish.");
                   }
                   return;
                 }
@@ -3565,13 +3565,13 @@ public:
                     } catch (...) {}
                   }
                   if (quantity <= 0) {
-                    bot.send_message(msg.channel_id, "❌ Quantity must be a positive number.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Quantity must be a positive number.");
                     return;
                   }
 
                   int owned_qty = g_db->get_bait_count(msg.author.id, target_bait);
                   if (owned_qty < quantity) {
-                    bot.send_message(msg.channel_id, "❌ You only have **" + std::to_string(owned_qty) + "** packs of `" + target_bait + "` bait.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " You only have **" + std::to_string(owned_qty) + "** packs of `" + target_bait + "` bait.");
                     return;
                   }
 
@@ -3580,7 +3580,7 @@ public:
                       g_db->add_bait(recipient_id, target_bait, quantity)) {
                     bot.send_message(msg.channel_id, "🎁 Successfully gifted **" + std::to_string(quantity) + "x " + def->name + "** packs to <@" + recipient_id + ">!");
                   } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to transfer bait.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to transfer bait.");
                   }
                   return;
                 }
@@ -3590,18 +3590,18 @@ public:
                   try {
                     quantity = std::stoi(args[3]);
                   } catch (...) {
-                    bot.send_message(msg.channel_id, "❌ Invalid token quantity.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Invalid token quantity.");
                     return;
                   }
                   if (quantity <= 0) {
-                    bot.send_message(msg.channel_id, "❌ Quantity must be a positive number.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Quantity must be a positive number.");
                     return;
                   }
 
                   auto sender_opt = g_db->get_fishing_user(msg.author.id);
                   if (!sender_opt || sender_opt->prestige_tokens < quantity) {
                     int owned = sender_opt ? sender_opt->prestige_tokens : 0;
-                    bot.send_message(msg.channel_id, "❌ You only have **" + std::to_string(owned) + "** Prestige Tokens.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " You only have **" + std::to_string(owned) + "** Prestige Tokens.");
                     return;
                   }
 
@@ -3620,12 +3620,12 @@ public:
 
                     bot.send_message(msg.channel_id, "🎁 Successfully gifted **" + std::to_string(quantity) + " Prestige Tokens** 🪙 to <@" + recipient_id + ">!");
                   } else {
-                    bot.send_message(msg.channel_id, "❌ Failed to resolve recipient's fishing profile.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Failed to resolve recipient's fishing profile.");
                   }
                   return;
                 }
 
-                bot.send_message(msg.channel_id, "❌ Unknown gift type. Choose from `fish`, `bait`, or `tokens`.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Unknown gift type. Choose from `fish`, `bait`, or `tokens`.");
               });
               return;
             }

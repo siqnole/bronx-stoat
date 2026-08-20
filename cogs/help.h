@@ -149,7 +149,7 @@ public:
                                 return;
                             }
 
-                            bot.send_message(msg.channel_id, "⚠️ command or cog `" + args[0] + "` not found. type `" + prefix + "help` for the full list.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " command or cog `" + args[0] + "` not found. type `" + prefix + "help` for the full list.");
                             return;
                         }
 
@@ -159,7 +159,7 @@ public:
                             std::transform(cmd_name.begin(), cmd_name.end(), cmd_name.begin(), [](unsigned char c) { return std::tolower(c); });
                             std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), [](unsigned char c) { return std::tolower(c); });
                             if (g_db->is_disabled(msg.server_id, cmd_name, mod_name)) {
-                                bot.send_message(msg.channel_id, "⚠️ command `" + matched_cmd->name + "` is currently disabled in this server.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " command `" + matched_cmd->name + "` is currently disabled in this server.");
                                 return;
                             }
                         }

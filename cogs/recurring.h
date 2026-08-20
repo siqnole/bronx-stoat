@@ -367,17 +367,17 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling recurse...\n";
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                     return;
                 }
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
                 bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, args](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                         return;
                     }
 
@@ -386,7 +386,7 @@ public:
                     // ---------- EXAMPLE (owner only) ----------
                     if (!args.empty() && args[0] == "example") {
                         if (!is_bot_owner(bot, msg.author.id)) {
-                            bot.send_message(msg.channel_id, "⚠️ The `example` subcommand is only available to the bot owner.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " The `example` subcommand is only available to the bot owner.");
                             return;
                         }
                         // Build and post the full diagnostics example to the current channel
@@ -411,14 +411,14 @@ public:
                         emb["color"] = "#5865f2";
                         ex.embed_json = emb.dump();
                         send_recurring(bot, ex, msg.channel_id, [&bot, msg](bool ok) {
-                            if (!ok) bot.send_message(msg.channel_id, "⚠️ Failed to send example embed.");
+                            if (!ok) bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to send example embed.");
                         });
                         return;
                     }
 
                     // All other subcommands require trusted/admin permission
                     if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Permission error: you need Manage Server permission to configure recurring messages.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need Manage Server permission to configure recurring messages.");
                         return;
                     }
 
@@ -453,13 +453,13 @@ public:
                         // Capacity check
                         int cur_count = g_db->count_recurring_for_server(msg.server_id);
                         if (cur_count >= 10) {
-                            bot.send_message(msg.channel_id, "⚠️ This server already has the maximum of **10** recurring messages. Remove one before adding another.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This server already has the maximum of **10** recurring messages. Remove one before adding another.");
                             return;
                         }
 
                         std::string rm_name = args[1];
                         if (rm_name.length() > 100) {
-                            bot.send_message(msg.channel_id, "⚠️ Name must be 100 characters or fewer.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Name must be 100 characters or fewer.");
                             return;
                         }
 
@@ -474,18 +474,18 @@ public:
 
                         // Check channel not already occupied
                         if (g_db->recurring_channel_occupied(target_channel)) {
-                            bot.send_message(msg.channel_id, "⚠️ Channel <#" + target_channel + "> already has a recurring message configured. Each channel can only have one.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Channel <#" + target_channel + "> already has a recurring message configured. Each channel can only have one.");
                             return;
                         }
 
                         // Parse interval
                         uint64_t interval_sec = parse_duration(args[3]);
                         if (interval_sec == 0) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid interval format. Examples: `5m`, `1h30m`, `2d`");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid interval format. Examples: `5m`, `1h30m`, `2d`");
                             return;
                         }
                         if (interval_sec < 300) {
-                            bot.send_message(msg.channel_id, "⚠️ Minimum interval is **5 minutes**. Please use a longer interval.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Minimum interval is **5 minutes**. Please use a longer interval.");
                             return;
                         }
 
@@ -500,9 +500,9 @@ public:
                                 if (!rep1) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
                                 std::string type_resp = rep1->content;
                                 std::transform(type_resp.begin(), type_resp.end(), type_resp.begin(), ::tolower);
-                                if (type_resp == "cancel") { bot.send_message(msg.channel_id, "🚫 Setup canceled."); return; }
+                                if (type_resp == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled."); return; }
                                 if (type_resp != "text" && type_resp != "embed") {
-                                    bot.send_message(msg.channel_id, "⚠️ Invalid type (must be `text` or `embed`). Setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type (must be `text` or `embed`). Setup canceled.");
                                     return;
                                 }
 
@@ -516,7 +516,7 @@ public:
                                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(120),
                                         [&bot, msg, rm_name, target_channel, interval_sec, is_owner, type_resp](std::optional<stoatpp::events::Message> rep2) {
                                             if (!rep2) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
-                                            if (rep2->content == "cancel") { bot.send_message(msg.channel_id, "🚫 Setup canceled."); return; }
+                                            if (rep2->content == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled."); return; }
                                             Database::RecurringMessage rm;
                                             rm.server_id        = msg.server_id;
                                             rm.channel_id       = target_channel;
@@ -527,10 +527,10 @@ public:
                                             rm.owner_tokens     = is_owner;
                                             if (g_db->add_recurring_message(rm)) {
                                                 bot.send_message(msg.channel_id,
-                                                    "✅ **Recurring message \"" + rm_name + "\" created!**\n"
+                                                    "" + bronx::emj_yes + " **Recurring message \"" + rm_name + "\" created!**\n"
                                                     "It will post to <#" + target_channel + "> every **" + format_interval(interval_sec) + "** (ID: `" + std::to_string(rm.id) + "`).");
                                             } else {
-                                                bot.send_message(msg.channel_id, "⚠️ Failed to save recurring message (channel may already be in use).");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save recurring message (channel may already be in use).");
                                             }
                                         });
                                     return;
@@ -546,7 +546,7 @@ public:
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(120),
                                     [&bot, msg, rm_name, target_channel, interval_sec, is_owner](std::optional<stoatpp::events::Message> rep2) {
                                         if (!rep2) { bot.send_message(msg.channel_id, "⏱️ Setup timed out."); return; }
-                                        if (rep2->content == "cancel") { bot.send_message(msg.channel_id, "🚫 Setup canceled."); return; }
+                                        if (rep2->content == "cancel") { bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled."); return; }
 
                                         auto pairs = parse_pairs(rep2->content);
                                         nlohmann::json emb = nlohmann::json::object();
@@ -567,10 +567,10 @@ public:
                                         rm.owner_tokens     = is_owner;
                                         if (g_db->add_recurring_message(rm)) {
                                             bot.send_message(msg.channel_id,
-                                                "✅ **Recurring embed message \"" + rm_name + "\" created!**\n"
+                                                "" + bronx::emj_yes + " **Recurring embed message \"" + rm_name + "\" created!**\n"
                                                 "It will post to <#" + target_channel + "> every **" + format_interval(interval_sec) + "** (ID: `" + std::to_string(rm.id) + "`).");
                                         } else {
-                                            bot.send_message(msg.channel_id, "⚠️ Failed to save recurring message (channel may already be in use).");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save recurring message (channel may already be in use).");
                                         }
                                     });
                             });
@@ -590,13 +590,13 @@ public:
                         }
                         auto rm_opt = resolve_rm(msg.server_id, query);
                         if (!rm_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ No recurring message named `" + query + "` found on this server.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No recurring message named `" + query + "` found on this server.");
                             return;
                         }
                         if (g_db->remove_recurring_message(rm_opt->id, msg.server_id)) {
-                            bot.send_message(msg.channel_id, "✅ Recurring message **\"" + rm_opt->name + "\"** removed.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Recurring message **\"" + rm_opt->name + "\"** removed.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to remove recurring message.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to remove recurring message.");
                         }
                         return;
                     }
@@ -660,9 +660,9 @@ public:
                         // test = preview only, does NOT reset the timer
                         send_recurring(bot, *rm_opt, rm_opt->channel_id, [&bot, msg, rm_opt](bool ok, std::string err) {
                             if (ok) {
-                                bot.send_message(msg.channel_id, "✅ Test message **\"" + rm_opt->name + "\"** sent to <#" + rm_opt->channel_id + "> *(timer unchanged)*.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Test message **\"" + rm_opt->name + "\"** sent to <#" + rm_opt->channel_id + "> *(timer unchanged)*.");
                             } else {
-                                std::string details = "⚠️ Failed to send test message. Check that the bot has permission to post in <#" + rm_opt->channel_id + ">.";
+                                std::string details = "" + bronx::emj_warning + " Failed to send test message. Check that the bot has permission to post in <#" + rm_opt->channel_id + ">.";
                                 if (!err.empty()) details += "\n*Details: " + err + "*";
                                 bot.send_message(msg.channel_id, details);
                             }
@@ -695,10 +695,10 @@ public:
                             if (ok) {
                                 uint64_t next_ts = now_ts + rm_opt->interval_seconds;
                                 bot.send_message(msg.channel_id,
-                                    "✅ Sent **\"" + rm_opt->name + "\"** to <#" + rm_opt->channel_id +
+                                    "" + bronx::emj_yes + " Sent **\"" + rm_opt->name + "\"** to <#" + rm_opt->channel_id +
                                     "> and reset timer. Next post: <t:" + std::to_string(next_ts) + ":R>.");
                             } else {
-                                std::string details = "⚠️ Failed to send message. Timer was still reset.";
+                                std::string details = "" + bronx::emj_warning + " Failed to send message. Timer was still reset.";
                                 if (!err.empty()) details += "\n*Details: " + err + "*";
                                 bot.send_message(msg.channel_id, details);
                             }
@@ -736,7 +736,7 @@ public:
                         }
                         if (!rm_opt) rm_opt = resolve_rm(msg.server_id, args[1]);
                         if (!rm_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ No recurring message named `" + args[1] + "` found on this server.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No recurring message named `" + args[1] + "` found on this server.");
                             return;
                         }
 
@@ -749,7 +749,7 @@ public:
 
                         auto pairs = parse_pairs(pairs_text);
                         if (pairs.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ No valid key:value pairs found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key:value pairs found.");
                             return;
                         }
 
@@ -762,7 +762,7 @@ public:
                         std::vector<std::string> change_notes;
                         for (const auto& [k, v] : pairs) {
                             if (k == "name") {
-                                if (v.length() > 100) { bot.send_message(msg.channel_id, "⚠️ Name must be 100 chars or fewer."); return; }
+                                if (v.length() > 100) { bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Name must be 100 chars or fewer."); return; }
                                 updated.name = v;
                                 change_notes.push_back("name → `" + v + "`");
                             } else if (k == "channel") {
@@ -771,7 +771,7 @@ public:
                                     new_ch = new_ch.substr(2, new_ch.size() - 3);
                                 }
                                 if (new_ch != updated.channel_id && g_db->recurring_channel_occupied(new_ch)) {
-                                    bot.send_message(msg.channel_id, "⚠️ Channel <#" + new_ch + "> already has a recurring message.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Channel <#" + new_ch + "> already has a recurring message.");
                                     return;
                                 }
                                 updated.channel_id = new_ch;
@@ -779,14 +779,14 @@ public:
                             } else if (k == "interval") {
                                 uint64_t sec = parse_duration(v);
                                 if (sec < 300) {
-                                    bot.send_message(msg.channel_id, "⚠️ Minimum interval is 5 minutes.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Minimum interval is 5 minutes.");
                                     return;
                                 }
                                 updated.interval_seconds = sec;
                                 change_notes.push_back("interval → " + format_interval(sec));
                             } else if (k == "type") {
                                 if (v != "text" && v != "embed") {
-                                    bot.send_message(msg.channel_id, "⚠️ Type must be `text` or `embed`.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Type must be `text` or `embed`.");
                                     return;
                                 }
                                 updated.message_type = v;
@@ -811,9 +811,9 @@ public:
                                 if (i) note += ", ";
                                 note += change_notes[i];
                             }
-                            bot.send_message(msg.channel_id, "✅ Updated recurring message **\"" + updated.name + "\"**: " + note + ".");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Updated recurring message **\"" + updated.name + "\"**: " + note + ".");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update recurring message.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update recurring message.");
                         }
                         return;
                     }

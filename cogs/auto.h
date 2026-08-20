@@ -465,15 +465,15 @@ public:
             "manage keyword-triggered auto responses (text or embed).",
             "", {"<subcommand>", "[args...]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                if (msg.server_id.empty()) { bot.send_message(msg.channel_id,"⚠️ Server only."); return; }
-                if (!g_db) { bot.send_message(msg.channel_id,"⚠️ Database unavailable."); return; }
+                if (msg.server_id.empty()) { bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Server only."); return; }
+                if (!g_db) { bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Database unavailable."); return; }
                 std::string pfx = msg.prefix.empty()?bot.config().command_prefix:msg.prefix;
 
                 bot.fetch_member(msg.server_id, msg.author.id,
                     [&bot,msg,args,pfx](stoatpp::models::Member member, bool ok){
-                        if (!ok){ bot.send_message(msg.channel_id,"⚠️ Could not verify permissions."); return; }
+                        if (!ok){ bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Could not verify permissions."); return; }
                         if (!is_user_trusted_or_owner(bot,msg.server_id,msg.author.id,member)){
-                            bot.send_message(msg.channel_id,"⚠️ You need Manage Server permission."); return;
+                            bot.send_message(msg.channel_id,"" + bronx::emj_warning + " You need Manage Server permission."); return;
                         }
 
                         if (args.empty()){
@@ -502,7 +502,7 @@ public:
                             for (size_t i=2;i<args.size();++i){ if(i>2)keyword+=" "; keyword+=args[i]; }
 
                             if (g_db->get_autoresponders_for_server(msg.server_id).size()>=25){
-                                bot.send_message(msg.channel_id,"⚠️ Maximum 25 autoresponders per server."); return;
+                                bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Maximum 25 autoresponders per server."); return;
                             }
 
                             bot.send_message(msg.channel_id,
@@ -513,7 +513,7 @@ public:
                                 [&bot,msg,ar_name,keyword,pfx](std::optional<stoatpp::events::Message> r1){
                                     if(!r1){bot.send_message(msg.channel_id,"⏱️ Timed out.");return;}
                                     std::string mt=r1->content; std::transform(mt.begin(),mt.end(),mt.begin(),::tolower);
-                                    if(mt=="cancel"){bot.send_message(msg.channel_id,"🚫 Cancelled.");return;}
+                                    if(mt=="cancel"){bot.send_message(msg.channel_id,"" + bronx::emj_no + " Cancelled.");return;}
                                     if(mt!="contains"&&mt!="exact"&&mt!="starts"&&mt!="ends") mt="contains";
 
                                     bot.send_message(msg.channel_id,
@@ -522,7 +522,7 @@ public:
                                         [&bot,msg,ar_name,keyword,mt,pfx](std::optional<stoatpp::events::Message> r2){
                                             if(!r2){bot.send_message(msg.channel_id,"⏱️ Timed out.");return;}
                                             std::string mtype=r2->content; std::transform(mtype.begin(),mtype.end(),mtype.begin(),::tolower);
-                                            if(mtype=="cancel"){bot.send_message(msg.channel_id,"🚫 Cancelled.");return;}
+                                            if(mtype=="cancel"){bot.send_message(msg.channel_id,"" + bronx::emj_no + " Cancelled.");return;}
                                             if(mtype!="text"&&mtype!="embed") mtype="text";
 
                                             std::string prompt = "**Step 3/3**: ";
@@ -532,7 +532,7 @@ public:
                                             bot.await_message(msg.channel_id,msg.author.id,std::chrono::seconds(120),
                                                 [&bot,msg,ar_name,keyword,mt,mtype](std::optional<stoatpp::events::Message> r3){
                                                     if(!r3){bot.send_message(msg.channel_id,"⏱️ Timed out.");return;}
-                                                    if(r3->content=="cancel"){bot.send_message(msg.channel_id,"🚫 Cancelled.");return;}
+                                                    if(r3->content=="cancel"){bot.send_message(msg.channel_id,"" + bronx::emj_no + " Cancelled.");return;}
 
                                                     Database::AutoresponderConfig c;
                                                     c.server_id=msg.server_id;
@@ -553,9 +553,9 @@ public:
                                                     }
                                                     if(g_db->add_autoresponder(c)){
                                                         bot.send_message(msg.channel_id,
-                                                            "✅ Autoresponder **\""+ar_name+"\"** created! (ID: `"+std::to_string(c.id)+"`)");
+                                                            "" + bronx::emj_yes + " Autoresponder **\""+ar_name+"\"** created! (ID: `"+std::to_string(c.id)+"`)");
                                                     } else {
-                                                        bot.send_message(msg.channel_id,"⚠️ Failed to save.");
+                                                        bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed to save.");
                                                     }
                                                 });
                                         });
@@ -570,10 +570,10 @@ public:
                             auto opt=resolve_auto<Database::AutoresponderConfig>(msg.server_id,q,
                                 [](int id,const std::string& sid){return g_db->get_autoresponder_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoresponder_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+q+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+q+"`");return;}
                             if(g_db->remove_autoresponder(opt->id,msg.server_id))
-                                bot.send_message(msg.channel_id,"✅ Removed **\""+opt->name+"\"**.");
-                            else bot.send_message(msg.channel_id,"⚠️ Failed to remove.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Removed **\""+opt->name+"\"**.");
+                            else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed to remove.");
                             return;
                         }
 
@@ -604,7 +604,7 @@ public:
                             auto opt=resolve_auto<Database::AutoresponderConfig>(msg.server_id,q,
                                 [](int id,const std::string& sid){return g_db->get_autoresponder_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoresponder_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+q+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+q+"`");return;}
                             stoatpp::models::MessagePayload payload;
                             nlohmann::json embed=nlohmann::json::object();
                             embed["title"]="💬 AR #"+std::to_string(opt->id)+" — "+opt->name;
@@ -625,11 +625,11 @@ public:
                             auto opt=resolve_auto<Database::AutoresponderConfig>(msg.server_id,args[1],
                                 [](int id,const std::string& sid){return g_db->get_autoresponder_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoresponder_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+args[1]+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+args[1]+"`");return;}
                             std::string pairs_text;
                             for(size_t i=2;i<args.size();++i){if(i>2)pairs_text+=" ";pairs_text+=args[i];}
                             auto pairs=parse_kv_pairs(pairs_text);
-                            if(pairs.empty()){bot.send_message(msg.channel_id,"⚠️ No valid key:value pairs found.");return;}
+                            if(pairs.empty()){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " No valid key:value pairs found.");return;}
                             Database::AutoresponderConfig updated=*opt;
                             nlohmann::json emb=nlohmann::json::object();
                             if(!updated.embed_json.empty()){try{emb=nlohmann::json::parse(updated.embed_json);}catch(...){}};
@@ -648,8 +648,8 @@ public:
                             updated.embed_json=emb.dump();
                             if(g_db->update_autoresponder(updated)){
                                 std::string n; for(size_t i=0;i<notes.size();++i){if(i)n+=", ";n+=notes[i];}
-                                bot.send_message(msg.channel_id,"✅ Updated **\""+updated.name+"\"**: "+n+".");
-                            } else bot.send_message(msg.channel_id,"⚠️ Update failed.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Updated **\""+updated.name+"\"**: "+n+".");
+                            } else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Update failed.");
                             return;
                         }
 
@@ -662,21 +662,21 @@ public:
                             auto opt=resolve_auto<Database::AutoresponderConfig>(msg.server_id,args[1],
                                 [](int id,const std::string& sid){return g_db->get_autoresponder_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoresponder_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+args[1]+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+args[1]+"`");return;}
                             Database::AutoresponderConfig updated=*opt;
 
                             std::string action=args[2]; std::transform(action.begin(),action.end(),action.begin(),::tolower);
                             if(action=="clear"){
                                 updated.filter={};
-                                if(g_db->update_autoresponder(updated)) bot.send_message(msg.channel_id,"✅ Filters cleared.");
-                                else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                if(g_db->update_autoresponder(updated)) bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Filters cleared.");
+                                else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                                 return;
                             }
                             bool is_remove=(action=="remove");
                             size_t arg_offset=3;
                             if(is_remove&&args.size()>3){action=args[3];std::transform(action.begin(),action.end(),action.begin(),::tolower);arg_offset=4;}
 
-                            if(args.size()<arg_offset+2){bot.send_message(msg.channel_id,"⚠️ Not enough arguments.");return;}
+                            if(args.size()<arg_offset+2){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not enough arguments.");return;}
                             std::string target=args[arg_offset]; std::transform(target.begin(),target.end(),target.begin(),::tolower);
                             std::string value;
                             for(size_t i=arg_offset+1;i<args.size();++i){if(i>arg_offset+1)value+=" ";value+=args[i];}
@@ -685,16 +685,16 @@ public:
                             if(value.rfind("<%",0)==0&&value.back()=='>') value=value.substr(2,value.size()-3);
 
                             if(!mutate_filter(updated.filter,action,target,value,is_remove)){
-                                bot.send_message(msg.channel_id,"⚠️ Invalid filter parameters. Use: allow|ignore + role|user|channel");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Invalid filter parameters. Use: allow|ignore + role|user|channel");
                                 return;
                             }
                             if(g_db->update_autoresponder(updated)){
-                                bot.send_message(msg.channel_id,"✅ Filter "+(is_remove?std::string("removed"):std::string("added"))+": "+action+" "+target+" `"+value+"`.");
-                            } else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Filter "+(is_remove?std::string("removed"):std::string("added"))+": "+action+" "+target+" `"+value+"`.");
+                            } else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                             return;
                         }
 
-                        bot.send_message(msg.channel_id,"⚠️ Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `filter`, `info`.");
+                        bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `filter`, `info`.");
                     });
             },
             "Utility", 0, 0,
@@ -710,15 +710,15 @@ public:
             "manage keyword-triggered auto emoji reactions.",
             "", {"<subcommand>", "[args...]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
-                if (msg.server_id.empty()) { bot.send_message(msg.channel_id,"⚠️ Server only."); return; }
-                if (!g_db) { bot.send_message(msg.channel_id,"⚠️ Database unavailable."); return; }
+                if (msg.server_id.empty()) { bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Server only."); return; }
+                if (!g_db) { bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Database unavailable."); return; }
                 std::string pfx=msg.prefix.empty()?bot.config().command_prefix:msg.prefix;
 
                 bot.fetch_member(msg.server_id,msg.author.id,
                     [&bot,msg,args,pfx](stoatpp::models::Member member,bool ok){
-                        if(!ok){bot.send_message(msg.channel_id,"⚠️ Could not verify permissions.");return;}
+                        if(!ok){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Could not verify permissions.");return;}
                         if(!is_user_trusted_or_owner(bot,msg.server_id,msg.author.id,member)){
-                            bot.send_message(msg.channel_id,"⚠️ You need Manage Server permission.");return;
+                            bot.send_message(msg.channel_id,"" + bronx::emj_warning + " You need Manage Server permission.");return;
                         }
 
                         if(args.empty()){
@@ -741,14 +741,14 @@ public:
                         if(sub=="add"){
                             if(args.size()<4){bot.send_message(msg.channel_id,"usage: `"+pfx+"are add <name> <keyword> <emoji(s)>`");return;}
                             if(g_db->get_autoreacts_for_server(msg.server_id).size()>=25){
-                                bot.send_message(msg.channel_id,"⚠️ Maximum 25 autoreacts per server.");return;
+                                bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Maximum 25 autoreacts per server.");return;
                             }
                             std::string name=args[1], keyword=args[2];
                             std::string emoji_text;
                             for(size_t i=3;i<args.size();++i){if(i>3)emoji_text+=" ";emoji_text+=args[i];}
 
                             auto emojis=parse_emoji_list(emoji_text);
-                            if(emojis.empty()){bot.send_message(msg.channel_id,"⚠️ Could not parse any emojis from: `"+emoji_text+"`");return;}
+                            if(emojis.empty()){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Could not parse any emojis from: `"+emoji_text+"`");return;}
 
                             Database::AutoreactConfig c;
                             c.server_id=msg.server_id; c.name=name; c.keyword=keyword;
@@ -758,9 +758,9 @@ public:
                                 std::string edisp;
                                 for(const auto& e:emojis) edisp+=display_auto_emoji(e)+" ";
                                 bot.send_message(msg.channel_id,
-                                    "✅ Autoreact **\""+name+"\"** created! (ID: `"+std::to_string(c.id)+"`)\n"
+                                    "" + bronx::emj_yes + " Autoreact **\""+name+"\"** created! (ID: `"+std::to_string(c.id)+"`)\n"
                                     "Reacts with: "+edisp+"\nwhen `"+keyword+"` is seen.");
-                            } else bot.send_message(msg.channel_id,"⚠️ Failed to save.");
+                            } else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed to save.");
                             return;
                         }
 
@@ -771,10 +771,10 @@ public:
                             auto opt=resolve_auto<Database::AutoreactConfig>(msg.server_id,q,
                                 [](int id,const std::string& sid){return g_db->get_autoreact_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoreact_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+q+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+q+"`");return;}
                             if(g_db->remove_autoreact(opt->id,msg.server_id))
-                                bot.send_message(msg.channel_id,"✅ Removed **\""+opt->name+"\"**.");
-                            else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Removed **\""+opt->name+"\"**.");
+                            else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                             return;
                         }
 
@@ -808,7 +808,7 @@ public:
                             auto opt=resolve_auto<Database::AutoreactConfig>(msg.server_id,q,
                                 [](int id,const std::string& sid){return g_db->get_autoreact_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoreact_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+q+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+q+"`");return;}
                             auto el=parse_emoji_list(opt->emojis);
                             std::string edisp; for(const auto& e:el) edisp+=display_auto_emoji(e)+" ";
                             stoatpp::models::MessagePayload payload;
@@ -830,10 +830,10 @@ public:
                             auto opt=resolve_auto<Database::AutoreactConfig>(msg.server_id,args[1],
                                 [](int id,const std::string& sid){return g_db->get_autoreact_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoreact_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+args[1]+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+args[1]+"`");return;}
                             std::string pt; for(size_t i=2;i<args.size();++i){if(i>2)pt+=" ";pt+=args[i];}
                             auto pairs=parse_kv_pairs(pt);
-                            if(pairs.empty()){bot.send_message(msg.channel_id,"⚠️ No valid key:value pairs.");return;}
+                            if(pairs.empty()){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " No valid key:value pairs.");return;}
                             Database::AutoreactConfig updated=*opt;
                             std::vector<std::string> notes;
                             for(const auto&[k,v]:pairs){
@@ -848,8 +848,8 @@ public:
                             }
                             if(g_db->update_autoreact(updated)){
                                 std::string n; for(size_t i=0;i<notes.size();++i){if(i)n+=", ";n+=notes[i];}
-                                bot.send_message(msg.channel_id,"✅ Updated **\""+updated.name+"\"**: "+n+".");
-                            } else bot.send_message(msg.channel_id,"⚠️ Update failed.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Updated **\""+updated.name+"\"**: "+n+".");
+                            } else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Update failed.");
                             return;
                         }
 
@@ -859,33 +859,33 @@ public:
                             auto opt=resolve_auto<Database::AutoreactConfig>(msg.server_id,args[1],
                                 [](int id,const std::string& sid){return g_db->get_autoreact_by_id(id,sid);},
                                 [](const std::string& sid,const std::string& n){return g_db->get_autoreact_by_name(sid,n);});
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+args[1]+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+args[1]+"`");return;}
                             Database::AutoreactConfig updated=*opt;
                             std::string action=args[2]; std::transform(action.begin(),action.end(),action.begin(),::tolower);
                             if(action=="clear"){
                                 updated.filter={};
-                                if(g_db->update_autoreact(updated)) bot.send_message(msg.channel_id,"✅ Filters cleared.");
-                                else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                if(g_db->update_autoreact(updated)) bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Filters cleared.");
+                                else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                                 return;
                             }
                             bool is_remove=(action=="remove");
                             size_t aoff=3;
                             if(is_remove&&args.size()>3){action=args[3];std::transform(action.begin(),action.end(),action.begin(),::tolower);aoff=4;}
-                            if(args.size()<aoff+2){bot.send_message(msg.channel_id,"⚠️ Not enough arguments.");return;}
+                            if(args.size()<aoff+2){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not enough arguments.");return;}
                             std::string target=args[aoff]; std::transform(target.begin(),target.end(),target.begin(),::tolower);
                             std::string value; for(size_t i=aoff+1;i<args.size();++i){if(i>aoff+1)value+=" ";value+=args[i];}
                             if(value.rfind("<#",0)==0&&value.back()=='>') value=value.substr(2,value.size()-3);
                             if(value.rfind("<%",0)==0&&value.back()=='>') value=value.substr(2,value.size()-3);
                             if(!mutate_filter(updated.filter,action,target,value,is_remove)){
-                                bot.send_message(msg.channel_id,"⚠️ Invalid filter params.");return;
+                                bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Invalid filter params.");return;
                             }
                             if(g_db->update_autoreact(updated))
-                                bot.send_message(msg.channel_id,"✅ Filter "+(is_remove?std::string("removed"):std::string("added"))+": "+action+" "+target+" `"+value+"`.");
-                            else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Filter "+(is_remove?std::string("removed"):std::string("added"))+": "+action+" "+target+" `"+value+"`.");
+                            else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                             return;
                         }
 
-                        bot.send_message(msg.channel_id,"⚠️ Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `filter`, `info`.");
+                        bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `filter`, `info`.");
                     });
             },
             "Utility", 0, 0,
@@ -902,18 +902,18 @@ public:
             "", {"<subcommand>", "[args...]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling recurse...\n";
-                if (msg.server_id.empty()) { bot.send_message(msg.channel_id,"⚠️ Server only."); return; }
-                if (!g_db) { bot.send_message(msg.channel_id,"⚠️ Database unavailable."); return; }
+                if (msg.server_id.empty()) { bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Server only."); return; }
+                if (!g_db) { bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Database unavailable."); return; }
 
                 bot.fetch_member(msg.server_id,msg.author.id,
                     [&bot,msg,args](stoatpp::models::Member member,bool ok){
-                        if(!ok){bot.send_message(msg.channel_id,"⚠️ Failed to verify permissions.");return;}
+                        if(!ok){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed to verify permissions.");return;}
                         std::string pfx=msg.prefix.empty()?bot.config().command_prefix:msg.prefix;
 
                         // example — owner only
                         if(!args.empty()&&args[0]=="example"){
                             if(!is_bot_owner(bot,msg.author.id)){
-                                bot.send_message(msg.channel_id,"⚠️ Owner only.");return;
+                                bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Owner only.");return;
                             }
                             Database::RecurringMessage ex;
                             ex.server_id=msg.server_id; ex.channel_id=msg.channel_id;
@@ -929,13 +929,13 @@ public:
                             emb["color"]="#5865f2";
                             ex.embed_json=emb.dump();
                             send_recurring_msg(bot,ex,msg.channel_id,[&bot,msg](bool ok){
-                                if(!ok)bot.send_message(msg.channel_id,"⚠️ Failed to send example embed.");
+                                if(!ok)bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed to send example embed.");
                             });
                             return;
                         }
 
                         if(!is_user_trusted_or_owner(bot,msg.server_id,msg.author.id,member)){
-                            bot.send_message(msg.channel_id,"⚠️ You need Manage Server permission.");return;
+                            bot.send_message(msg.channel_id,"" + bronx::emj_warning + " You need Manage Server permission.");return;
                         }
 
                         if(args.empty()){
@@ -970,18 +970,18 @@ public:
                         if(sub=="add"){
                             if(args.size()<4){bot.send_message(msg.channel_id,"usage: `"+pfx+"recurse add <name> <#channel> <interval>`");return;}
                             if(g_db->count_recurring_for_server(msg.server_id)>=10){
-                                bot.send_message(msg.channel_id,"⚠️ Maximum 10 recurring messages per server.");return;
+                                bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Maximum 10 recurring messages per server.");return;
                             }
                             std::string rname=args[1];
                             std::string ch_arg=args[2];
                             std::string target_ch=ch_arg;
                             if(ch_arg.rfind("<#",0)==0&&ch_arg.back()=='>') target_ch=ch_arg.substr(2,ch_arg.size()-3);
                             if(g_db->recurring_channel_occupied(target_ch)){
-                                bot.send_message(msg.channel_id,"⚠️ Channel <#"+target_ch+"> already has a recurring message.");return;
+                                bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Channel <#"+target_ch+"> already has a recurring message.");return;
                             }
                             uint64_t interval=parse_duration(args[3]);
-                            if(interval==0){bot.send_message(msg.channel_id,"⚠️ Invalid interval. Examples: `5m`, `1h`, `2d`");return;}
-                            if(interval<300){bot.send_message(msg.channel_id,"⚠️ Minimum interval is 5 minutes.");return;}
+                            if(interval==0){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Invalid interval. Examples: `5m`, `1h`, `2d`");return;}
+                            if(interval<300){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Minimum interval is 5 minutes.");return;}
                             bool owner=is_bot_owner(bot,msg.author.id);
                             std::string tok_hint="\n*Tokens:* `{server}` `{membercount}` `{servercount}` `{cachecount}` `{uptime}` `{ping}`";
                             if(owner) tok_hint+=" `{ram}` `{cpu}` `{threads}`";
@@ -990,25 +990,25 @@ public:
                                 [&bot,msg,rname,target_ch,interval,owner,tok_hint](std::optional<stoatpp::events::Message> r1){
                                     if(!r1){bot.send_message(msg.channel_id,"⏱️ Timed out.");return;}
                                     std::string t=r1->content; std::transform(t.begin(),t.end(),t.begin(),::tolower);
-                                    if(t=="cancel"){bot.send_message(msg.channel_id,"🚫 Cancelled.");return;}
+                                    if(t=="cancel"){bot.send_message(msg.channel_id,"" + bronx::emj_no + " Cancelled.");return;}
                                     if(t!="text"&&t!="embed") t="text";
                                     if(t=="text"){
                                         bot.send_message(msg.channel_id,"Type the message content."+tok_hint);
                                         bot.await_message(msg.channel_id,msg.author.id,std::chrono::seconds(120),
                                             [&bot,msg,rname,target_ch,interval,owner](std::optional<stoatpp::events::Message> r2){
-                                                if(!r2||r2->content=="cancel"){bot.send_message(msg.channel_id,"⏱️/🚫");return;}
+                                                if(!r2||r2->content=="cancel"){bot.send_message(msg.channel_id,"⏱️/" + bronx::emj_no + "");return;}
                                                 Database::RecurringMessage rm;
                                                 rm.server_id=msg.server_id;rm.channel_id=target_ch;rm.name=rname;
                                                 rm.message_type="text";rm.content=r2->content;rm.interval_seconds=interval;rm.owner_tokens=owner;
                                                 if(g_db->add_recurring_message(rm))
-                                                    bot.send_message(msg.channel_id,"✅ **\""+rname+"\"** will post to <#"+target_ch+"> every **"+fmt_interval(interval)+"** (ID: `"+std::to_string(rm.id)+"`).");
-                                                else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                                    bot.send_message(msg.channel_id,"" + bronx::emj_yes + " **\""+rname+"\"** will post to <#"+target_ch+"> every **"+fmt_interval(interval)+"** (ID: `"+std::to_string(rm.id)+"`).");
+                                                else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                                             });
                                     } else {
                                         bot.send_message(msg.channel_id,"Provide embed fields: `title:...`, `description:...`, `color:#hex`, `image:url`, `content:...`"+tok_hint);
                                         bot.await_message(msg.channel_id,msg.author.id,std::chrono::seconds(120),
                                             [&bot,msg,rname,target_ch,interval,owner](std::optional<stoatpp::events::Message> r2){
-                                                if(!r2||r2->content=="cancel"){bot.send_message(msg.channel_id,"⏱️/🚫");return;}
+                                                if(!r2||r2->content=="cancel"){bot.send_message(msg.channel_id,"⏱️/" + bronx::emj_no + "");return;}
                                                 auto pairs=parse_kv_pairs(r2->content);
                                                 nlohmann::json emb=nlohmann::json::object();
                                                 std::string plain;
@@ -1018,8 +1018,8 @@ public:
                                                 rm.message_type="embed";rm.content=plain;rm.embed_json=emb.dump();
                                                 rm.interval_seconds=interval;rm.owner_tokens=owner;
                                                 if(g_db->add_recurring_message(rm))
-                                                    bot.send_message(msg.channel_id,"✅ **\""+rname+"\"** (embed) will post to <#"+target_ch+"> every **"+fmt_interval(interval)+"** (ID: `"+std::to_string(rm.id)+"`).");
-                                                else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                                    bot.send_message(msg.channel_id,"" + bronx::emj_yes + " **\""+rname+"\"** (embed) will post to <#"+target_ch+"> every **"+fmt_interval(interval)+"** (ID: `"+std::to_string(rm.id)+"`).");
+                                                else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                                             });
                                     }
                                 });
@@ -1031,10 +1031,10 @@ public:
                             if(args.size()<2){bot.send_message(msg.channel_id,"usage: `"+pfx+"recurse remove <name|id>`");return;}
                             std::string q; for(size_t i=1;i<args.size();++i){if(i>1)q+=" ";q+=args[i];}
                             auto opt=resolve_rm(q);
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+q+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+q+"`");return;}
                             if(g_db->remove_recurring_message(opt->id,msg.server_id))
-                                bot.send_message(msg.channel_id,"✅ Removed **\""+opt->name+"\"**.");
-                            else bot.send_message(msg.channel_id,"⚠️ Failed.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Removed **\""+opt->name+"\"**.");
+                            else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Failed.");
                             return;
                         }
 
@@ -1068,10 +1068,10 @@ public:
                             if(args.size()<2){bot.send_message(msg.channel_id,"usage: `"+pfx+"recurse test <name|id>`");return;}
                             std::string q; for(size_t i=1;i<args.size();++i){if(i>1)q+=" ";q+=args[i];}
                             auto opt=resolve_rm(q);
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+q+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+q+"`");return;}
                             send_recurring_msg(bot,*opt,opt->channel_id,[&bot,msg,opt](bool ok){
-                                if(ok) bot.send_message(msg.channel_id,"✅ Test **\""+opt->name+"\"** sent to <#"+opt->channel_id+"> *(timer unchanged)*.");
-                                else   bot.send_message(msg.channel_id,"⚠️ Send failed.");
+                                if(ok) bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Test **\""+opt->name+"\"** sent to <#"+opt->channel_id+"> *(timer unchanged)*.");
+                                else   bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Send failed.");
                             });
                             return;
                         }
@@ -1081,14 +1081,14 @@ public:
                             if(args.size()<2){bot.send_message(msg.channel_id,"usage: `"+pfx+"recurse send <name|id>`");return;}
                             std::string q; for(size_t i=1;i<args.size();++i){if(i>1)q+=" ";q+=args[i];}
                             auto opt=resolve_rm(q);
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+q+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+q+"`");return;}
                             uint64_t now_ts=static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count());
                             g_db->update_recurring_last_sent(opt->id,now_ts);
                             send_recurring_msg(bot,*opt,opt->channel_id,[&bot,msg,opt,now_ts](bool ok){
                                 if(ok){
                                     uint64_t next=now_ts+opt->interval_seconds;
-                                    bot.send_message(msg.channel_id,"✅ Sent **\""+opt->name+"\"** and reset timer. Next: <t:"+std::to_string(next)+":R>.");
-                                } else bot.send_message(msg.channel_id,"⚠️ Send failed (timer was still reset).");
+                                    bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Sent **\""+opt->name+"\"** and reset timer. Next: <t:"+std::to_string(next)+":R>.");
+                                } else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Send failed (timer was still reset).");
                             });
                             return;
                         }
@@ -1097,10 +1097,10 @@ public:
                         if(sub=="edit"){
                             if(args.size()<3){bot.send_message(msg.channel_id,"usage: `"+pfx+"recurse edit <name|id> key:val`");return;}
                             auto opt=resolve_rm(args[1]);
-                            if(!opt){bot.send_message(msg.channel_id,"⚠️ Not found: `"+args[1]+"`");return;}
+                            if(!opt){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Not found: `"+args[1]+"`");return;}
                             std::string pt; for(size_t i=2;i<args.size();++i){if(i>2)pt+=" ";pt+=args[i];}
                             auto pairs=parse_pairs_r(pt);
-                            if(pairs.empty()){bot.send_message(msg.channel_id,"⚠️ No valid key:value pairs.");return;}
+                            if(pairs.empty()){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " No valid key:value pairs.");return;}
                             Database::RecurringMessage updated=*opt;
                             nlohmann::json emb=nlohmann::json::object();
                             if(!updated.embed_json.empty()){try{emb=nlohmann::json::parse(updated.embed_json);}catch(...){}};
@@ -1111,7 +1111,7 @@ public:
                                     std::string ch=v;
                                     if(ch.rfind("<#",0)==0&&ch.back()=='>') ch=ch.substr(2,ch.size()-3);
                                     if(ch!=updated.channel_id&&g_db->recurring_channel_occupied(ch)){
-                                        bot.send_message(msg.channel_id,"⚠️ Channel <#"+ch+"> already has a recurring message.");return;
+                                        bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Channel <#"+ch+"> already has a recurring message.");return;
                                     }
                                     updated.channel_id=ch;notes.push_back("channel→<#"+ch+">");
                                 }
@@ -1137,12 +1137,12 @@ public:
                             updated.embed_json=emb.dump();
                             if(g_db->update_recurring_message(updated)){
                                 std::string n; for(size_t i=0;i<notes.size();++i){if(i)n+=", ";n+=notes[i];}
-                                bot.send_message(msg.channel_id,"✅ Updated **\""+updated.name+"\"**: "+n+".");
-                            } else bot.send_message(msg.channel_id,"⚠️ Update failed.");
+                                bot.send_message(msg.channel_id,"" + bronx::emj_yes + " Updated **\""+updated.name+"\"**: "+n+".");
+                            } else bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Update failed.");
                             return;
                         }
 
-                        bot.send_message(msg.channel_id,"⚠️ Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `test`, `send`, or `example`.");
+                        bot.send_message(msg.channel_id,"" + bronx::emj_warning + " Unknown subcommand. Use `add`, `remove`, `list`, `edit`, `test`, `send`, or `example`.");
                     });
             },
             "Utility", 0, 0,

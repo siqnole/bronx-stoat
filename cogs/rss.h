@@ -727,11 +727,11 @@ public:
 
         auto handle_rss = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
             if (msg.server_id.empty()) {
-                bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                 return;
             }
             if (!g_db) {
-                bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                 return;
             }
 
@@ -766,14 +766,14 @@ public:
 
                     // Validate URL format roughly
                     if (feed_url.rfind("http://", 0) != 0 && feed_url.rfind("https://", 0) != 0) {
-                        bot_ptr->send_message(msg.channel_id, "⚠️ Invalid URL scheme. Feed URL must start with `http://` or `https://`.");
+                        bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid URL scheme. Feed URL must start with `http://` or `https://`.");
                         return;
                     }
 
                     // Check if already registered on this server
                     auto existing = g_db->get_rss_by_url(msg.server_id, feed_url);
                     if (existing) {
-                        bot_ptr->send_message(msg.channel_id, "⚠️ Feed is already added on this server as Feed ID **" + std::to_string(existing->id) + "**.");
+                        bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Feed is already added on this server as Feed ID **" + std::to_string(existing->id) + "**.");
                         return;
                     }
 
@@ -787,7 +787,7 @@ public:
 
                     check_and_post_feed(*bot_ptr, test_feed, true, false, [bot_ptr, msg, feed_url](int posted, int interval, std::string err) {
                         if (!err.empty()) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Failed to fetch or parse feed: " + err + "\nPlease check that the URL is a valid RSS, Atom, or JSON feed.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to fetch or parse feed: " + err + "\nPlease check that the URL is a valid RSS, Atom, or JSON feed.");
                             return;
                         }
 
@@ -800,14 +800,14 @@ public:
                         db_feed.check_interval = interval;
 
                         if (g_db->add_rss_feed(db_feed)) {
-                            bot_ptr->send_message(msg.channel_id, "✅ **Feed added successfully!**\n"
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_yes + " **Feed added successfully!**\n"
                                                              "• **ID**: " + std::to_string(db_feed.id) + "\n"
                                                              "• **URL**: " + feed_url + "\n"
                                                              "• **Default Target**: <#" + msg.channel_id + ">\n"
                                                              "• **Check Interval**: " + std::to_string(interval / 60) + " minutes\n"
                                                              "• Posted the newest item as a test.");
                         } else {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Failed to save feed to the database.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save feed to the database.");
                         }
                     });
                     return;
@@ -829,7 +829,7 @@ public:
                     } else {
                         // Validate URL format roughly
                         if (query.rfind("http://", 0) != 0 && query.rfind("https://", 0) != 0) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Invalid feed ID or URL scheme. URL must start with `http://` or `https://`.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid feed ID or URL scheme. URL must start with `http://` or `https://`.");
                             return;
                         }
                         test_feed.server_id = msg.server_id;
@@ -841,13 +841,13 @@ public:
 
                     check_and_post_feed(*bot_ptr, test_feed, true, true, [bot_ptr, msg](int posted, int interval, std::string err) {
                         if (!err.empty()) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Failed to fetch or parse feed: " + err);
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to fetch or parse feed: " + err);
                             return;
                         }
                         if (posted == 0) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Feed contains no items to post.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Feed contains no items to post.");
                         } else {
-                            bot_ptr->send_message(msg.channel_id, "✅ Test completed successfully. Posted the newest item.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_yes + " Test completed successfully. Posted the newest item.");
                         }
                     });
                     return;
@@ -862,14 +862,14 @@ public:
                     std::string query = args[1];
                     auto feed = resolve_feed(msg.server_id, query);
                     if (!feed) {
-                        bot_ptr->send_message(msg.channel_id, "⚠️ No matching RSS feed found for: `" + query + "`");
+                        bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " No matching RSS feed found for: `" + query + "`");
                         return;
                     }
 
                     if (g_db->remove_rss_feed(feed->id, msg.server_id)) {
-                        bot_ptr->send_message(msg.channel_id, "✅ Removed feed ID **" + std::to_string(feed->id) + "** (" + feed->url + ").");
+                        bot_ptr->send_message(msg.channel_id, "" + bronx::emj_yes + " Removed feed ID **" + std::to_string(feed->id) + "** (" + feed->url + ").");
                     } else {
-                        bot_ptr->send_message(msg.channel_id, "⚠️ Failed to remove feed from the database.");
+                        bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to remove feed from the database.");
                     }
                     return;
                 }
@@ -929,7 +929,7 @@ public:
                         feed_title = "Feed #" + std::to_string(feed_opt->id);
                     } else {
                         if (query.rfind("http://", 0) != 0 && query.rfind("https://", 0) != 0) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Invalid feed ID or URL scheme. URL must start with `http://` or `https://`.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid feed ID or URL scheme. URL must start with `http://` or `https://`.");
                             return;
                         }
                         feed_url = query;
@@ -939,11 +939,11 @@ public:
 
                     fetch_feed_items(feed_url, [bot_ptr, msg, feed_title, feed_colour](std::vector<FeedItem> items, int interval, std::string err) {
                         if (!err.empty()) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Failed to fetch feed: " + err);
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to fetch feed: " + err);
                             return;
                         }
                         if (items.empty()) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Feed contains no items.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Feed contains no items.");
                             return;
                         }
 
@@ -1039,11 +1039,11 @@ public:
                         // User omitted feed URL/ID. We check if there's exactly 1 feed.
                         auto server_feeds = g_db->get_rss_feeds_for_server(msg.server_id);
                         if (server_feeds.empty()) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ There are no RSS feeds configured on this server.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " There are no RSS feeds configured on this server.");
                             return;
                         }
                         if (server_feeds.size() > 1) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Multiple feeds found on this server. Please specify feed ID: `" + pfx + "rss target <feed_id|url> <channel> [channels...]`.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Multiple feeds found on this server. Please specify feed ID: `" + pfx + "rss target <feed_id|url> <channel> [channels...]`.");
                             return;
                         }
                         target_feed = server_feeds[0];
@@ -1054,7 +1054,7 @@ public:
                         // First arg is feed ID/URL
                         target_feed = resolve_feed(msg.server_id, first_arg);
                         if (!target_feed) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ No matching RSS feed found for: `" + first_arg + "`");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " No matching RSS feed found for: `" + first_arg + "`");
                             return;
                         }
                         if (args.size() < 3) {
@@ -1148,7 +1148,7 @@ public:
 
                         // Now all channels are processed
                         if (!state->errors.empty()) {
-                            std::string err_msg = "⚠️ Target configuration failed with errors:\n";
+                            std::string err_msg = "" + bronx::emj_warning + " Target configuration failed with errors:\n";
                             for (const auto& err : state->errors) {
                                 err_msg += "• " + err + "\n";
                             }
@@ -1157,7 +1157,7 @@ public:
                         }
 
                         if (state->valid_channel_ids.empty()) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ No valid channels were specified.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " No valid channels were specified.");
                             return;
                         }
 
@@ -1173,9 +1173,9 @@ public:
                                 if (!ch_mentions.empty()) ch_mentions += ", ";
                                 ch_mentions += "<#" + cid + ">";
                             }
-                            bot_ptr->send_message(msg.channel_id, "✅ Updated target channels for feed #" + std::to_string(feed_id) + " to: " + ch_mentions);
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_yes + " Updated target channels for feed #" + std::to_string(feed_id) + " to: " + ch_mentions);
                         } else {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ Failed to update database.");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update database.");
                         }
                     }).detach();
                     return;
@@ -1188,7 +1188,7 @@ public:
                         std::string query = args[1];
                         auto feed = resolve_feed(msg.server_id, query);
                         if (!feed) {
-                            bot_ptr->send_message(msg.channel_id, "⚠️ No matching RSS feed found for: `" + query + "`");
+                            bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " No matching RSS feed found for: `" + query + "`");
                             return;
                         }
                         feeds_to_check.push_back(*feed);
@@ -1219,7 +1219,7 @@ public:
                                 check_state->feed_errors.push_back("Feed #" + std::to_string(feed.id) + " is already currently being checked.");
                                 check_state->completed++;
                                 if (check_state->completed == num_feeds) {
-                                    std::string sum = "✅ Feed check complete!\n• Posted " + std::to_string(check_state->total_new_posted) + " new items.";
+                                    std::string sum = "" + bronx::emj_yes + " Feed check complete!\n• Posted " + std::to_string(check_state->total_new_posted) + " new items.";
                                     if (!check_state->feed_errors.empty()) {
                                         sum += "\nErrors:";
                                         for (const auto& e : check_state->feed_errors) sum += "\n- " + e;
@@ -1245,7 +1245,7 @@ public:
                             check_state->completed++;
 
                             if (check_state->completed == num_feeds) {
-                                std::string sum = "✅ Feed check complete!\n• Posted " + std::to_string(check_state->total_new_posted) + " new items.";
+                                std::string sum = "" + bronx::emj_yes + " Feed check complete!\n• Posted " + std::to_string(check_state->total_new_posted) + " new items.";
                                 if (!check_state->feed_errors.empty()) {
                                     sum += "\nErrors:";
                                     for (const auto& e : check_state->feed_errors) sum += "\n- " + e;
@@ -1257,13 +1257,13 @@ public:
                     return;
                 }
 
-                bot_ptr->send_message(msg.channel_id, "⚠️ Unknown subcommand. Use `add`, `remove`, `list`, `target`, `check`, `read`, or `test`.");
+                bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use `add`, `remove`, `list`, `target`, `check`, `read`, or `test`.");
             };
 
             if (requires_permission) {
                 bot.fetch_member(msg.server_id, msg.author.id, [bot_ptr, msg, run_command_logic](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot_ptr->send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                        bot_ptr->send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                         return;
                     }
                     if (!is_user_trusted_or_owner(*bot_ptr, msg.server_id, msg.author.id, member)) {

@@ -16,7 +16,7 @@ private:
             if (res.success()) {
                 bot.send_message(cmd_channel, success_msg);
             } else {
-                std::string err_msg = "⚠️ " + error_prefix;
+                std::string err_msg = "" + bronx::emj_warning + " " + error_prefix;
                 if (res.status_code == 403 || res.status_code == 404) {
                     err_msg += "\n*Details: Make sure the bot is in that channel and has View Channel and Send Messages permissions (HTTP " + std::to_string(res.status_code) + ").*";
                 } else if (res.body.is_object() && res.body.contains("error") && res.body["error"].is_string()) {
@@ -141,23 +141,23 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling welcome...\n";
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                     return;
                 }
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
                 // Check Manage Server permission
                 bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, args](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                         return;
                     }
                     if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Permission error: you need Manage Server permission to configure welcome messages.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need Manage Server permission to configure welcome messages.");
                         return;
                     }
 
@@ -204,9 +204,9 @@ public:
                     if (target == "none" || target == "clear" || target == "null") {
                         config.autorole_role_id = "";
                         if (g_db->save_welcome_leave_config(config)) {
-                            bot.send_message(msg.channel_id, "✅ Autorole disabled for this server.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Autorole disabled for this server.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
                         }
                         return;
                     }
@@ -214,7 +214,7 @@ public:
                     // Search for role
                     auto server_roles_res = bot.rest().get_server(msg.server_id);
                     if (!server_roles_res.success()) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to fetch server roles.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to fetch server roles.");
                         return;
                     }
 
@@ -244,7 +244,7 @@ public:
                     }
 
                     if (matching_roles.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ No roles matching `" + target + "` found.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No roles matching `" + target + "` found.");
                         return;
                     }
 
@@ -252,9 +252,9 @@ public:
                         auto save_cfg = config;
                         save_cfg.autorole_role_id = role_id;
                         if (g_db->save_welcome_leave_config(save_cfg)) {
-                            bot.send_message(msg.channel_id, "✅ Welcome autorole successfully set to **" + role_name + "** (" + role_id + ").");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome autorole successfully set to **" + role_name + "** (" + role_id + ").");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
                         }
                     };
 
@@ -292,7 +292,7 @@ public:
                                     }
                                 } catch (...) {}
                             }
-                            bot.send_message(msg.channel_id, "⚠️ Invalid selection or timed out.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid selection or timed out.");
                         });
                     });
                     return;
@@ -318,12 +318,12 @@ public:
 
                     if (g_db->save_welcome_leave_config(config)) {
                         if (target_channel.empty()) {
-                            bot.send_message(msg.channel_id, "✅ Welcome messages have been disabled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome messages have been disabled.");
                         } else {
-                            bot.send_message(msg.channel_id, "✅ Welcome messages channel set to <#" + target_channel + ">.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome messages channel set to <#" + target_channel + ">.");
                         }
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -336,7 +336,7 @@ public:
 
                     std::string type = args[1];
                     if (type != "text" && type != "embed") {
-                        bot.send_message(msg.channel_id, "⚠️ Type must be `text` or `embed`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Type must be `text` or `embed`.");
                         return;
                     }
 
@@ -344,9 +344,9 @@ public:
                     config.welcome_type = type;
 
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome message type set to **" + type + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome message type set to **" + type + "**.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -362,9 +362,9 @@ public:
                     config.welcome_content = text;
 
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome message content updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome message content updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -378,7 +378,7 @@ public:
 
                     auto pairs = parse_pairs(text);
                     if (pairs.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found. Format must be `key:value` (e.g. `title:Hello color:random`).");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key-value pairs found. Format must be `key:value` (e.g. `title:Hello color:random`).");
                         return;
                     }
 
@@ -407,9 +407,9 @@ public:
 
                     config.welcome_embed_json = emb.dump();
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome embed configuration updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome embed configuration updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -439,7 +439,7 @@ public:
                     try {
                         emb = nlohmann::json::parse(text);
                     } catch (const std::exception& e) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(e.what()));
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid JSON format: " + std::string(e.what()));
                         return;
                     }
 
@@ -458,9 +458,9 @@ public:
 
                     config.welcome_embed_json = emb.dump();
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome embed configuration imported successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome embed configuration imported successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -468,7 +468,7 @@ public:
                 if (subcommand == "test") {
                     auto config_opt = g_db->get_welcome_leave_config(msg.server_id);
                     if (!config_opt || (config_opt->welcome_channel_id.empty() && config_opt->autorole_role_id.empty())) {
-                        bot.send_message(msg.channel_id, "⚠️ Welcomer and autorole features are not set up or are disabled on this server. Use `" + pfx + "welcome setup` or `" + pfx + "welcome role` first.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Welcomer and autorole features are not set up or are disabled on this server. Use `" + pfx + "welcome setup` or `" + pfx + "welcome role` first.");
                         return;
                     }
 
@@ -480,7 +480,7 @@ public:
                             if (role_ok) {
                                 bot.send_message(msg.channel_id, "ℹ️ [Test] Assigned welcome autorole to you.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ [Test] Failed to assign welcome autorole: " + err);
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " [Test] Failed to assign welcome autorole: " + err);
                             }
                         });
                     }
@@ -547,14 +547,15 @@ public:
                                     }
 
                                     send_verbose_test_message(bot, config.welcome_channel_id, payload, msg.channel_id,
-                                         "✅ Test welcome message successfully sent to the configured channel.",
+                                         "" + bronx::emj_yes + " Test welcome message successfully sent to the configured channel.",
                                          "Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
                                 }).detach();
                             } else {
                                 stoatpp::models::MessagePayload payload;
-                                payload.content = format_placeholders(config.welcome_content, msg.author, server, final_count);
+                                std::string text_body = config.welcome_content.empty() ? "Welcome {name} to {server}!" : config.welcome_content;
+                                payload.content = format_placeholders(text_body, msg.author, server, final_count);
                                 send_verbose_test_message(bot, config.welcome_channel_id, payload, msg.channel_id,
-                                     "✅ Test welcome message successfully sent to the configured channel.",
+                                     "" + bronx::emj_yes + " Test welcome message successfully sent to the configured channel.",
                                      "Failed to send test welcome message. Make sure the bot has permission to post in that channel.");
                             }
                         });
@@ -571,7 +572,7 @@ public:
                     std::string dm_type = args[1];
                     std::transform(dm_type.begin(), dm_type.end(), dm_type.begin(), ::tolower);
                     if (dm_type != "text" && dm_type != "embed" && dm_type != "none") {
-                        bot.send_message(msg.channel_id, "⚠️ DM welcome type must be `text`, `embed`, or `none`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " DM welcome type must be `text`, `embed`, or `none`.");
                         return;
                     }
 
@@ -579,9 +580,9 @@ public:
                     config.welcome_dm_type = dm_type;
 
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome DM type set to **" + dm_type + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome DM type set to **" + dm_type + "**.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -597,9 +598,9 @@ public:
                     config.welcome_dm_content = text;
 
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome DM message content updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome DM message content updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -613,7 +614,7 @@ public:
 
                     auto pairs = parse_pairs(text);
                     if (pairs.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key-value pairs found.");
                         return;
                     }
 
@@ -641,9 +642,9 @@ public:
 
                     config.welcome_dm_embed_json = emb.dump();
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome DM embed configuration updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome DM embed configuration updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -659,7 +660,7 @@ public:
                     try {
                         emb = nlohmann::json::parse(text);
                     } catch (const std::exception& e) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(e.what()));
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid JSON format: " + std::string(e.what()));
                         return;
                     }
 
@@ -677,9 +678,9 @@ public:
 
                     config.welcome_dm_embed_json = emb.dump();
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Welcome DM embed configuration imported successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome DM embed configuration imported successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -687,7 +688,7 @@ public:
                 if (subcommand == "dmtest") {
                     auto config_opt = g_db->get_welcome_leave_config(msg.server_id);
                     if (!config_opt || config_opt->welcome_dm_type == "none") {
-                        bot.send_message(msg.channel_id, "⚠️ DM welcome is not enabled or set up. Use `" + pfx + "welcome dm <text|embed>` first.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " DM welcome is not enabled or set up. Use `" + pfx + "welcome dm <text|embed>` first.");
                         return;
                     }
 
@@ -705,7 +706,7 @@ public:
                         std::thread([&bot, config, msg, server, final_count]() {
                             auto dm_res = bot.rest().open_dm(msg.author.id);
                             if (!dm_res.success() || !dm_res.body.is_object() || !dm_res.body.contains("_id")) {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to open DM with you.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to open DM with you.");
                                 return;
                             }
                             std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
@@ -760,7 +761,7 @@ public:
                             }
 
                             send_verbose_test_message(bot, dm_channel_id, payload, msg.channel_id,
-                                "✅ Test welcome DM successfully sent to you.",
+                                "" + bronx::emj_yes + " Test welcome DM successfully sent to you.",
                                 "Failed to send test welcome DM.");
                         }).detach();
                     });
@@ -777,7 +778,7 @@ public:
                         
                         std::string chan_resp = rep1->content;
                         if (chan_resp == "cancel") {
-                            bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                             return;
                         }
                         std::string target_channel = "";
@@ -802,7 +803,7 @@ public:
                         }
 
                         if (target_channel.empty() && chan_resp != "none") {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid channel. Welcome setup canceled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel. Welcome setup canceled.");
                             return;
                         }
 
@@ -810,7 +811,7 @@ public:
                             auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
                             config.welcome_channel_id = "";
                             g_db->save_welcome_leave_config(config);
-                            bot.send_message(msg.channel_id, "✅ Welcome messages have been disabled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome messages have been disabled.");
                             return;
                         }
 
@@ -824,11 +825,11 @@ public:
                             std::string type_resp = rep2->content;
                             std::transform(type_resp.begin(), type_resp.end(), type_resp.begin(), ::tolower);
                             if (type_resp == "cancel") {
-                                bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                                 return;
                             }
                             if (type_resp != "text" && type_resp != "embed") {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid type (must be `text` or `embed`). Welcome setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type (must be `text` or `embed`). Welcome setup canceled.");
                                 return;
                             }
 
@@ -842,7 +843,7 @@ public:
 
                                     std::string content_resp = rep3->content;
                                     if (content_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                                         return;
                                     }
                                     auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
@@ -851,7 +852,7 @@ public:
                                     config.welcome_content = content_resp;
 
                                     g_db->save_welcome_leave_config(config);
-                                    bot.send_message(msg.channel_id, "✅ **Welcome Setup Complete!**\nWelcome messages will be sent to <#" + target_channel + "> in text format.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Welcome Setup Complete!**\nWelcome messages will be sent to <#" + target_channel + "> in text format.");
                                 });
                                 return;
                             }
@@ -867,7 +868,7 @@ public:
                                 nlohmann::json emb = nlohmann::json::object();
                                 std::string title_resp = rep3->content;
                                 if (title_resp == "cancel") {
-                                    bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                                     return;
                                 }
                                 if (title_resp != "skip") {
@@ -884,7 +885,7 @@ public:
                                     auto current_emb = emb;
                                     std::string desc_resp = rep4->content;
                                     if (desc_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                                         return;
                                     }
                                     if (desc_resp != "skip") {
@@ -901,7 +902,7 @@ public:
                                         auto final_emb = current_emb;
                                         std::string color_resp = rep5->content;
                                         if (color_resp == "cancel") {
-                                            bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                                             return;
                                         }
                                         if (color_resp != "skip") {
@@ -918,7 +919,7 @@ public:
                                             auto save_emb = final_emb;
                                             std::string img_resp = rep6->content;
                                             if (img_resp == "cancel") {
-                                                bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                                                 return;
                                             }
                                             if (img_resp != "skip") {
@@ -934,7 +935,7 @@ public:
 
                                                 std::string content_resp = rep7->content;
                                                 if (content_resp == "cancel") {
-                                                    bot.send_message(msg.channel_id, "🚫 Welcome setup canceled.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
                                                     return;
                                                 }
                                                 auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
@@ -948,7 +949,7 @@ public:
                                                 }
 
                                                 g_db->save_welcome_leave_config(config);
-                                                bot.send_message(msg.channel_id, "✅ **Welcome Setup Complete!**\nWelcome messages will be sent to <#" + target_channel + "> as a rich embed.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Welcome Setup Complete!**\nWelcome messages will be sent to <#" + target_channel + "> as a rich embed.");
                                             });
                                         });
                                     });
@@ -959,7 +960,7 @@ public:
                     return;
                 }
 
-                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, channel, role, type, message, edit, json, test, dm, dmmessage, dmedit, dmjson, or dmtest.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use setup, channel, role, type, message, edit, json, test, dm, dmmessage, dmedit, dmjson, or dmtest.");
                 });
             },
             "Welcome",
@@ -978,23 +979,23 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling leave...\n";
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                     return;
                 }
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
                 // Check Manage Server permission
                 bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, args](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                         return;
                     }
                     if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Permission error: you need Manage Server permission to configure leave messages.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need Manage Server permission to configure leave messages.");
                         return;
                     }
 
@@ -1033,12 +1034,12 @@ public:
 
                     if (g_db->save_welcome_leave_config(config)) {
                         if (target_channel.empty()) {
-                            bot.send_message(msg.channel_id, "✅ Leave messages have been disabled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave messages have been disabled.");
                         } else {
-                            bot.send_message(msg.channel_id, "✅ Leave messages channel set to <#" + target_channel + ">.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave messages channel set to <#" + target_channel + ">.");
                         }
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -1051,7 +1052,7 @@ public:
 
                     std::string type = args[1];
                     if (type != "text" && type != "embed") {
-                        bot.send_message(msg.channel_id, "⚠️ Type must be `text` or `embed`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Type must be `text` or `embed`.");
                         return;
                     }
 
@@ -1059,9 +1060,9 @@ public:
                     config.leave_type = type;
 
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Leave message type set to **" + type + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave message type set to **" + type + "**.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -1077,9 +1078,9 @@ public:
                     config.leave_content = text;
 
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Leave message content updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave message content updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -1093,7 +1094,7 @@ public:
 
                     auto pairs = parse_pairs(text);
                     if (pairs.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found. Format must be `key:value` (e.g. `title:Bye color:random`).");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key-value pairs found. Format must be `key:value` (e.g. `title:Bye color:random`).");
                         return;
                     }
 
@@ -1122,9 +1123,9 @@ public:
 
                     config.leave_embed_json = emb.dump();
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Leave embed configuration updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave embed configuration updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -1154,7 +1155,7 @@ public:
                     try {
                         emb = nlohmann::json::parse(text);
                     } catch (const std::exception& e) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(e.what()));
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid JSON format: " + std::string(e.what()));
                         return;
                     }
 
@@ -1173,9 +1174,9 @@ public:
 
                     config.leave_embed_json = emb.dump();
                     if (g_db->save_welcome_leave_config(config)) {
-                        bot.send_message(msg.channel_id, "✅ Leave embed configuration imported successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave embed configuration imported successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration to database.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration to database.");
                     }
                     return;
                 }
@@ -1183,7 +1184,7 @@ public:
                 if (subcommand == "test") {
                     auto config_opt = g_db->get_welcome_leave_config(msg.server_id);
                     if (!config_opt || config_opt->leave_channel_id.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ Leave messages are not set up or are disabled on this server. Use `" + pfx + "leave setup` first.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Leave messages are not set up or are disabled on this server. Use `" + pfx + "leave setup` first.");
                         return;
                     }
 
@@ -1248,14 +1249,15 @@ public:
                                     }
 
                                     send_verbose_test_message(bot, config.leave_channel_id, payload, msg.channel_id,
-                                         "✅ Test leave message successfully sent to the configured channel.",
+                                         "" + bronx::emj_yes + " Test leave message successfully sent to the configured channel.",
                                          "Failed to send test leave message. Make sure the bot has permission to post in that channel.");
                                 }).detach();
                             } else {
                                 stoatpp::models::MessagePayload payload;
-                                payload.content = format_placeholders(config.leave_content, msg.author, server, final_count);
+                                std::string text_body = config.leave_content.empty() ? "{name} left {server}." : config.leave_content;
+                                payload.content = format_placeholders(text_body, msg.author, server, final_count);
                                 send_verbose_test_message(bot, config.leave_channel_id, payload, msg.channel_id,
-                                     "✅ Test leave message successfully sent to the configured channel.",
+                                     "" + bronx::emj_yes + " Test leave message successfully sent to the configured channel.",
                                      "Failed to send test leave message. Make sure the bot has permission to post in that channel.");
                             }
                     });
@@ -1293,7 +1295,7 @@ public:
                         }
 
                         if (target_channel.empty() && chan_resp != "none") {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid channel. Leave setup canceled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel. Leave setup canceled.");
                             return;
                         }
 
@@ -1301,7 +1303,7 @@ public:
                             auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
                             config.leave_channel_id = "";
                             g_db->save_welcome_leave_config(config);
-                            bot.send_message(msg.channel_id, "✅ Leave messages have been disabled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave messages have been disabled.");
                             return;
                         }
 
@@ -1315,7 +1317,7 @@ public:
                             std::string type_resp = rep2->content;
                             std::transform(type_resp.begin(), type_resp.end(), type_resp.begin(), ::tolower);
                             if (type_resp != "text" && type_resp != "embed") {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid type (must be `text` or `embed`). Leave setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type (must be `text` or `embed`). Leave setup canceled.");
                                 return;
                             }
 
@@ -1334,7 +1336,7 @@ public:
                                     config.leave_content = content_resp;
 
                                     g_db->save_welcome_leave_config(config);
-                                    bot.send_message(msg.channel_id, "✅ **Leave Setup Complete!**\nDeparture messages will be sent to <#" + target_channel + "> in text format.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Leave Setup Complete!**\nDeparture messages will be sent to <#" + target_channel + "> in text format.");
                                 });
                                 return;
                             }
@@ -1411,7 +1413,7 @@ public:
                                                 }
 
                                                 g_db->save_welcome_leave_config(config);
-                                                bot.send_message(msg.channel_id, "✅ **Leave Setup Complete!**\nDeparture messages will be sent to <#" + target_channel + "> as a rich embed.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Leave Setup Complete!**\nDeparture messages will be sent to <#" + target_channel + "> as a rich embed.");
                                             });
                                         });
                                     });
@@ -1422,7 +1424,7 @@ public:
                     return;
                 }
 
-                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, channel, type, message, edit, json, or test.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use setup, channel, type, message, edit, json, or test.");
                 });
             },
             "Leave",
@@ -1444,7 +1446,11 @@ public:
             // 1. Assign custom Autorole if configured
             if (!config.autorole_role_id.empty()) {
                 std::cout << "[bronx autorole] assigning role " << config.autorole_role_id << " to member " << e.user_id << " in " << e.server_id << "\n";
-                bot.add_role_to_member(e.server_id, e.user_id, config.autorole_role_id);
+                bot.add_role_to_member(e.server_id, e.user_id, config.autorole_role_id, [e, config](bool ok, std::string err) {
+                    if (!ok) {
+                        std::cerr << "[bronx autorole] failed to assign role " << config.autorole_role_id << " to member " << e.user_id << " in " << e.server_id << ": " << err << "\n";
+                    }
+                });
             }
 
             // 2. Dispatch Welcome Message if configured
@@ -1515,7 +1521,8 @@ public:
                             }).detach();
                         } else {
                             stoatpp::models::MessagePayload payload;
-                            payload.content = format_placeholders(config.welcome_content, user, server, final_count);
+                            std::string text_body = config.welcome_content.empty() ? "Welcome {name} to {server}!" : config.welcome_content;
+                            payload.content = format_placeholders(text_body, user, server, final_count);
                             bot.send_message(config.welcome_channel_id, payload);
                         }
                     });
@@ -1677,7 +1684,8 @@ public:
                         }).detach();
                     } else {
                         stoatpp::models::MessagePayload payload;
-                        payload.content = format_placeholders(config.leave_content, user, server, final_count);
+                        std::string text_body = config.leave_content.empty() ? "{name} left {server}." : config.leave_content;
+                        payload.content = format_placeholders(text_body, user, server, final_count);
                         bot.send_message(config.leave_channel_id, payload);
                     }
                 });

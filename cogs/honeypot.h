@@ -62,7 +62,7 @@ private:
                     auto r = bot.rest().open_dm(user_id);
                     if (r.success() && r.body.contains("_id")) {
                         std::string dm_id = r.body["_id"].get<std::string>();
-                        bot.send_message(dm_id, "⚠️ **Honeypot Warning**\nYou have been flagged by the automated honeypot system for interacting with a restricted honeypot channel.");
+                        bot.send_message(dm_id, "" + bronx::emj_warning + " **Honeypot Warning**\nYou have been flagged by the automated honeypot system for interacting with a restricted honeypot channel.");
                     }
                     if (!logged) { logged = true; do_log(); }
                 }).detach();
@@ -130,7 +130,7 @@ private:
 
     // Helper: format configuration status for display
     static std::string format_config(const Database::HoneypotConfig& cfg) {
-        std::string enabled_mark = cfg.enabled ? "✅ **Enabled**" : "⚠️ **Disabled**";
+        std::string enabled_mark = cfg.enabled ? "" + bronx::emj_yes + " **Enabled**" : "" + bronx::emj_warning + " **Disabled**";
         std::string chan_str = cfg.channel_id.empty() ? "*None (Run `.honeypot setup` to create)*" : "<#" + cfg.channel_id + ">";
         std::string trig_str;
         if (cfg.message_triggers && cfg.react_triggers) trig_str = "Messages & Reactions";
@@ -162,24 +162,24 @@ public:
                 std::cout << "[bronx command] handling honeypot...\n";
 
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server.");
                     return;
                 }
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database unavailable.");
                     return;
                 }
 
                 // Permission check
                 bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg, args](stoatpp::models::Member member, bool ok) {
                     if (!ok) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify your member details.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your member details.");
                         return;
                     }
 
                     if (!can_manage_honeypot(bot, msg.server_id, msg.author.id, member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Only the server owner, trusted users, or administrators may manage honeypot settings.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Only the server owner, trusted users, or administrators may manage honeypot settings.");
                         return;
                     }
 
@@ -213,12 +213,12 @@ public:
                         }
                         
                         std::string hp_msg = cfg.honeypot_message.empty() ? "🍯 **Honeypot Channel**\nDo not send messages or add reactions here." : cfg.honeypot_message;
-                        std::string disc_msg = cfg.disclaimer_message.empty() ? "⚠️ **Disclaimer**\nBy interacting with this channel, you will trigger automated moderation actions on your account." : cfg.disclaimer_message;
+                        std::string disc_msg = cfg.disclaimer_message.empty() ? "" + bronx::emj_warning + " **Disclaimer**\nBy interacting with this channel, you will trigger automated moderation actions on your account." : cfg.disclaimer_message;
 
                         std::thread([&bot, msg, ch_name, cfg, hp_msg, disc_msg]() mutable {
                             auto res = bot.rest().create_channel(msg.server_id, "Text", ch_name);
                             if (!res.success()) {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to create honeypot channel: " + res.error_message());
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to create honeypot channel: " + res.error_message());
                                 return;
                             }
 
@@ -234,9 +234,9 @@ public:
                             cfg.disclaimer_message = disc_msg;
                             cfg.enabled = true;
                             if (g_db->save_honeypot_config(cfg)) {
-                                bot.send_message(msg.channel_id, "✅ Honeypot setup complete! Created channel <#" + new_chan_id + "> and enabled monitoring.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Honeypot setup complete! Created channel <#" + new_chan_id + "> and enabled monitoring.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Channel created, but failed to save configuration to database.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Channel created, but failed to save configuration to database.");
                             }
                         }).detach();
                         return;
@@ -250,12 +250,12 @@ public:
                         std::string act = args[1];
                         std::transform(act.begin(), act.end(), act.begin(), ::tolower);
                         if (act != "jail" && act != "warn" && act != "kick" && act != "ban" && act != "log" && act != "timeout") {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid action. Must be one of: `jail`, `warn`, `kick`, `ban`, `log`, `timeout`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action. Must be one of: `jail`, `warn`, `kick`, `ban`, `log`, `timeout`.");
                             return;
                         }
                         cfg.action = act;
                         g_db->save_honeypot_config(cfg);
-                        bot.send_message(msg.channel_id, "✅ Honeypot action updated to `" + act + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Honeypot action updated to `" + act + "`.");
                         return;
                     }
 
@@ -270,7 +270,7 @@ public:
                         }
                         cfg.honeypot_message = text;
                         g_db->save_honeypot_config(cfg);
-                        bot.send_message(msg.channel_id, "✅ Honeypot message updated.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Honeypot message updated.");
                         if (!cfg.channel_id.empty()) {
                             bot.send_message(cfg.channel_id, text);
                         }
@@ -288,7 +288,7 @@ public:
                         }
                         cfg.disclaimer_message = text;
                         g_db->save_honeypot_config(cfg);
-                        bot.send_message(msg.channel_id, "✅ Honeypot disclaimer message updated.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Honeypot disclaimer message updated.");
                         if (!cfg.channel_id.empty()) {
                             bot.send_message(cfg.channel_id, text);
                         }
@@ -312,11 +312,11 @@ public:
                             cfg.message_triggers = true;
                             cfg.react_triggers = true;
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid trigger mode. Choose `message`, `react`, or `both`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid trigger mode. Choose `message`, `react`, or `both`.");
                             return;
                         }
                         g_db->save_honeypot_config(cfg);
-                        bot.send_message(msg.channel_id, "✅ Honeypot triggers updated.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Honeypot triggers updated.");
                         return;
                     }
 
@@ -331,18 +331,18 @@ public:
                         }
                         cfg.channel_id = chan_query;
                         g_db->save_honeypot_config(cfg);
-                        bot.send_message(msg.channel_id, "✅ Honeypot monitored channel set to <#" + chan_query + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Honeypot monitored channel set to <#" + chan_query + ">.");
                         return;
                     }
 
                     if (sub == "enable" || sub == "disable") {
                         cfg.enabled = (sub == "enable");
                         g_db->save_honeypot_config(cfg);
-                        bot.send_message(msg.channel_id, cfg.enabled ? "✅ Honeypot system has been enabled." : "✅ Honeypot system has been disabled.");
+                        bot.send_message(msg.channel_id, cfg.enabled ? "" + bronx::emj_yes + " Honeypot system has been enabled." : "" + bronx::emj_yes + " Honeypot system has been disabled.");
                         return;
                     }
 
-                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use `.honeypot` to list subcommands.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use `.honeypot` to list subcommands.");
                 });
             },
             "Moderation"

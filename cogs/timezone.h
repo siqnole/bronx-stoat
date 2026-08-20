@@ -26,7 +26,7 @@ public:
             if (args.empty()) {
                 // Show author's timezone/time
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "❌ Database error: DB connection is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Database error: DB connection is unavailable.");
                     return;
                 }
                 auto tz_opt = g_db->get_user_timezone(msg.author.id);
@@ -99,7 +99,7 @@ public:
                 }
                 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "❌ Database error: DB connection is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Database error: DB connection is unavailable.");
                     return;
                 }
                 if (g_db->save_user_timezone(msg.author.id, resolved_name)) {
@@ -115,7 +115,7 @@ public:
                     payload.add_embed(embed);
                     bot.send_message(msg.channel_id, payload);
                 } else {
-                    bot.send_message(msg.channel_id, "❌ Database error: failed to save your timezone. Please try again later.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Database error: failed to save your timezone. Please try again later.");
                 }
                 return;
             }
@@ -129,12 +129,12 @@ public:
             
             helpers::resolve_user(bot, msg.server_id, query_str, [this, &bot, msg, query_str](stoatpp::models::User user, stoatpp::models::Member member, bool success) {
                 if (!success || user.id.empty()) {
-                    bot.send_message(msg.channel_id, "❌ Could not find user matching: `" + query_str + "`");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not find user matching: `" + query_str + "`");
                     return;
                 }
                 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "❌ Database error: DB connection is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Database error: DB connection is unavailable.");
                     return;
                 }
                 auto tz_opt = g_db->get_user_timezone(user.id);

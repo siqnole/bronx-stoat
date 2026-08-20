@@ -17,12 +17,12 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling server alias...\n";
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "❌ this command can only be used inside a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " this command can only be used inside a server.");
                     return;
                 }
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "❌ database connection is not initialized.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " database connection is not initialized.");
                     return;
                 }
 
@@ -49,7 +49,7 @@ public:
                     embed["colour"] = "#5865F2";
 
                     std::string desc = "";
-                    desc += "• **user-level aliases status**: " + std::string(user_disabled ? "🚫 **disabled** in this server\n" : "✅ **enabled** in this server\n");
+                    desc += "• **user-level aliases status**: " + std::string(user_disabled ? "" + bronx::emj_no + " **disabled** in this server\n" : "" + bronx::emj_yes + " **enabled** in this server\n");
                     desc += "\n### active server aliases:\n";
                     if (aliases.empty()) {
                         desc += "_no server-wide aliases configured._\n";
@@ -67,18 +67,18 @@ public:
                 // Subcommands requiring ManageServer permission
                 auto server_opt = bot.get_server(msg.server_id);
                 if (!server_opt) {
-                    bot.send_message(msg.channel_id, "❌ failed to resolve server details.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to resolve server details.");
                     return;
                 }
 
                 bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, server_opt, subcommand, args, pfx](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot.send_message(msg.channel_id, "❌ failed to verify server member permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to verify server member permissions.");
                         return;
                     }
 
                     if (!bot.is_owner(msg.author.id) && !bot.has_permission(*server_opt, member, stoatpp::permissions::ManageServer)) {
-                        bot.send_message(msg.channel_id, "❌ permission error: you need the **Manage Server** permission to run this subcommand.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " permission error: you need the **Manage Server** permission to run this subcommand.");
                         return;
                     }
 
@@ -92,14 +92,14 @@ public:
 
                         // Prevent recursive aliases / invalid names
                         if (alias == target) {
-                            bot.send_message(msg.channel_id, "❌ you cannot map a command to itself.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " you cannot map a command to itself.");
                             return;
                         }
 
                         if (g_db->set_server_alias(msg.server_id, alias, target)) {
-                            bot.send_message(msg.channel_id, "✅ successfully mapped `" + alias + "` to `" + target + "` for this server!");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " successfully mapped `" + alias + "` to `" + target + "` for this server!");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ failed to save configuration to database.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to save configuration to database.");
                         }
                     } 
                     else if (subcommand == "remove") {
@@ -109,9 +109,9 @@ public:
                         }
                         std::string alias = args[1];
                         if (g_db->delete_server_alias(msg.server_id, alias)) {
-                            bot.send_message(msg.channel_id, "✅ successfully removed server alias `" + alias + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " successfully removed server alias `" + alias + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ failed to delete alias or alias not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to delete alias or alias not found.");
                         }
                     } 
                     else if (subcommand == "useraliases") {
@@ -129,18 +129,18 @@ public:
                         } else if (val == "on" || val == "true" || val == "1" || val == "yes" || val == "enabled") {
                             disable = false; // enable them
                         } else {
-                            bot.send_message(msg.channel_id, "❌ invalid setting. use `on` (enable) or `off` (disable).");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " invalid setting. use `on` (enable) or `off` (disable).");
                             return;
                         }
 
                         if (g_db->set_user_aliases_disabled(msg.server_id, disable)) {
-                            bot.send_message(msg.channel_id, "✅ user-level aliases are now **" + std::string(disable ? "disabled" : "enabled") + "** in this server.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " user-level aliases are now **" + std::string(disable ? "disabled" : "enabled") + "** in this server.");
                         } else {
-                            bot.send_message(msg.channel_id, "❌ failed to update settings.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to update settings.");
                         }
                     } 
                     else {
-                        bot.send_message(msg.channel_id, "❌ unknown subcommand. use list, add, remove, or useraliases.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " unknown subcommand. use list, add, remove, or useraliases.");
                     }
                 });
             },
@@ -160,7 +160,7 @@ public:
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling user personal alias...\n";
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "❌ database connection is not initialized.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " database connection is not initialized.");
                     return;
                 }
 
@@ -186,7 +186,7 @@ public:
 
                     std::string desc = "";
                     if (!msg.server_id.empty() && g_db->get_user_aliases_disabled(msg.server_id)) {
-                        desc += "⚠️ _note: user aliases are disabled by administrators in this server._\n\n";
+                        desc += "" + bronx::emj_warning + " _note: user aliases are disabled by administrators in this server._\n\n";
                     }
                     if (aliases.empty()) {
                         desc += "_you have no personal aliases configured._\n";
@@ -210,14 +210,14 @@ public:
                     std::string target = args[2];
 
                     if (alias == target) {
-                        bot.send_message(msg.channel_id, "❌ you cannot map a command to itself.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " you cannot map a command to itself.");
                         return;
                     }
 
                     if (g_db->set_user_alias(msg.author.id, alias, target)) {
-                        bot.send_message(msg.channel_id, "✅ successfully mapped `" + alias + "` to `" + target + "` for your account!");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " successfully mapped `" + alias + "` to `" + target + "` for your account!");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ failed to save personal alias configuration.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to save personal alias configuration.");
                     }
                 } 
                 else if (subcommand == "remove") {
@@ -227,13 +227,13 @@ public:
                     }
                     std::string alias = args[1];
                     if (g_db->delete_user_alias(msg.author.id, alias)) {
-                        bot.send_message(msg.channel_id, "✅ successfully removed personal alias `" + alias + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " successfully removed personal alias `" + alias + "`.");
                     } else {
-                        bot.send_message(msg.channel_id, "❌ failed to delete personal alias or alias not found.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " failed to delete personal alias or alias not found.");
                     }
                 } 
                 else {
-                    bot.send_message(msg.channel_id, "❌ unknown subcommand. use list, add, or remove.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " unknown subcommand. use list, add, or remove.");
                 }
             },
             "Alias",

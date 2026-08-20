@@ -172,17 +172,17 @@ public:
         auto handle_trust = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
             std::cout << "[bronx command] handling trust...\n";
             if (msg.server_id.empty()) {
-                bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                 return;
             }
             if (!g_db) {
-                bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                 return;
             }
 
             bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, args](stoatpp::models::Member member, bool success) {
                 if (!success) {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                     return;
                 }
 
@@ -220,10 +220,10 @@ public:
                     bool already = g_db->is_trusted(msg.server_id, user_id, {});
                     if (already) {
                         g_db->remove_trusted(msg.server_id, "user", user_id);
-                        bot.send_message(msg.channel_id, "✅ Removed trust from user <@" + user_id + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed trust from user <@" + user_id + ">.");
                     } else {
                         g_db->add_trusted(msg.server_id, "user", user_id);
-                        bot.send_message(msg.channel_id, "✅ Granted trust to user <@" + user_id + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Granted trust to user <@" + user_id + ">.");
                     }
                     return;
                 }
@@ -234,10 +234,10 @@ public:
                     bool already = g_db->is_trusted(msg.server_id, "", {role_id});
                     if (already) {
                         g_db->remove_trusted(msg.server_id, "role", role_id);
-                        bot.send_message(msg.channel_id, "✅ Removed trust from role <%" + role_id + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed trust from role <%" + role_id + ">.");
                     } else {
                         g_db->add_trusted(msg.server_id, "role", role_id);
-                        bot.send_message(msg.channel_id, "✅ Granted trust to role <%" + role_id + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Granted trust to role <%" + role_id + ">.");
                     }
                     return;
                 }
@@ -272,10 +272,10 @@ public:
                     bool already = g_db->is_trusted(msg.server_id, "", {role_id});
                     if (already) {
                         g_db->remove_trusted(msg.server_id, "role", role_id);
-                        bot.send_message(msg.channel_id, "✅ Removed trust from role <%" + role_id + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed trust from role <%" + role_id + ">.");
                     } else {
                         g_db->add_trusted(msg.server_id, "role", role_id);
-                        bot.send_message(msg.channel_id, "✅ Granted trust to role <%" + role_id + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Granted trust to role <%" + role_id + ">.");
                     }
                     return;
                 }
@@ -284,10 +284,10 @@ public:
                 bool already = g_db->is_trusted(msg.server_id, target, {});
                 if (already) {
                     g_db->remove_trusted(msg.server_id, "user", target);
-                    bot.send_message(msg.channel_id, "✅ Removed trust from user <@" + target + ">.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed trust from user <@" + target + ">.");
                 } else {
                     g_db->add_trusted(msg.server_id, "user", target);
-                    bot.send_message(msg.channel_id, "✅ Granted trust to user <@" + target + ">.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Granted trust to user <@" + target + ">.");
                 }
             });
         };
@@ -309,17 +309,17 @@ public:
         auto handle_command = [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
             std::cout << "[bronx command] handling command config...\n";
             if (msg.server_id.empty()) {
-                bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                 return;
             }
             if (!g_db) {
-                bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                 return;
             }
 
             bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, args](stoatpp::models::Member member, bool success) {
                 if (!success) {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to verify your permissions.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
                     return;
                 }
 
@@ -365,7 +365,7 @@ public:
                             bot.send_message(msg.channel_id, "ℹ️ No commands or modules are disabled on this server.");
                             return;
                         }
-                        std::string out = "🚫 **Disabled Commands and Modules:**\n";
+                        std::string out = "" + bronx::emj_no + " **Disabled Commands and Modules:**\n";
                         for (const auto& [type, name] : disabled) {
                             out += "• " + type + ": `" + name + "`\n";
                         }
@@ -400,18 +400,18 @@ public:
                             std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), ::tolower);
                             bool success_mod = g_db->disable_item(msg.server_id, "module", mod_name);
                             if (success_cmd || success_mod) {
-                                bot.send_message(msg.channel_id, "✅ Completely disabled command and module `" + name + "`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Completely disabled command and module `" + name + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to disable command and module.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to disable command and module.");
                             }
                             return;
                         }
                     }
 
                     if (g_db->disable_item(msg.server_id, final_type, resolved_name)) {
-                        bot.send_message(msg.channel_id, "✅ Completely disabled " + final_type + " `" + resolved_name + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Completely disabled " + final_type + " `" + resolved_name + "`.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to disable " + final_type + ".");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to disable " + final_type + ".");
                     }
                     return;
                 }
@@ -424,7 +424,7 @@ public:
                             bot.send_message(msg.channel_id, "ℹ️ No commands or modules are disabled on this server.");
                             return;
                         }
-                        std::string out = "🚫 **Disabled Commands and Modules:**\n";
+                        std::string out = "" + bronx::emj_no + " **Disabled Commands and Modules:**\n";
                         for (const auto& [type, name] : disabled) {
                             out += "• " + type + ": `" + name + "`\n";
                         }
@@ -459,18 +459,18 @@ public:
                             std::transform(mod_name.begin(), mod_name.end(), mod_name.begin(), ::tolower);
                             bool success_mod = g_db->enable_item(msg.server_id, "module", mod_name);
                             if (success_cmd || success_mod) {
-                                bot.send_message(msg.channel_id, "✅ Enabled command and module `" + name + "`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Enabled command and module `" + name + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to enable command and module.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to enable command and module.");
                             }
                             return;
                         }
                     }
 
                     if (g_db->enable_item(msg.server_id, final_type, resolved_name)) {
-                        bot.send_message(msg.channel_id, "✅ Enabled " + final_type + " `" + resolved_name + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Enabled " + final_type + " `" + resolved_name + "`.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to enable " + final_type + ".");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to enable " + final_type + ".");
                     }
                     return;
                 }
@@ -658,7 +658,7 @@ public:
                     }
 
                     if (entity_type.empty() || entity_id.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ Could not resolve channel, role name/mention, or permission: `" + entity + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Could not resolve channel, role name/mention, or permission: `" + entity + "`.");
                         return;
                     }
 
@@ -702,7 +702,7 @@ public:
                         }
 
                         std::string verb = exists_cmd ? "Removed" : "Configured";
-                        bot.send_message(msg.channel_id, "✅ " + verb + " restriction rule: " + subcommand + " command and module `" + name + "` in/for " + ent_repr + ".");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " " + verb + " restriction rule: " + subcommand + " command and module `" + name + "` in/for " + ent_repr + ".");
                     } else {
                         // Regular single item
                         auto current = g_db->get_restrictions(msg.server_id, final_type, resolved_name);
@@ -716,22 +716,22 @@ public:
 
                         if (exists) {
                             if (g_db->remove_restriction(msg.server_id, final_type, resolved_name, subcommand, entity_type, entity_id)) {
-                                bot.send_message(msg.channel_id, "✅ Removed restriction rule: " + subcommand + " " + final_type + " `" + resolved_name + "` in/for " + ent_repr + ".");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed restriction rule: " + subcommand + " " + final_type + " `" + resolved_name + "` in/for " + ent_repr + ".");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to remove restriction.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to remove restriction.");
                             }
                         } else {
                             if (g_db->add_restriction(msg.server_id, final_type, resolved_name, subcommand, entity_type, entity_id)) {
-                                bot.send_message(msg.channel_id, "✅ Configured restriction rule: " + subcommand + " " + final_type + " `" + resolved_name + "` in/for " + ent_repr + ".");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Configured restriction rule: " + subcommand + " " + final_type + " `" + resolved_name + "` in/for " + ent_repr + ".");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save restriction.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save restriction.");
                             }
                         }
                     }
                     return;
                 }
 
-                bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use `allow`, `restrict`, `view`, `disable`, or `enable`.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use `allow`, `restrict`, `view`, `disable`, or `enable`.");
             });
         };
 

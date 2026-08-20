@@ -239,11 +239,11 @@ public:
                             std::string type_resp = rep1->content;
                             std::transform(type_resp.begin(), type_resp.end(), type_resp.begin(), ::tolower);
                             if (type_resp == "cancel") {
-                                bot.send_message(msg.channel_id, "🚫 AFK setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
                                 return;
                             }
                             if (type_resp != "text" && type_resp != "embed") {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid type (must be `text` or `embed`). AFK setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type (must be `text` or `embed`). AFK setup canceled.");
                                 return;
                             }
 
@@ -256,7 +256,7 @@ public:
                                     }
                                     std::string content_resp = rep2->content;
                                     if (content_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "🚫 AFK setup canceled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
                                         return;
                                     }
                                     
@@ -265,9 +265,9 @@ public:
                                     tmpl.content = content_resp;
 
                                     if (g_db->save_user_afk_preset(msg.author.id, preset_name, tmpl.dump())) {
-                                        bot.send_message(msg.channel_id, "✅ **AFK Setup Complete!** Your AFK template for preset `" + preset_name + "` has been saved.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **AFK Setup Complete!** Your AFK template for preset `" + preset_name + "` has been saved.");
                                     } else {
-                                        bot.send_message(msg.channel_id, "⚠️ Failed to save AFK template.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save AFK template.");
                                     }
                                 });
                                 return;
@@ -282,7 +282,7 @@ public:
                                 }
                                 std::string title_resp = rep2->content;
                                 if (title_resp == "cancel") {
-                                    bot.send_message(msg.channel_id, "🚫 AFK setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
                                     return;
                                 }
 
@@ -298,7 +298,7 @@ public:
                                     }
                                     std::string desc_resp = rep3->content;
                                     if (desc_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "🚫 AFK setup canceled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
                                         return;
                                     }
                                     auto current_tmpl = tmpl;
@@ -312,7 +312,7 @@ public:
                                         }
                                         std::string color_resp = rep4->content;
                                         if (color_resp == "cancel") {
-                                            bot.send_message(msg.channel_id, "🚫 AFK setup canceled.");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
                                             return;
                                         }
                                         auto next_tmpl = current_tmpl;
@@ -326,7 +326,7 @@ public:
                                             }
                                             std::string img_resp = rep5->content;
                                             if (img_resp == "cancel") {
-                                                bot.send_message(msg.channel_id, "🚫 AFK setup canceled.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
                                                 return;
                                             }
                                             auto last_tmpl = next_tmpl;
@@ -340,7 +340,7 @@ public:
                                                 }
                                                 std::string text_resp = rep6->content;
                                                 if (text_resp == "cancel") {
-                                                    bot.send_message(msg.channel_id, "🚫 AFK setup canceled.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
                                                     return;
                                                 }
                                                 auto final_tmpl = last_tmpl;
@@ -351,9 +351,9 @@ public:
                                                 }
 
                                                 if (g_db->save_user_afk_preset(msg.author.id, preset_name, final_tmpl.dump())) {
-                                                    bot.send_message(msg.channel_id, "✅ **AFK Setup Complete!** Your custom embed AFK template for preset `" + preset_name + "` has been saved.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **AFK Setup Complete!** Your custom embed AFK template for preset `" + preset_name + "` has been saved.");
                                                 } else {
-                                                    bot.send_message(msg.channel_id, "⚠️ Failed to save AFK template.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save AFK template.");
                                                 }
                                             });
                                         });
@@ -374,9 +374,9 @@ public:
                                 afk.reason = "";
                                 afk.since = 0;
                                 if (g_db->save_user_afk(afk)) {
-                                    bot.send_message(msg.channel_id, "✅ Welcome back <@" + msg.author.id + ">, I removed your AFK.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome back <@" + msg.author.id + ">, I removed your AFK.");
                                 } else {
-                                    bot.send_message(msg.channel_id, "⚠️ Failed to clear AFK status.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to clear AFK status.");
                                 }
                             } else {
                                 bot.send_message(msg.channel_id, "ℹ️ You are not AFK.");
@@ -386,7 +386,7 @@ public:
                             // Clear someone else's AFK reason (moderator action)
                             auto s_opt = bot.get_server(msg.server_id);
                             if (!s_opt) {
-                                bot.send_message(msg.channel_id, "⚠️ This action can only be performed in a server.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This action can only be performed in a server.");
                                 return;
                             }
 
@@ -396,14 +396,14 @@ public:
                                               bot.has_permission(*s_opt, executor_mbr, stoatpp::permissions::KickMembers) ||
                                               bot.has_permission(*s_opt, executor_mbr, stoatpp::permissions::ManageMessages);
                                 if (!is_mod) {
-                                    bot.send_message(msg.channel_id, "⚠️ you do not have permission to clear other users' AFK status.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " you do not have permission to clear other users' AFK status.");
                                     return;
                                 }
 
                                 std::string query = args[1];
                                 helpers::resolve_user(bot, msg.server_id, query, [&bot, msg](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                                     if (!success) {
-                                        bot.send_message(msg.channel_id, "⚠️ Could not resolve target user.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Could not resolve target user.");
                                         return;
                                     }
 
@@ -416,9 +416,9 @@ public:
                                     Database::UserAFK afk = *target_afk_opt;
                                     afk.reason = ""; // Clear custom reason
                                     if (g_db->save_user_afk(afk)) {
-                                        bot.send_message(msg.channel_id, "✅ Cleared AFK reason for **" + target_user.username + "**. They are still AFK but their custom reason has been reset.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Cleared AFK reason for **" + target_user.username + "**. They are still AFK but their custom reason has been reset.");
                                     } else {
-                                        bot.send_message(msg.channel_id, "⚠️ Failed to clear AFK reason.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to clear AFK reason.");
                                     }
                                 });
                             });
@@ -434,7 +434,7 @@ public:
                         std::string t = args[1];
                         std::transform(t.begin(), t.end(), t.begin(), ::tolower);
                         if (t != "text" && t != "embed") {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid type. Must be `text` or `embed`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type. Must be `text` or `embed`.");
                             return;
                         }
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
@@ -444,9 +444,9 @@ public:
                         AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.type = t;
                         if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, "✅ AFK template type updated to `" + t + "` for preset `" + active + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " AFK template type updated to `" + t + "` for preset `" + active + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update template.");
                         }
                         return;
                     }
@@ -470,9 +470,9 @@ public:
                         AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.content = content;
                         if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, "✅ AFK content/text updated for preset `" + active + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " AFK content/text updated for preset `" + active + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update template.");
                         }
                         return;
                     }
@@ -514,7 +514,7 @@ public:
 
                         auto pairs = parse_pairs(kv_part);
                         if (pairs.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found. Format must be `key:value` (e.g. `title:Away color:random`).");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key-value pairs found. Format must be `key:value` (e.g. `title:Away color:random`).");
                             return;
                         }
 
@@ -555,9 +555,9 @@ public:
                         }
 
                         if (g_db->save_user_afk_preset(msg.author.id, edit_preset, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, "✅ AFK template for preset `" + edit_preset + "` updated successfully.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " AFK template for preset `" + edit_preset + "` updated successfully.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save AFK template configuration.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save AFK template configuration.");
                         }
                         return;
                     }
@@ -575,9 +575,9 @@ public:
                         AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.title = title;
                         if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, title.empty() ? "✅ Embed title cleared for preset `" + active + "`." : "✅ Embed title updated for preset `" + active + "`.");
+                            bot.send_message(msg.channel_id, title.empty() ? "" + bronx::emj_yes + " Embed title cleared for preset `" + active + "`." : "" + bronx::emj_yes + " Embed title updated for preset `" + active + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update template.");
                         }
                         return;
                     }
@@ -595,9 +595,9 @@ public:
                         AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.description = desc_text;
                         if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, desc_text.empty() ? "✅ Embed description cleared for preset `" + active + "`." : "✅ Embed description updated for preset `" + active + "`.");
+                            bot.send_message(msg.channel_id, desc_text.empty() ? "" + bronx::emj_yes + " Embed description cleared for preset `" + active + "`." : "" + bronx::emj_yes + " Embed description updated for preset `" + active + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update template.");
                         }
                         return;
                     }
@@ -616,9 +616,9 @@ public:
                         AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.color = col;
                         if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, col.empty() ? "✅ Embed color cleared for preset `" + active + "`." : "✅ Embed color updated for preset `" + active + "`.");
+                            bot.send_message(msg.channel_id, col.empty() ? "" + bronx::emj_yes + " Embed color cleared for preset `" + active + "`." : "" + bronx::emj_yes + " Embed color updated for preset `" + active + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update template.");
                         }
                         return;
                     }
@@ -637,9 +637,9 @@ public:
                         AFKTemplate tmpl = AFKTemplate::parse(g_db->get_user_afk_preset(msg.author.id, active));
                         tmpl.image = img;
                         if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, img.empty() ? "✅ Embed image cleared for preset `" + active + "`." : "✅ Embed image updated for preset `" + active + "`.");
+                            bot.send_message(msg.channel_id, img.empty() ? "" + bronx::emj_yes + " Embed image cleared for preset `" + active + "`." : "" + bronx::emj_yes + " Embed image updated for preset `" + active + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update template.");
                         }
                         return;
                     }
@@ -658,7 +658,7 @@ public:
                             auto parsed = nlohmann::json::parse(raw_json);
                             if (!parsed.is_object()) throw std::runtime_error("must be an object");
                         } catch (const std::exception& ex) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(ex.what()));
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid JSON format: " + std::string(ex.what()));
                             return;
                         }
                         auto afk_opt = g_db->get_user_afk(msg.author.id);
@@ -667,9 +667,9 @@ public:
                         std::string active = afk.active_preset.empty() ? "default" : afk.active_preset;
                         AFKTemplate tmpl = AFKTemplate::parse(raw_json);
                         if (g_db->save_user_afk_preset(msg.author.id, active, tmpl.dump())) {
-                            bot.send_message(msg.channel_id, "✅ AFK JSON template updated for preset `" + active + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " AFK JSON template updated for preset `" + active + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to update template.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to update template.");
                         }
                         return;
                     }
@@ -767,9 +767,9 @@ public:
                         if (del_preset == "default") {
                             AFKTemplate empty_tmpl;
                             if (g_db->save_user_afk_preset(msg.author.id, "default", empty_tmpl.dump())) {
-                                bot.send_message(msg.channel_id, "✅ Reset default AFK template to default configuration.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Reset default AFK template to default configuration.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to reset default AFK template.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to reset default AFK template.");
                             }
                             return;
                         }
@@ -781,9 +781,9 @@ public:
                                 afk.active_preset = "default";
                                 g_db->save_user_afk(afk);
                             }
-                            bot.send_message(msg.channel_id, "✅ Deleted AFK preset `" + del_preset + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Deleted AFK preset `" + del_preset + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to delete preset.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to delete preset.");
                         }
                         return;
                     }
@@ -874,7 +874,7 @@ public:
                         }
 
                         if (!exists) {
-                            bot.send_message(msg.channel_id, "⚠️ Preset `" + set_preset + "` does not exist. Set it up using `" + pfx + "afk setup " + set_preset + "` first.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Preset `" + set_preset + "` does not exist. Set it up using `" + pfx + "afk setup " + set_preset + "` first.");
                             return;
                         }
 
@@ -885,9 +885,9 @@ public:
                         afk.active_preset = set_preset;
 
                         if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, "✅ Your active AFK preset is now set to `" + set_preset + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Your active AFK preset is now set to `" + set_preset + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save active preset selection.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save active preset selection.");
                         }
                         return;
                     }
@@ -912,9 +912,9 @@ public:
                     if (preset == "default" && g_db->get_user_afk_preset(msg.author.id, "default").empty()) {
                         setup_hint = "\n###### customize your afk with " + pfx2 + "afk setup !";
                     }
-                    bot.send_message(msg.channel_id, "✅ <@" + msg.author.id + "> is now AFK: " + reason + preset_info + setup_hint);
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " <@" + msg.author.id + "> is now AFK: " + reason + preset_info + setup_hint);
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to set AFK status.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to set AFK status.");
                 }
             },
             "Utility",
@@ -939,9 +939,9 @@ public:
                         afk.reason = "";
                         afk.since = 0;
                         if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, "✅ Welcome back <@" + msg.author.id + ">, I removed your AFK.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome back <@" + msg.author.id + ">, I removed your AFK.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to clear AFK status.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to clear AFK status.");
                         }
                     } else {
                         bot.send_message(msg.channel_id, "ℹ️ You are not AFK.");
@@ -952,7 +952,7 @@ public:
                 // Clear someone else's AFK status entirely
                 auto s_opt = bot.get_server(msg.server_id);
                 if (!s_opt) {
-                    bot.send_message(msg.channel_id, "⚠️ This action can only be performed in a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This action can only be performed in a server.");
                     return;
                 }
 
@@ -962,14 +962,14 @@ public:
                                   bot.has_permission(*s_opt, executor_mbr, stoatpp::permissions::KickMembers) ||
                                   bot.has_permission(*s_opt, executor_mbr, stoatpp::permissions::ManageMessages);
                     if (!is_mod) {
-                        bot.send_message(msg.channel_id, "⚠️ you do not have permission to clear other users' AFK status.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " you do not have permission to clear other users' AFK status.");
                         return;
                     }
 
                     std::string query = args[0];
                     helpers::resolve_user(bot, msg.server_id, query, [&bot, msg](stoatpp::models::User target_user, stoatpp::models::Member target_member, bool success) {
                         if (!success) {
-                            bot.send_message(msg.channel_id, "⚠️ Could not resolve target user.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Could not resolve target user.");
                             return;
                         }
 
@@ -984,9 +984,9 @@ public:
                         afk.reason = "";
                         afk.since = 0;
                         if (g_db->save_user_afk(afk)) {
-                            bot.send_message(msg.channel_id, "✅ Welcomed back **" + target_user.username + "**. Removed their AFK status.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcomed back **" + target_user.username + "**. Removed their AFK status.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to clear AFK status.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to clear AFK status.");
                         }
                     });
                 });

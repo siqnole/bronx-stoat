@@ -68,7 +68,7 @@ public:
                 hp_cfg.server_id = server_id;
                 hp_cfg.channel_id = hp_chan_id;
                 hp_cfg.honeypot_message = "🍯 **Honeypot Channel**\nDo not send messages or add reactions here.";
-                hp_cfg.disclaimer_message = "⚠️ **Disclaimer**\nBy interacting with this channel, you will trigger automated moderation actions on your account.";
+                hp_cfg.disclaimer_message = "" + bronx::emj_warning + " **Disclaimer**\nBy interacting with this channel, you will trigger automated moderation actions on your account.";
                 hp_cfg.action = "ban";
                 hp_cfg.message_triggers = true;
                 hp_cfg.react_triggers = true;
@@ -84,26 +84,26 @@ public:
             // Build setup summary embed
             stoatpp::models::MessagePayload payload;
             nlohmann::json embed = nlohmann::json::object();
-            embed["title"] = "✅ Bronx Setup Complete";
+            embed["title"] = "" + bronx::emj_yes + " Bronx Setup Complete";
             embed["colour"] = "#2ecc71"; // Green
             
             std::string desc = "All modules have been successfully configured and initialized:\n\n";
             if (!log_chan_id.empty()) {
                 desc += "• **Logging:** Logs are now routed to <#" + log_chan_id + ">\n";
             } else {
-                desc += "• **Logging:** ⚠️ Failed to create logs channel.\n";
+                desc += "• **Logging:** " + bronx::emj_warning + " Failed to create logs channel.\n";
             }
 
             if (!jail_chan_id.empty() && !jail_role_id.empty()) {
                 desc += "• **Jail:** Restricted channel <#" + jail_chan_id + "> and role created.\n";
             } else {
-                desc += "• **Jail:** ⚠️ Failed to create jail components.\n";
+                desc += "• **Jail:** " + bronx::emj_warning + " Failed to create jail components.\n";
             }
 
             if (!hp_chan_id.empty()) {
                 desc += "• **Honeypot:** Active trap channel created at <#" + hp_chan_id + "> (Action: Ban).\n";
             } else {
-                desc += "• **Honeypot:** ⚠️ Failed to create honeypot channel.\n";
+                desc += "• **Honeypot:** " + bronx::emj_warning + " Failed to create honeypot channel.\n";
             }
             
             desc += "\n*Your server is now protected! Use `.help` to see all moderation commands.*";
@@ -123,14 +123,14 @@ public:
             {},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server.");
                     return;
                 }
 
                 // Check permissions (Admin/Server Owner/Manage Server)
                 bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg](stoatpp::models::Member member, bool ok) {
                     if (!ok) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify permissions.");
                         return;
                     }
 
@@ -143,7 +143,7 @@ public:
                     }
 
                     if (!can_setup) {
-                        bot.send_message(msg.channel_id, "⚠️ Only server owners and administrators can run the setup wizard.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Only server owners and administrators can run the setup wizard.");
                         return;
                     }
 
@@ -194,7 +194,7 @@ public:
                     if (!can_setup) {
                         // Notify only if they don't have permission
                         stoatpp::models::MessagePayload err_msg;
-                        err_msg.content = "⚠️ Only server owners and administrators can run the setup wizard.";
+                        err_msg.content = "" + bronx::emj_warning + " Only server owners and administrators can run the setup wizard.";
                         err_msg.delete_after = 5;
                         bot.send_message(e.channel_id, err_msg);
                         return;

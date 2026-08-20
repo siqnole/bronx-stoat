@@ -130,7 +130,7 @@ public:
                                 if (dm_res.success() && dm_res.body.is_object() && dm_res.body.contains("_id")) {
                                     std::string dm_channel_id = dm_res.body["_id"].get<std::string>();
                                     stoatpp::models::MessagePayload dm_payload = payload;
-                                    dm_payload.content = "⚠️ *Original channel was deleted. Sending reminder to DMs:*\n" + dm_payload.content;
+                                    dm_payload.content = "" + bronx::emj_warning + " *Original channel was deleted. Sending reminder to DMs:*\n" + dm_payload.content;
                                     bot.send_message(dm_channel_id, dm_payload);
                                 }
                             }).detach();

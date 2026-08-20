@@ -586,19 +586,19 @@ public:
       if (msg.server_id.empty()) {
         bot.send_message(
             msg.channel_id,
-            "⚠️ This command can only be used in a server channel.");
+            "" + bronx::emj_warning + " This command can only be used in a server channel.");
         return;
       }
 
       if (!g_db) {
-        bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
         return;
       }
 
       // Check permissions
       auto server_opt = bot.get_server(msg.server_id);
       if (!server_opt) {
-        bot.send_message(msg.channel_id, "⚠️ Failed to resolve server details.");
+        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to resolve server details.");
         return;
       }
 
@@ -713,7 +713,7 @@ public:
                       "member_update"};
           } else {
             bot.send_message(msg.channel_id,
-                             "⚠️ Invalid category. Choose from: `moderation`, "
+                             "" + bronx::emj_warning + " Invalid category. Choose from: `moderation`, "
                              "`utility`, `messages`, `members`.");
             return;
           }
@@ -726,7 +726,7 @@ public:
             auto res = bot.rest().create_channel(server_id, "Text", ch_name);
             if (!res.success()) {
               bot.send_message(msg.channel_id,
-                               "⚠️ Failed to create channel `" + ch_name +
+                               "" + bronx::emj_warning + " Failed to create channel `" + ch_name +
                                    "`: " + std::to_string(res.status_code) +
                                    " — " + res.error_message());
               return;
@@ -749,7 +749,7 @@ public:
               }
             }
 
-            std::string success_msg = "✅ **Log Category Created!**\n"
+            std::string success_msg = "" + bronx::emj_yes + " **Log Category Created!**\n"
                                       "• Channel: <#" +
                                       channel_id +
                                       ">\n"
@@ -802,7 +802,7 @@ public:
                   res_mod.error_message());
 
             if (!failures.empty()) {
-              std::string err_msg = "⚠️ Failed to create log channels:\n";
+              std::string err_msg = "" + bronx::emj_warning + " Failed to create log channels:\n";
               for (const auto &f : failures) {
                 err_msg += "• " + f + "\n";
               }
@@ -852,11 +852,11 @@ public:
               }
             }
 
-            std::string complete_msg = "✅ **All-In-One Setup Complete!**\n";
+            std::string complete_msg = "" + bronx::emj_yes + " **All-In-One Setup Complete!**\n";
             if (category_created) {
               complete_msg += "• Created category **Logging**.\n";
             } else {
-              complete_msg += "⚠️ *Note: I couldn't group the channels into a "
+              complete_msg += "" + bronx::emj_warning + " *Note: I couldn't group the channels into a "
                               "'Logging' category (this action is restricted "
                               "for bots on this server).* \n";
             }
@@ -1030,10 +1030,10 @@ public:
             }
             if (success) {
               bot.send_message(msg.channel_id,
-                               "✅ Disabled logging for all events.");
+                               "" + bronx::emj_yes + " Disabled logging for all events.");
             } else {
               bot.send_message(msg.channel_id,
-                               "⚠️ Failed to disable logging for some events.");
+                               "" + bronx::emj_warning + " Failed to disable logging for some events.");
             }
             return;
           }
@@ -1060,7 +1060,7 @@ public:
           }
 
           if (target_channel.empty()) {
-            bot.send_message(msg.channel_id, "⚠️ Invalid channel name or ID.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel name or ID.");
             return;
           }
 
@@ -1075,14 +1075,14 @@ public:
           if (success) {
             bot.send_message(
                 msg.channel_id,
-                "✅ Logging for all events enabled in <#" + target_channel +
+                "" + bronx::emj_yes + " Logging for all events enabled in <#" + target_channel +
                     ">.\n"
-                    "⚠️ Warning: this will be spammy if ur server is active, "
+                    "" + bronx::emj_warning + " Warning: this will be spammy if ur server is active, "
                     "otherwise its okay i guess, just not best practice imo");
           } else {
             bot.send_message(
                 msg.channel_id,
-                "⚠️ Failed to save logging configuration for some events.");
+                "" + bronx::emj_warning + " Failed to save logging configuration for some events.");
           }
           return;
         }
@@ -1137,7 +1137,7 @@ public:
             ev != "server_update" && ev != "member_update") {
           bot.send_message(
               msg.channel_id,
-              "⚠️ Invalid event type. Choose from: `delete`, `edit`, `join`, "
+              "" + bronx::emj_warning + " Invalid event type. Choose from: `delete`, `edit`, `join`, "
               "`leave`, `mod`, `user`, `antiraid`, `role_create`, "
               "`role_delete`, `role_update`, `channel_create`, "
               "`channel_delete`, `channel_update`, `webhook_update`, "
@@ -1158,10 +1158,10 @@ public:
           if (chan_resp == "none" || chan_resp == "clear") {
             if (g_db->remove_logging_channel(msg.server_id, ev)) {
               bot.send_message(msg.channel_id,
-                               "✅ Disabled logging for `" + ev + "`.");
+                               "" + bronx::emj_yes + " Disabled logging for `" + ev + "`.");
             } else {
               bot.send_message(msg.channel_id,
-                               "⚠️ Failed to update configuration.");
+                               "" + bronx::emj_warning + " Failed to update configuration.");
             }
             return;
           }
@@ -1188,17 +1188,17 @@ public:
           }
 
           if (target_channel.empty()) {
-            bot.send_message(msg.channel_id, "⚠️ Invalid channel name or ID.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel name or ID.");
             return;
           }
 
           if (g_db->save_logging_channel(msg.server_id, ev, target_channel)) {
-            bot.send_message(msg.channel_id, "✅ Logging for `" + ev +
+            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Logging for `" + ev +
                                                  "` enabled in <#" +
                                                  target_channel + ">.");
           } else {
             bot.send_message(msg.channel_id,
-                             "⚠️ Failed to save logging configuration.");
+                             "" + bronx::emj_warning + " Failed to save logging configuration.");
           }
           return;
         }
@@ -1215,7 +1215,7 @@ public:
           std::transform(type.begin(), type.end(), type.begin(), ::tolower);
           if (type != "text" && type != "embed") {
             bot.send_message(msg.channel_id,
-                             "⚠️ Type must be `text` or `embed`.");
+                             "" + bronx::emj_warning + " Type must be `text` or `embed`.");
             return;
           }
 
@@ -1224,10 +1224,10 @@ public:
           le.message_type = type;
 
           if (g_db->save_logging_embed(le)) {
-            bot.send_message(msg.channel_id, "✅ Logging type for `" + ev +
+            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Logging type for `" + ev +
                                                  "` set to **" + type + "**.");
           } else {
-            bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
           }
           return;
         }
@@ -1247,11 +1247,11 @@ public:
           le.content = text;
 
           if (g_db->save_logging_embed(le)) {
-            bot.send_message(msg.channel_id, "✅ Custom message content for `" +
+            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom message content for `" +
                                                  ev +
                                                  "` updated successfully.");
           } else {
-            bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
           }
           return;
         }
@@ -1267,7 +1267,7 @@ public:
           auto pairs = parse_pairs(text);
           if (pairs.empty()) {
             bot.send_message(msg.channel_id,
-                             "⚠️ No valid key-value pairs found. Format must be "
+                             "" + bronx::emj_warning + " No valid key-value pairs found. Format must be "
                              "`key:value` (e.g. `title:Hello color:random`).");
             return;
           }
@@ -1298,11 +1298,11 @@ public:
 
           le.embed_json = emb.dump();
           if (g_db->save_logging_embed(le)) {
-            bot.send_message(msg.channel_id, "✅ Custom embed fields for `" +
+            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom embed fields for `" +
                                                  ev +
                                                  "` updated successfully.");
           } else {
-            bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
           }
           return;
         }
@@ -1320,7 +1320,7 @@ public:
             emb = nlohmann::json::parse(text);
           } catch (const std::exception &e) {
             bot.send_message(msg.channel_id,
-                             "⚠️ Invalid JSON format: " + std::string(e.what()));
+                             "" + bronx::emj_warning + " Invalid JSON format: " + std::string(e.what()));
             return;
           }
 
@@ -1339,16 +1339,16 @@ public:
 
           le.embed_json = emb.dump();
           if (g_db->save_logging_embed(le)) {
-            bot.send_message(msg.channel_id, "✅ Custom embed for `" + ev +
+            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom embed for `" + ev +
                                                  "` imported successfully.");
           } else {
-            bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
           }
           return;
         }
 
         bot.send_message(msg.channel_id,
-                         "⚠️ Unknown subcommand. Use `aio`, `channel`, `list`, "
+                         "" + bronx::emj_warning + " Unknown subcommand. Use `aio`, `channel`, `list`, "
                          "`type`, `message`, `edit`, or `json`.");
       };
 

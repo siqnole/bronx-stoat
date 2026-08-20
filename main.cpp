@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include "emojis.h"
 
 // Include our Cogs
 #include "cogs/afk.h"
@@ -38,6 +39,7 @@
 #include "cogs/filter.h"
 #include "cogs/fishing.h"
 #include "cogs/games.h"
+#include "cogs/geoguessr.h"
 #include "cogs/general.h"
 #include "cogs/help.h"
 #include "cogs/history.h"
@@ -337,6 +339,7 @@ void start_reload_server() {
 
 int main(int argc, char *argv[]) {
   load_env();
+  bronx::load_emojis();
 
   bool verbose = false;
   bool staging = false;
@@ -595,6 +598,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::CaptchaModule>());
   bot.use(std::make_unique<bronx::cogs::QteModule>());
   bot.use(std::make_unique<bronx::cogs::GamesModule>());
+  bot.use(std::make_unique<bronx::cogs::GeoGuessrModule>());
   bot.use(std::make_unique<bronx::cogs::WelcomeLeaveModule>());
   bot.use(std::make_unique<bronx::cogs::LoggingModule>());
   bot.use(std::make_unique<bronx::cogs::CommandConfigModule>());
@@ -1215,7 +1219,7 @@ int main(int argc, char *argv[]) {
     if (bronx::g_db) {
       auto proxy_opt = bronx::g_db->get_tupper_proxy(e.id);
       if (proxy_opt) {
-        if (e.emoji_id == "❌") {
+        if (e.emoji_id == "" + bronx::emj_no + "") {
           if (e.user_id == proxy_opt->user_id) {
             bot.delete_message(e.channel_id, e.id);
             bronx::g_db->delete_tupper_proxy(e.id);
@@ -1486,7 +1490,7 @@ int main(int argc, char *argv[]) {
                   dm_res.body["_id"].template get<std::string>();
               bot.send_message(
                   dm_channel_id,
-                  "⚠️ **Permission Error**: Bronx is missing the `SendMessage` "
+                  "" + bronx::emj_warning + " **Permission Error**: Bronx is missing the `SendMessage` "
                   "permission in <#" +
                       channel_id +
                       "> so your command response could not be sent.");
@@ -1514,23 +1518,23 @@ int main(int argc, char *argv[]) {
           std::string user_msg;
           if (error_msg == "NotElevated") {
             user_msg =
-                "⚠️ I don't have a high enough role to perform this action. "
+                "" + bronx::emj_warning + " I don't have a high enough role to perform this action. "
                 "Please move my role above the target user's roles.";
           } else if (error_msg == "Forbidden" || status_code == 403) {
-            user_msg = "⚠️ I don't have permission to perform this action (" +
+            user_msg = "" + bronx::emj_warning + " I don't have permission to perform this action (" +
                        std::to_string(status_code) + ": " + error_msg + ").";
           } else if (error_msg == "NotFound" || status_code == 404) {
-            user_msg = "⚠️ The target resource was not found (it may have been "
+            user_msg = "" + bronx::emj_warning + " The target resource was not found (it may have been "
                        "deleted).";
           } else if (status_code == 400 &&
                      path.find("/reactions/") != std::string::npos) {
             user_msg =
-                "⚠️ The specified emoji is invalid or cannot be used here.";
+                "" + bronx::emj_warning + " The specified emoji is invalid or cannot be used here.";
           } else if (status_code >= 500) {
-            user_msg = "⚠️ The server encountered an internal error. Please try "
+            user_msg = "" + bronx::emj_warning + " The server encountered an internal error. Please try "
                        "again later.";
           } else if (status_code >= 400) {
-            user_msg = "⚠️ Request failed (" + std::to_string(status_code) +
+            user_msg = "" + bronx::emj_warning + " Request failed (" + std::to_string(status_code) +
                        ": " + error_msg + ").";
           }
 
@@ -1741,7 +1745,7 @@ int main(int argc, char *argv[]) {
           if (!channel_ok) {
             bot.send_message(
                 msg.channel_id,
-                "⚠️ This command/module is allowed only in specific channels.");
+                "" + bronx::emj_warning + " This command/module is allowed only in specific channels.");
             return stoatpp::CommandRunResult::Deny;
           }
         }
@@ -1770,7 +1774,7 @@ int main(int argc, char *argv[]) {
           if (!member_ok) {
             bot.send_message(
                 msg.channel_id,
-                "⚠️ This command/module is whitelisted and not accessible by "
+                "" + bronx::emj_warning + " This command/module is whitelisted and not accessible by "
                 "your current roles or permissions.");
             return stoatpp::CommandRunResult::Deny;
           }
@@ -1804,7 +1808,7 @@ int main(int argc, char *argv[]) {
 
         if (matches_blacklist) {
           bot.send_message(msg.channel_id,
-                           "⚠️ This command/module has been blacklisted for "
+                           "" + bronx::emj_warning + " This command/module has been blacklisted for "
                            "your current roles, permissions, or channel.");
           return stoatpp::CommandRunResult::Deny;
         }

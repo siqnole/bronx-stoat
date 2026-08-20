@@ -48,6 +48,7 @@ public:
   using CustomRodRow = ::bronx::CustomRodRow;
   using CustomShopItem = ::bronx::CustomShopItem;
   using EconomyUser = ::bronx::EconomyUser;
+  using GeoStats = ::bronx::GeoStats;
   using FishBaitEntry = ::bronx::FishBaitEntry;
   using FishBossState = ::bronx::FishBossState;
   using FishingUser = ::bronx::FishingUser;
@@ -233,6 +234,13 @@ public:
   bool ensure_economy_user(const std::string &user_id);
 
   std::optional<EconomyUser> get_economy_user(const std::string &user_id);
+
+  std::optional<GeoStats> get_geo_stats(const std::string &user_id);
+
+  bool update_geo_stats(const std::string &user_id, int64_t pts_earned,
+                        bool country_correct, bool city_correct, bool won);
+
+  std::vector<GeoStats> get_top_geo_leaderboard(int limit = 10);
 
   bool update_balances(const std::string &user_id, int64_t wallet_delta,
                        int64_t bank_delta);

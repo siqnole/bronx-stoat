@@ -412,7 +412,7 @@ public:
                                 chan_arg.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos);
                             if (!looks_like_id) {
                                 std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
-                                bot.send_message(msg.channel_id, "⚠️ invalid channel: `" + args[2] + "`. please mention the channel with `<#channel_id>` (e.g. `" + pfx + "rr send " + modalname + " <#channel_id>`).");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " invalid channel: `" + args[2] + "`. please mention the channel with `<#channel_id>` (e.g. `" + pfx + "rr send " + modalname + " <#channel_id>`).");
                                 return;
                             }
                             target_channel = chan_arg;
@@ -669,7 +669,7 @@ public:
                         if (is_role_dangerous(selected_role)) {
                             stoatpp::models::MessagePayload payload;
                             nlohmann::json embed = nlohmann::json::object();
-                            embed["title"] = "⚠️ Warning: Dangerous Role Permissions";
+                            embed["title"] = "" + bronx::emj_warning + " Warning: Dangerous Role Permissions";
                             embed["colour"] = "#F1C40F";
                             embed["description"] = "The role **" + selected_role.name + "** contains administrative or moderator permissions (e.g. Manage Roles, Ban, Kick, etc.).\n"
                                                   "Are you sure you want to add this role as a reaction role? Anyone will be able to get these permissions by reacting!\n\n"
@@ -803,9 +803,9 @@ public:
                     }
 
                     if (updated) {
-                        bot.send_message(msg.channel_id, "✅ successfully updated reaction role type for target `" + target + "` to `" + type + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " successfully updated reaction role type for target `" + target + "` to `" + type + "`.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ could not find any active modals or reaction role messages matching `" + target + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " could not find any active modals or reaction role messages matching `" + target + "`.");
                     }
                     return;
                 }
@@ -1029,7 +1029,7 @@ public:
                             }
                         }
                     }
-                    bot.send_message(msg.channel_id, "✅ removed mapping.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " removed mapping.");
                     return;
                 }
 
@@ -1203,7 +1203,7 @@ public:
                             if (is_role_dangerous(selected_role)) {
                                 stoatpp::models::MessagePayload payload;
                                 nlohmann::json embed = nlohmann::json::object();
-                                embed["title"] = "⚠️ Warning: Dangerous Role Permissions";
+                                embed["title"] = "" + bronx::emj_warning + " Warning: Dangerous Role Permissions";
                                 embed["colour"] = "#F1C40F";
                                 embed["description"] = "The role **" + selected_role.name + "** contains administrative or moderator permissions.\n"
                                                       "Are you sure you want to map this role? Anyone will be able to get these permissions by reacting!\n\n"
@@ -1546,7 +1546,7 @@ public:
                                 }
                             }
                             if (!blocked_role_names.empty()) {
-                                std::string blocked_msg = "⚠️ permission warning: skipped the following roles because they are at or above your highest role in the server hierarchy: ";
+                                std::string blocked_msg = "" + bronx::emj_warning + " permission warning: skipped the following roles because they are at or above your highest role in the server hierarchy: ";
                                 for (size_t i = 0; i < blocked_role_names.size(); ++i) {
                                     blocked_msg += "**" + blocked_role_names[i] + "**" + (i + 1 < blocked_role_names.size() ? ", " : "");
                                 }
@@ -1576,7 +1576,7 @@ public:
                                     reply_msg += display_emoji(r.emoji_id) + " ➔ <%" + r.role_id + ">\n";
                                 }
                             } else if (!physical_reactions.empty()) {
-                                reply_msg += "\n\n⚠️ **Note**: This message has the following existing reactions on it:\n";
+                                reply_msg += "\n\n" + bronx::emj_warning + " **Note**: This message has the following existing reactions on it:\n";
                                 for (const auto& r : physical_reactions) {
                                     reply_msg += display_emoji(r) + " ";
                                 }
@@ -1637,7 +1637,7 @@ public:
                                     g_db->add_rr_rule(res.id, r.emoji, r.role_id);
                                 }
                                 std::string pfx = msg.prefix.empty() ? bot.config().command_prefix : msg.prefix;
-                                bot.send_message(msg.channel_id, "✅ created modal **" + parse_modal_name + "** with " +
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " created modal **" + parse_modal_name + "** with " +
                                     std::to_string(rules.size()) + " rule" + (rules.size() == 1 ? "" : "s") + ". "
                                     "use `" + pfx + "rr send " + parse_modal_name + " #channel` to deploy it.");
                             });
@@ -1673,14 +1673,14 @@ public:
                         desc += format_rr_description(converted_rules);
 
                         if (!dangerous_roles.empty()) {
-                            desc += "\n\n⚠️ **WARNING: The following roles have dangerous administrative/moderator permissions (e.g. Manage Roles, Ban, Kick):**\n";
+                            desc += "\n\n" + bronx::emj_warning + " **WARNING: The following roles have dangerous administrative/moderator permissions (e.g. Manage Roles, Ban, Kick):**\n";
                             for (const auto& dr : dangerous_roles) {
                                 desc += "• **" + dr + "**\n";
                             }
                             desc += "\n*Reacting to confirm will allow anyone to obtain these dangerous permissions!*";
                         }
 
-                        desc += "\n\nreact with ✅ below to confirm and activate, or ❌ to cancel.";
+                        desc += "\n\nreact with " + bronx::emj_yes + " below to confirm and activate, or " + bronx::emj_no + " to cancel.";
                         embed["description"] = desc;
                         confirm_payload.embeds.push_back(embed);
 
@@ -1696,9 +1696,9 @@ public:
                                     scan.author_id = msg.author.id;
                                     g_pending_scans[confirm_res.id] = scan;
                                 }
-                                bot.react_to_message(confirm_res.channel, confirm_res.id, "✅");
+                                bot.react_to_message(confirm_res.channel, confirm_res.id, "" + bronx::emj_yes + "");
                                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                                bot.react_to_message(confirm_res.channel, confirm_res.id, "❌");
+                                bot.react_to_message(confirm_res.channel, confirm_res.id, "" + bronx::emj_no + "");
                             }
                         });
                     }).detach();
@@ -1808,7 +1808,7 @@ public:
                     }
 
                     lock.unlock();
-                    if (e.emoji_id == "✅") {
+                    if (e.emoji_id == "" + bronx::emj_yes + "") {
                         // Confirm: save rules in database
                         auto old_msg = g_db->get_rr_message(scan.target_message_id);
                         if (old_msg) {
@@ -1852,20 +1852,20 @@ public:
                         nlohmann::json embed = nlohmann::json::object();
                         embed["title"] = "reaction roles scanner";
                         embed["colour"] = "#2ECC71";
-                        embed["description"] = "✅ configuration successfully confirmed! mappings activated on target message `" + scan.target_message_id + "`.";
+                        embed["description"] = "" + bronx::emj_yes + " configuration successfully confirmed! mappings activated on target message `" + scan.target_message_id + "`.";
                         payload.embeds.push_back(embed);
                         payload.content = " ";
                         bot.edit_message(e.channel_id, e.id, payload, [&bot, e](auto, bool) {
                             bot.delete_message(e.channel_id, e.id); // clean up prompt
                         });
                     } 
-                    else if (e.emoji_id == "❌") {
+                    else if (e.emoji_id == "" + bronx::emj_no + "") {
                         // Cancel
                         stoatpp::models::MessagePayload payload;
                         nlohmann::json embed = nlohmann::json::object();
                         embed["title"] = "reaction roles scanner";
                         embed["colour"] = "#E74C3C";
-                        embed["description"] = "❌ configuration cancelled.";
+                        embed["description"] = "" + bronx::emj_no + " configuration cancelled.";
                         payload.embeds.push_back(embed);
                         payload.content = " ";
                         bot.edit_message(e.channel_id, e.id, payload, [&bot, e](auto, bool) {
@@ -1908,7 +1908,7 @@ public:
                             std::cout << "[bronx rr] role remove " << (success ? "succeeded" : "failed") 
                                       << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
                             if (!success) {
-                                bot.send_message(e.channel_id, "⚠️ failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it.");
+                                bot.send_message(e.channel_id, "" + bronx::emj_warning + " failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it.");
                             }
                         });
                     } else {
@@ -1918,9 +1918,9 @@ public:
                                       << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
                             if (!success) {
                                 if (err == "NotElevated" || err == "HierarchyError") {
-                                    bot.send_message(e.channel_id, "⚠️ hierarchy error: i couldn't give you the **" + role_name + "** role in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
+                                    bot.send_message(e.channel_id, "" + bronx::emj_warning + " hierarchy error: i couldn't give you the **" + role_name + "** role in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
                                 } else {
-                                    bot.send_message(e.channel_id, "⚠️ failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                                    bot.send_message(e.channel_id, "" + bronx::emj_warning + " failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
                                 }
                             }
                         });
@@ -1969,7 +1969,7 @@ public:
                             std::cout << "[bronx rr] role add " << (success ? "succeeded" : "failed") 
                                       << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
                             if (!success) {
-                                bot.send_message(e.channel_id, "⚠️ failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it.");
+                                bot.send_message(e.channel_id, "" + bronx::emj_warning + " failed to assign role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it.");
                             }
                         });
                     } else {
@@ -1980,9 +1980,9 @@ public:
                                       << " for user " << e.user_id << " (role: " << rule.role_id << ") error: " << err << "\n";
                             if (!success) {
                                 if (err == "NotElevated" || err == "HierarchyError") {
-                                    bot.send_message(e.channel_id, "⚠️ hierarchy error: i couldn't remove the **" + role_name + "** role from you in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
+                                    bot.send_message(e.channel_id, "" + bronx::emj_warning + " hierarchy error: i couldn't remove the **" + role_name + "** role from you in `" + (server_opt ? server_opt->name : "server") + "`. my role needs to be placed *above* the roles I am giving out. please contact an admin.");
                                 } else {
-                                    bot.send_message(e.channel_id, "⚠️ failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
+                                    bot.send_message(e.channel_id, "" + bronx::emj_warning + " failed to remove role **" + role_name + "**. make sure i have the **Manage Roles** permission and my role is positioned above it in the server settings.");
                                 }
                             }
                         });

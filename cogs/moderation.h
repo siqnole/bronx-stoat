@@ -379,7 +379,7 @@ public:
 
                         auto linked = g_db->get_linked_ban_servers(msg.server_id);
                         if (linked.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ This server has no mutually linked servers to sync with. Use `.linkban <server_id>` first.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This server has no mutually linked servers to sync with. Use `.linkban <server_id>` first.");
                             return;
                         }
 
@@ -420,7 +420,7 @@ public:
                             }
                         }
 
-                        bot.send_message(msg.channel_id, "✅ **Sync Complete!** Successfully banned **" + std::to_string(sync_count) + "** user(s) from linked servers to sync banlists.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Sync Complete!** Successfully banned **" + std::to_string(sync_count) + "** user(s) from linked servers to sync banlists.");
                     }).detach();
                     return;
                 }
@@ -445,11 +445,11 @@ public:
                 // Default: args[0] is the target server_id
                 std::string target_guild_id = action;
                 if (target_guild_id.size() != 26) {
-                    bot.send_message(msg.channel_id, "⚠️ Invalid server ID. Please provide a valid 26-character server ID.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid server ID. Please provide a valid 26-character server ID.");
                     return;
                 }
                 if (target_guild_id == msg.server_id) {
-                    bot.send_message(msg.channel_id, "⚠️ You cannot link a server to itself.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You cannot link a server to itself.");
                     return;
                 }
 
@@ -457,7 +457,7 @@ public:
                 std::thread([&bot, msg, target_guild_id, server]() {
                     auto other_srv = bot.get_server(target_guild_id);
                     if (!other_srv) {
-                        bot.send_message(msg.channel_id, "⚠️ I am not currently in that server. Please invite me to that server first!");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " I am not currently in that server. Please invite me to that server first!");
                         return;
                     }
 
@@ -797,7 +797,7 @@ public:
                         // 1. Create role
                         auto role_res = bot.rest().create_role(msg.server_id, "Jailed");
                         if (!role_res.success()) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to create Jailed role: " + std::to_string(role_res.status_code) + " — " + role_res.error_message());
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to create Jailed role: " + std::to_string(role_res.status_code) + " — " + role_res.error_message());
                             return;
                         }
                         
@@ -809,14 +809,14 @@ public:
                         }
 
                         if (jail_role_id.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to parse Jailed role ID.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to parse Jailed role ID.");
                             return;
                         }
 
                         // 2. Create channel
                         auto chan_res = bot.rest().create_channel(msg.server_id, "Text", "jail");
                         if (!chan_res.success()) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to create jail channel: " + std::to_string(chan_res.status_code) + " — " + chan_res.error_message());
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to create jail channel: " + std::to_string(chan_res.status_code) + " — " + chan_res.error_message());
                             return;
                         }
 
@@ -851,7 +851,7 @@ public:
                             bot.cache_server(stoatpp::models::Server::from_json(fresh_res.body));
                         }
 
-                        bot.send_message(msg.channel_id, "✅ Setup complete! Created Jailed role and <#" + jail_channel_id + "> channel with proper overrides.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Setup complete! Created Jailed role and <#" + jail_channel_id + "> channel with proper overrides.");
                     }).detach();
                     return;
                 }
@@ -883,14 +883,14 @@ public:
                     }
 
                     if (matched_role_id.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ Role not found on this server.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Role not found on this server.");
                         return;
                     }
 
                     auto cfg = g_db->get_jail_config(msg.server_id).value_or(Database::JailConfig{msg.server_id, "", ""});
                     cfg.jail_role_id = matched_role_id;
                     g_db->save_jail_config(cfg);
-                    bot.send_message(msg.channel_id, "✅ Jail role set to **" + role_query + "**.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Jail role set to **" + role_query + "**.");
                     return;
                 }
 
@@ -907,14 +907,14 @@ public:
                     auto cfg = g_db->get_jail_config(msg.server_id).value_or(Database::JailConfig{msg.server_id, "", ""});
                     cfg.jail_channel_id = chan_query;
                     g_db->save_jail_config(cfg);
-                    bot.send_message(msg.channel_id, "✅ Jail channel set to <#" + chan_query + ">.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Jail channel set to <#" + chan_query + ">.");
                     return;
                 }
 
                 // Jailing member
                 auto jail_cfg_opt = g_db->get_jail_config(msg.server_id);
                 if (!jail_cfg_opt || jail_cfg_opt->jail_role_id.empty() || jail_cfg_opt->jail_channel_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ Jail environment is not set up on this server. Run `!jail setup` first.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Jail environment is not set up on this server. Run `!jail setup` first.");
                     return;
                 }
 
@@ -1485,16 +1485,16 @@ public:
                     }
                     std::string text = (pos != std::string::npos && pos < msg.content.size()) ? msg.content.substr(pos) : "";
                     if (text.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ Please provide message text.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Please provide message text.");
                         return;
                     }
                     auto cfg = g_db->get_action_message(msg.server_id, norm_sub).value_or(Database::ActionMessageConfig{msg.server_id, norm_sub});
                     cfg.message_type = "text";
                     cfg.content = text;
                     if (g_db->save_action_message(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Custom response for `" + norm_sub + "` set successfully!");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom response for `" + norm_sub + "` set successfully!");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
                     }
                     return;
                 }
@@ -1506,13 +1506,13 @@ public:
                     }
                     std::string act = normalize_action(args[1]);
                     if (!is_valid_action(act)) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid action type. Choose from: `ban`, `kick`, `timeout`, `purge`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action type. Choose from: `ban`, `kick`, `timeout`, `purge`.");
                         return;
                     }
                     if (g_db->remove_action_message(msg.server_id, act)) {
-                        bot.send_message(msg.channel_id, "✅ Reset response message for `" + act + "` to default.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Reset response message for `" + act + "` to default.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to reset configuration.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to reset configuration.");
                     }
                     return;
                 }
@@ -1524,7 +1524,7 @@ public:
 
                 std::string act = normalize_action(args[1]);
                 if (!is_valid_action(act)) {
-                    bot.send_message(msg.channel_id, "⚠️ Invalid action type. Choose from: `ban`, `kick`, `timeout`, `purge`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid action type. Choose from: `ban`, `kick`, `timeout`, `purge`.");
                     return;
                 }
 
@@ -1536,15 +1536,15 @@ public:
                     std::string type = args[2];
                     std::transform(type.begin(), type.end(), type.begin(), ::tolower);
                     if (type != "text" && type != "embed") {
-                        bot.send_message(msg.channel_id, "⚠️ Type must be `text` or `embed`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Type must be `text` or `embed`.");
                         return;
                     }
                     auto cfg = g_db->get_action_message(msg.server_id, act).value_or(Database::ActionMessageConfig{msg.server_id, act});
                     cfg.message_type = type;
                     if (g_db->save_action_message(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Response type for `" + act + "` set to **" + type + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Response type for `" + act + "` set to **" + type + "**.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
                     }
                     return;
                 }
@@ -1563,9 +1563,9 @@ public:
                     auto cfg = g_db->get_action_message(msg.server_id, act).value_or(Database::ActionMessageConfig{msg.server_id, act});
                     cfg.content = text;
                     if (g_db->save_action_message(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Custom text content for `" + act + "` updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom text content for `" + act + "` updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
                     }
                     return;
                 }
@@ -1584,7 +1584,7 @@ public:
 
                     auto pairs = LoggingModule::parse_pairs(text);
                     if (pairs.empty()) {
-                        bot.send_message(msg.channel_id, "⚠️ No valid key-value pairs found. Format must be `key:value`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key-value pairs found. Format must be `key:value`.");
                         return;
                     }
 
@@ -1607,9 +1607,9 @@ public:
 
                     cfg.embed_json = emb.dump();
                     if (g_db->save_action_message(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Custom embed fields for `" + act + "` updated successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom embed fields for `" + act + "` updated successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
                     }
                     return;
                 }
@@ -1630,7 +1630,7 @@ public:
                     try {
                         emb = nlohmann::json::parse(text);
                     } catch (const std::exception& e) {
-                        bot.send_message(msg.channel_id, "⚠️ Invalid JSON format: " + std::string(e.what()));
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid JSON format: " + std::string(e.what()));
                         return;
                     }
 
@@ -1646,9 +1646,9 @@ public:
 
                     cfg.embed_json = emb.dump();
                     if (g_db->save_action_message(cfg)) {
-                        bot.send_message(msg.channel_id, "✅ Custom embed for `" + act + "` imported successfully.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Custom embed for `" + act + "` imported successfully.");
                     } else {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to save configuration.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save configuration.");
                     }
                     return;
                 }
@@ -1697,7 +1697,7 @@ public:
                         return;
                     }
                     if (g_db->delete_moderation_action(msg.server_id, id)) {
-                        bot.send_message(msg.channel_id, "✅ successfully removed modlog entry `#" + std::to_string(id) + "`.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " successfully removed modlog entry `#" + std::to_string(id) + "`.");
                     } else {
                         bot.send_message(msg.channel_id, "failed to remove modlog entry.");
                     }
@@ -1788,12 +1788,12 @@ public:
                 auto res = bot.rest().edit_channel(target_channel, patch);
                 if (res.success()) {
                     if (seconds == 0) {
-                        bot.send_message(msg.channel_id, "✅ slowmode disabled in <#" + target_channel + ">.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " slowmode disabled in <#" + target_channel + ">.");
                     } else {
-                        bot.send_message(msg.channel_id, "✅ slowmode in <#" + target_channel + "> set to **" + std::to_string(seconds) + "s**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " slowmode in <#" + target_channel + "> set to **" + std::to_string(seconds) + "s**.");
                     }
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ failed to set slowmode. make sure I have manage channels permission.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " failed to set slowmode. make sure I have manage channels permission.");
                 }
             },
             "Moderation",
@@ -1894,8 +1894,8 @@ private:
             if (a == "Ban")     return "🔨";
             if (a == "Kick")    return "👢";
             if (a == "Timeout") return "🔇";
-            if (a == "Warn")    return "⚠️";
-            if (a == "Unban")   return "✅";
+            if (a == "Warn")    return "" + bronx::emj_warning + "";
+            if (a == "Unban")   return "" + bronx::emj_yes + "";
             if (a == "Jail")    return "⛓️";
             if (a == "Unjail")  return "🔓";
             return "🛡️";

@@ -133,7 +133,7 @@ private:
         const std::string& pfx
     ) {
         if (!g_db) {
-            bot.send_message(msg.channel_id, "⚠️ Database connection is not initialized.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database connection is not initialized.");
             return;
         }
 
@@ -166,9 +166,9 @@ private:
         // ── clear ─────────────────────────────────────────────────────────────
         if (sub == "clear") {
             if (g_db->delete_user_masquerade(msg.author.id)) {
-                bot.send_message(msg.channel_id, "✅ Cleared your personal masquerade.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Cleared your personal masquerade.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to clear your masquerade from the database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to clear your masquerade from the database.");
             }
             return;
         }
@@ -187,16 +187,16 @@ private:
                 cfg.name = std::nullopt;
             } else {
                 if (val.empty() || val.length() > 32) {
-                    bot.send_message(msg.channel_id, "⚠️ Name must be between 1 and 32 characters.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Name must be between 1 and 32 characters.");
                     return;
                 }
                 cfg.name = val;
             }
 
             if (g_db->save_user_masquerade(cfg)) {
-                bot.send_message(msg.channel_id, cfg.name ? "✅ Set name override to `" + *cfg.name + "`." : "✅ Cleared name override.");
+                bot.send_message(msg.channel_id, cfg.name ? "" + bronx::emj_yes + " Set name override to `" + *cfg.name + "`." : "" + bronx::emj_yes + " Cleared name override.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
             }
             return;
         }
@@ -219,16 +219,16 @@ private:
                 cfg.avatar = std::nullopt;
             } else {
                 if (val.empty() || val.length() > 256) {
-                    bot.send_message(msg.channel_id, "⚠️ Avatar URL must be between 1 and 256 characters.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Avatar URL must be between 1 and 256 characters.");
                     return;
                 }
                 cfg.avatar = helpers::upload_avatar(bot, val);
             }
 
             if (g_db->save_user_masquerade(cfg)) {
-                bot.send_message(msg.channel_id, cfg.avatar ? "✅ Set avatar override successfully." : "✅ Cleared avatar override.");
+                bot.send_message(msg.channel_id, cfg.avatar ? "" + bronx::emj_yes + " Set avatar override successfully." : "" + bronx::emj_yes + " Cleared avatar override.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
             }
             return;
         }
@@ -248,26 +248,26 @@ private:
             } else {
                 std::string parsed = parse_colour_input(val);
                 if (parsed.empty() || parsed.length() > 256) {
-                    bot.send_message(msg.channel_id, "⚠️ Colour override must be 256 characters or fewer.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Colour override must be 256 characters or fewer.");
                     return;
                 }
                 if (!valid_colour(parsed)) {
-                    bot.send_message(msg.channel_id, "⚠️ Invalid colour. Accepted formats: `purple`, `#ff6b6b`, `rgb(255,0,0)`, `hsl(270,60%,50%)`, `linear-gradient(...)`, or `random`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid colour. Accepted formats: `purple`, `#ff6b6b`, `rgb(255,0,0)`, `hsl(270,60%,50%)`, `linear-gradient(...)`, or `random`.");
                     return;
                 }
                 cfg.colour = parsed;
             }
 
             if (g_db->save_user_masquerade(cfg)) {
-                bot.send_message(msg.channel_id, cfg.colour ? "✅ Set colour override to `" + *cfg.colour + "`."
-                                                            : "✅ Cleared colour override.");
+                bot.send_message(msg.channel_id, cfg.colour ? "" + bronx::emj_yes + " Set colour override to `" + *cfg.colour + "`."
+                                                            : "" + bronx::emj_yes + " Cleared colour override.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
             }
             return;
         }
 
-        bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use `" + pfx + "masquerade <name|avatar|colour|clear|status>`.");
+        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use `" + pfx + "masquerade <name|avatar|colour|clear|status>`.");
     }
 
     // ── server-level masquerade subcommand handler ────────────────────────────
@@ -282,7 +282,7 @@ private:
         const stoatpp::models::Member& member
     ) {
         if (!g_db) {
-            bot.send_message(msg.channel_id, "⚠️ Database connection is not initialized.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database connection is not initialized.");
             return;
         }
 
@@ -291,7 +291,7 @@ private:
                          bot.has_permission(server, member, stoatpp::permissions::ManageServer);
 
         if (!has_admin) {
-            bot.send_message(msg.channel_id, "⚠️ Permission error: you need the Manage Server permission to configure server masquerade settings.");
+            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need the Manage Server permission to configure server masquerade settings.");
             return;
         }
 
@@ -312,10 +312,10 @@ private:
             embed["colour"] = cfg.disabled ? "#e74c3c" : "#9b59b6";
             std::string desc = "Server-wide masquerade override settings:\n\n";
             desc += "• **Server Masquerades**: " + std::string(cfg.disabled ? "🔴 **Disabled** (all masquerades are blocked)" : "🟢 **Enabled**") + "\n";
-            desc += "• **User Masquerades**: "   + std::string(cfg.disabled ? "🔴 **Disabled**" : (cfg.disable_user ? "🚫 **Disabled**" : "🟢 **Enabled**")) + "\n";
-            desc += "  └─ **Names**: "           + std::string(cfg.disable_user_name ? "🚫 Disabled" : "🟢 Allowed") + "\n";
-            desc += "  └─ **Avatars**: "         + std::string(cfg.disable_user_avatar ? "🚫 Disabled" : "🟢 Allowed") + "\n";
-            desc += "  └─ **Colours**: "         + std::string(cfg.disable_user_colour ? "🚫 Disabled" : "🟢 Allowed") + "\n\n";
+            desc += "• **User Masquerades**: "   + std::string(cfg.disabled ? "🔴 **Disabled**" : (cfg.disable_user ? "" + bronx::emj_no + " **Disabled**" : "🟢 **Enabled**")) + "\n";
+            desc += "  └─ **Names**: "           + std::string(cfg.disable_user_name ? "" + bronx::emj_no + " Disabled" : "🟢 Allowed") + "\n";
+            desc += "  └─ **Avatars**: "         + std::string(cfg.disable_user_avatar ? "" + bronx::emj_no + " Disabled" : "🟢 Allowed") + "\n";
+            desc += "  └─ **Colours**: "         + std::string(cfg.disable_user_colour ? "" + bronx::emj_no + " Disabled" : "🟢 Allowed") + "\n\n";
             desc += "• **Name override**: "       + (cfg.name   ? "`" + *cfg.name   + "`" : "*none*") + "\n";
             desc += "• **Avatar override**: "     + (cfg.avatar ? "[View image](" + *cfg.avatar + ")" : "*none*") + "\n";
             desc += "• **Colour override**: "     + (cfg.colour ? "`" + *cfg.colour + "`" : "*none*") + "\n\n";
@@ -336,38 +336,38 @@ private:
             if (target_type == "name" || target_type == "names" || target_type == "username") {
                 cfg.disable_user_name = true;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User custom names** are now **disabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User custom names** are now **disabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else if (target_type == "avatar" || target_type == "avatars" || target_type == "pfp") {
                 cfg.disable_user_avatar = true;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User custom avatars** are now **disabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User custom avatars** are now **disabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else if (target_type == "colour" || target_type == "color" || target_type == "colours" || target_type == "colors") {
                 cfg.disable_user_colour = true;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User custom colours** are now **disabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User custom colours** are now **disabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else if (sub == "disableuser" || target_type == "user" || target_type == "users" || target_type == "usermasquerade" || target_type == "usermasquerades") {
                 cfg.disabled = false;
                 cfg.disable_user = true;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User masquerades** are now **disabled** for this server. Server-set masquerade overrides will still apply!");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User masquerades** are now **disabled** for this server. Server-set masquerade overrides will still apply!");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else {
                 cfg.disabled = true;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **All masquerades** are now **disabled** for this server. No user or server masquerades will be applied.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **All masquerades** are now **disabled** for this server. No user or server masquerades will be applied.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             }
             return;
@@ -381,31 +381,31 @@ private:
             if (target_type == "name" || target_type == "names" || target_type == "username") {
                 cfg.disable_user_name = false;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User custom names** are now **enabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User custom names** are now **enabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else if (target_type == "avatar" || target_type == "avatars" || target_type == "pfp") {
                 cfg.disable_user_avatar = false;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User custom avatars** are now **enabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User custom avatars** are now **enabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else if (target_type == "colour" || target_type == "color" || target_type == "colours" || target_type == "colors") {
                 cfg.disable_user_colour = false;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User custom colours** are now **enabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User custom colours** are now **enabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else if (sub == "enableuser" || target_type == "user" || target_type == "users" || target_type == "usermasquerade" || target_type == "usermasquerades") {
                 cfg.disabled = false;
                 cfg.disable_user = false;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **User masquerades** are now **enabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **User masquerades** are now **enabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             } else {
                 cfg.disabled = false;
@@ -414,9 +414,9 @@ private:
                 cfg.disable_user_avatar = false;
                 cfg.disable_user_colour = false;
                 if (g_db->save_masquerade_config(cfg)) {
-                    bot.send_message(msg.channel_id, "✅ **All masquerades** are now **enabled** for this server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **All masquerades** are now **enabled** for this server.");
                 } else {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
                 }
             }
             return;
@@ -425,9 +425,9 @@ private:
         // ── clear ─────────────────────────────────────────────────────────────
         if (sub == "clear") {
             if (g_db->delete_masquerade_config(msg.server_id)) {
-                bot.send_message(msg.channel_id, "✅ Cleared all server masquerade override settings.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Cleared all server masquerade override settings.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to clear masquerade settings in the database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to clear masquerade settings in the database.");
             }
             return;
         }
@@ -446,16 +446,16 @@ private:
                 cfg.name = std::nullopt;
             } else {
                 if (val.empty() || val.length() > 32) {
-                    bot.send_message(msg.channel_id, "⚠️ Name must be between 1 and 32 characters.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Name must be between 1 and 32 characters.");
                     return;
                 }
                 cfg.name = val;
             }
 
             if (g_db->save_masquerade_config(cfg)) {
-                bot.send_message(msg.channel_id, cfg.name ? "✅ Set server name override to `" + *cfg.name + "`." : "✅ Cleared server name override.");
+                bot.send_message(msg.channel_id, cfg.name ? "" + bronx::emj_yes + " Set server name override to `" + *cfg.name + "`." : "" + bronx::emj_yes + " Cleared server name override.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
             }
             return;
         }
@@ -478,16 +478,16 @@ private:
                 cfg.avatar = std::nullopt;
             } else {
                 if (val.empty() || val.length() > 256) {
-                    bot.send_message(msg.channel_id, "⚠️ Avatar URL must be between 1 and 256 characters.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Avatar URL must be between 1 and 256 characters.");
                     return;
                 }
                 cfg.avatar = helpers::upload_avatar(bot, val);
             }
 
             if (g_db->save_masquerade_config(cfg)) {
-                bot.send_message(msg.channel_id, cfg.avatar ? "✅ Set server avatar override successfully." : "✅ Cleared server avatar override.");
+                bot.send_message(msg.channel_id, cfg.avatar ? "" + bronx::emj_yes + " Set server avatar override successfully." : "" + bronx::emj_yes + " Cleared server avatar override.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
             }
             return;
         }
@@ -498,7 +498,7 @@ private:
                                  bot.is_server_owner(msg.server_id, msg.author.id) ||
                                  bot.has_permission(server, member, stoatpp::permissions::ManageRole);
             if (!has_role_perm) {
-                bot.send_message(msg.channel_id, "⚠️ You need the Manage Role permission to change the server colour override.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " You need the Manage Role permission to change the server colour override.");
                 return;
             }
 
@@ -515,26 +515,26 @@ private:
             } else {
                 std::string parsed = parse_colour_input(val);
                 if (parsed.empty() || parsed.length() > 256) {
-                    bot.send_message(msg.channel_id, "⚠️ Colour must be 256 characters or fewer.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Colour must be 256 characters or fewer.");
                     return;
                 }
                 if (!valid_colour(parsed)) {
-                    bot.send_message(msg.channel_id, "⚠️ Invalid colour. Accepted formats: `purple`, `#ff6b6b`, `rgb(255,0,0)`, `hsl(270,60%,50%)`, `linear-gradient(...)`, or `random`.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid colour. Accepted formats: `purple`, `#ff6b6b`, `rgb(255,0,0)`, `hsl(270,60%,50%)`, `linear-gradient(...)`, or `random`.");
                     return;
                 }
                 cfg.colour = parsed;
             }
 
             if (g_db->save_masquerade_config(cfg)) {
-                bot.send_message(msg.channel_id, cfg.colour ? "✅ Set server colour override to `" + *cfg.colour + "`."
-                                                            : "✅ Cleared server colour override.");
+                bot.send_message(msg.channel_id, cfg.colour ? "" + bronx::emj_yes + " Set server colour override to `" + *cfg.colour + "`."
+                                                            : "" + bronx::emj_yes + " Cleared server colour override.");
             } else {
-                bot.send_message(msg.channel_id, "⚠️ Failed to save setting to database.");
+                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save setting to database.");
             }
             return;
         }
 
-        bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use `" + pfx + "masquerade server <disable|enable|name|avatar|colour|clear|status>`.");
+        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use `" + pfx + "masquerade server <disable|enable|name|avatar|colour|clear|status>`.");
     }
 
 public:
@@ -547,7 +547,7 @@ public:
             {"[server] <subcommand>", "[args...]"},
             [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server.");
                     return;
                 }
 
@@ -559,12 +559,12 @@ public:
                 if (first_arg == "server") {
                     auto server_opt = bot.get_server(msg.server_id);
                     if (!server_opt) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to resolve server details.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to resolve server details.");
                         return;
                     }
                     bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, server_opt, args, pfx](stoatpp::models::Member member, bool success) {
                         if (!success) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to verify your server member permissions.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your server member permissions.");
                             return;
                         }
                         handle_server(bot, msg, args, pfx, *server_opt, member);
@@ -577,14 +577,14 @@ public:
                         // Admin toggle for server user masquerades: .masquerade user disable [avatar|name|colour]
                         auto server_opt = bot.get_server(msg.server_id);
                         if (!server_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to resolve server details.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to resolve server details.");
                             return;
                         }
                         std::string target = (args.size() >= 3) ? args[2] : "user";
                         std::vector<std::string> server_args = {"server", (second_arg == "off" ? "disable" : (second_arg == "on" ? "enable" : second_arg)), target};
                         bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg, server_opt, server_args, pfx](stoatpp::models::Member member, bool success) {
                             if (!success) {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to verify your server member permissions.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your server member permissions.");
                                 return;
                             }
                             handle_server(bot, msg, server_args, pfx, *server_opt, member);

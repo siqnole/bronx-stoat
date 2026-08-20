@@ -334,7 +334,7 @@ public:
                 std::cout << "[bronx command] handling roblox...\n";
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is currently unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is currently unavailable.");
                     return;
                 }
 
@@ -350,7 +350,7 @@ public:
                         std::string clean_name, disp_name;
                         auto roblox_id_opt = resolve_roblox_username(username, clean_name, disp_name);
                         if (!roblox_id_opt) {
-                            bot.send_message(msg.channel_id, "❌ Could not find a Roblox account matching `" + username + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not find a Roblox account matching `" + username + "`.");
                             return;
                         }
 
@@ -386,29 +386,29 @@ public:
                             content.erase(content.find_last_not_of(" \t\r\n") + 1);
 
                             if (content == "cancel") {
-                                bot.send_message(msg.channel_id, "🚫 Account linking canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Account linking canceled.");
                                 return;
                             }
 
                             if (content == "verify" || content == "done") {
                                 auto profile_opt = fetch_roblox_profile(roblox_id);
                                 if (!profile_opt) {
-                                    bot.send_message(msg.channel_id, "⚠️ Failed to fetch your Roblox profile description. Please try again.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to fetch your Roblox profile description. Please try again.");
                                     return;
                                 }
 
                                 if (contains_keywords(profile_opt->description, keywords)) {
                                     if (g_db->save_roblox_link(msg.author.id, roblox_id, clean_name)) {
-                                        bot.send_message(msg.channel_id, "✅ Successfully linked your account to Roblox account **" + clean_name + "**!");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Successfully linked your account to Roblox account **" + clean_name + "**!");
                                     } else {
-                                        bot.send_message(msg.channel_id, "⚠️ Account verified but failed to write link to the database.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Account verified but failed to write link to the database.");
                                     }
                                     return;
                                 }
 
                                 session->attempts_left--;
                                 if (session->attempts_left <= 0) {
-                                    bot.send_message(msg.channel_id, "❌ Maximum verification attempts reached. Account linking canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Maximum verification attempts reached. Account linking canceled.");
                                     return;
                                 }
 
@@ -418,7 +418,7 @@ public:
                                     return;
                                 }
 
-                                bot.send_message(msg.channel_id, "❌ Could not find the verification keywords in your bio. Please make sure you saved the changes and reply `verify` again. (" + std::to_string(session->attempts_left) + " attempts left)");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Could not find the verification keywords in your bio. Please make sure you saved the changes and reply `verify` again. (" + std::to_string(session->attempts_left) + " attempts left)");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(std::chrono::duration_cast<std::chrono::seconds>(session->expires_at - now).count()), *await_handler);
                             } else {
                                 // Ignore non-command responses and keep listening
@@ -448,13 +448,13 @@ public:
                                 
                                 auto link_opt = g_db->get_roblox_link(user.id);
                                 if (!link_opt) {
-                                    bot.edit_message(msg.channel_id, temp_msg_id, "⚠️ **" + user.username + "** does not have a linked Roblox account.");
+                                    bot.edit_message(msg.channel_id, temp_msg_id, "" + bronx::emj_warning + " **" + user.username + "** does not have a linked Roblox account.");
                                     return;
                                 }
 
                                 auto profile_opt = fetch_roblox_profile(link_opt->roblox_id);
                                 if (!profile_opt) {
-                                    bot.edit_message(msg.channel_id, temp_msg_id, "❌ Linked Roblox account not found or API failed.");
+                                    bot.edit_message(msg.channel_id, temp_msg_id, "" + bronx::emj_no + " Linked Roblox account not found or API failed.");
                                     return;
                                 }
 
@@ -507,7 +507,7 @@ public:
                             }).detach();
                         } else {
                             if (target.rfind("<@", 0) == 0 && target.back() == '>') {
-                                bot.edit_message(msg.channel_id, temp_msg_id, "❌ Could not find that Revolt user.");
+                                bot.edit_message(msg.channel_id, temp_msg_id, "" + bronx::emj_no + " Could not find that Revolt user.");
                                 return;
                             }
 
@@ -525,7 +525,7 @@ public:
                                     std::string clean_name, disp_name;
                                     auto roblox_id_opt = resolve_roblox_username(target, clean_name, disp_name);
                                     if (!roblox_id_opt) {
-                                        bot.edit_message(msg.channel_id, temp_msg_id, "❌ Could not find Roblox user or Revolt member matching `" + target + "`.");
+                                        bot.edit_message(msg.channel_id, temp_msg_id, "" + bronx::emj_no + " Could not find Roblox user or Revolt member matching `" + target + "`.");
                                         return;
                                     }
                                     roblox_id = *roblox_id_opt;
@@ -538,7 +538,7 @@ public:
 
                                 auto profile_opt = fetch_roblox_profile(roblox_id);
                                 if (!profile_opt) {
-                                    bot.edit_message(msg.channel_id, temp_msg_id, "❌ Failed to fetch Roblox profile info.");
+                                    bot.edit_message(msg.channel_id, temp_msg_id, "" + bronx::emj_no + " Failed to fetch Roblox profile info.");
                                     return;
                                 }
 

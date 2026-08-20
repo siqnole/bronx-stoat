@@ -387,7 +387,7 @@ private:
         payload.embeds.push_back(embed);
 
         // Add easy accept / reject reactions if staff want to react
-        payload.set_interactions({"✅", "❌"});
+        payload.set_interactions({"" + bronx::emj_yes + "", "" + bronx::emj_no + ""});
 
         bot.send_message(panel.output_channel_id, payload, [sub](stoatpp::models::Message res, bool ok) mutable {
             if (ok) {
@@ -408,12 +408,12 @@ public:
             {"<subcommand>", "[args...]"},
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                     return;
                 }
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
@@ -441,7 +441,7 @@ public:
                 if (subcommand == "close") {
                     auto chan_opt = bot.get_channel(msg.channel_id);
                     if (!chan_opt || !chan_opt->name || chan_opt->name->rfind("app-", 0) != 0) {
-                        bot.send_message(msg.channel_id, "⚠️ This is not a registered application channel.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This is not a registered application channel.");
                         return;
                     }
                     // Allow the applicant (channel is named "app-<username>-<n>") or a trusted/owner member
@@ -455,7 +455,7 @@ public:
                     bot.fetch_member(msg.server_id, msg.author.id, [&bot, msg](stoatpp::models::Member member, bool ok) {
                         if (!ok || (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member) &&
                                     !is_user_command_allowed(bot, msg.server_id, "app", "applications", member))) {
-                            bot.send_message(msg.channel_id, "⚠️ Permission error: only the applicant or staff can close this channel.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: only the applicant or staff can close this channel.");
                             return;
                         }
                         // Look up the applicant from the submission record
@@ -471,12 +471,12 @@ public:
 
                 bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg, pfx, args, subcommand](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify permissions.");
                         return;
                     }
                     if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member) &&
                         !is_user_command_allowed(bot, msg.server_id, "app", "applications", member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Permission error: you need Manage Server permission to configure the application system.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need Manage Server permission to configure the application system.");
                         return;
                     }
 
@@ -509,20 +509,20 @@ public:
                         }
                         int sub_id = 0;
                         try { sub_id = std::stoi(args[1]); } catch(...) {
-                            bot.send_message(msg.channel_id, "⚠️ Invalid submission ID.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid submission ID.");
                             return;
                         }
 
                         auto sub_opt = g_db->get_application_submission_by_id(sub_id);
                         if (!sub_opt || sub_opt->server_id != msg.server_id) {
-                            bot.send_message(msg.channel_id, "⚠️ Submission not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Submission not found.");
                             return;
                         }
 
                         std::string new_status = (subcommand == "accept") ? "accepted" : "rejected";
                         g_db->update_application_submission_status(sub_id, new_status);
 
-                        bot.send_message(msg.channel_id, "✅ Submission #" + std::to_string(sub_id) + " marked as **" + new_status + "**.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Submission #" + std::to_string(sub_id) + " marked as **" + new_status + "**.");
 
                         // Optionally update output embed if we can find it
                         auto panel_opt = g_db->get_application_panel(msg.server_id, sub_opt->panel_name);
@@ -552,9 +552,9 @@ public:
 
                     if (subcommand == "delete") {
                         if (g_db->delete_application_panel(msg.server_id, panel_name)) {
-                            bot.send_message(msg.channel_id, "✅ Deleted application panel `" + panel_name + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Deleted application panel `" + panel_name + "`.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to delete panel config.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to delete panel config.");
                         }
                         return;
                     }
@@ -621,7 +621,7 @@ public:
                     if (subcommand == "panel") {
                         auto p_opt = g_db->get_application_panel(msg.server_id, panel_name);
                         if (!p_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Application panel `" + panel_name + "` is not configured.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Application panel `" + panel_name + "` is not configured.");
                             return;
                         }
                         
@@ -636,7 +636,7 @@ public:
                         }
 
                         if (target_ch.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ Please specify a target channel or configure one for the panel.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Please specify a target channel or configure one for the panel.");
                             return;
                         }
 
@@ -662,9 +662,9 @@ public:
                                 panel_conf.modal_message_id = res.id;
                                 panel_conf.modal_channel_id = target_ch;
                                 g_db->save_application_panel(panel_conf);
-                                bot.send_message(msg.channel_id, "✅ Panel message sent to <#" + target_ch + ">.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Panel message sent to <#" + target_ch + ">.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to send panel embed.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to send panel embed.");
                             }
                         });
                         return;
@@ -682,7 +682,7 @@ public:
 
                         auto p_opt = g_db->get_application_panel(msg.server_id, panel_name);
                         if (!p_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Panel not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Panel not found.");
                             return;
                         }
                         auto p = *p_opt;
@@ -705,7 +705,7 @@ public:
 
                         if (q_action == "add") {
                             if (args.size() < 4) {
-                                bot.send_message(msg.channel_id, "⚠️ Please provide question text.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Please provide question text.");
                                 return;
                             }
                             std::string q_text;
@@ -715,9 +715,9 @@ public:
                             }
                             p.questions.push_back(q_text);
                             if (g_db->save_application_panel(p)) {
-                                bot.send_message(msg.channel_id, "✅ Added question: `" + q_text + "`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Added question: `" + q_text + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save.");
                             }
                             return;
                         }
@@ -729,15 +729,15 @@ public:
                             }
                             int q_num = std::stoi(args[3]);
                             if (q_num < 1 || q_num > (int)p.questions.size()) {
-                                bot.send_message(msg.channel_id, "⚠️ Question number out of bounds.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Question number out of bounds.");
                                 return;
                             }
                             std::string removed = p.questions[q_num-1];
                             p.questions.erase(p.questions.begin() + (q_num-1));
                             if (g_db->save_application_panel(p)) {
-                                bot.send_message(msg.channel_id, "✅ Removed question " + std::to_string(q_num) + ": `" + removed + "`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed question " + std::to_string(q_num) + ": `" + removed + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save.");
                             }
                             return;
                         }
@@ -749,7 +749,7 @@ public:
                             }
                             int q_num = std::stoi(args[3]);
                             if (q_num < 1 || q_num > (int)p.questions.size()) {
-                                bot.send_message(msg.channel_id, "⚠️ Question number out of bounds.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Question number out of bounds.");
                                 return;
                             }
                             std::string q_text;
@@ -759,14 +759,14 @@ public:
                             }
                             p.questions[q_num-1] = q_text;
                             if (g_db->save_application_panel(p)) {
-                                bot.send_message(msg.channel_id, "✅ Updated question " + std::to_string(q_num) + " to: `" + q_text + "`.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Updated question " + std::to_string(q_num) + " to: `" + q_text + "`.");
                             } else {
-                                bot.send_message(msg.channel_id, "⚠️ Failed to save.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save.");
                             }
                             return;
                         }
 
-                        bot.send_message(msg.channel_id, "⚠️ Unknown questions action. Use list, add, remove, edit.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown questions action. Use list, add, remove, edit.");
                         return;
                     }
 
@@ -791,7 +791,7 @@ public:
 
                         auto p_opt = g_db->get_application_panel(msg.server_id, panel_name);
                         if (!p_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Panel not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Panel not found.");
                             return;
                         }
                         auto p = *p_opt;
@@ -883,9 +883,9 @@ public:
                                 if (i) note_str += ", ";
                                 note_str += notes[i];
                             }
-                            bot.send_message(msg.channel_id, "✅ Updated panel `" + panel_name + "`: " + note_str);
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Updated panel `" + panel_name + "`: " + note_str);
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save.");
                         }
                         return;
                     }
@@ -894,7 +894,7 @@ public:
                         bot.send_message(msg.channel_id, "💬 **Application Setup Wizard** [Panel: `" + panel_name + "`]\nLet's configure this application panel.\n\n**Step 1/8**: Mention the channel where the trigger panel should be sent (e.g. #tickets), or type its ID/name. Reply `skip` to configure triggers manually later.");
                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name](std::optional<stoatpp::events::Message> rep1) {
                             if (!rep1 || rep1->content == "cancel") {
-                                bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                 return;
                             }
                             std::string target_channel = "";
@@ -915,7 +915,7 @@ public:
                                     }
                                 }
                                 if (target_channel.empty()) {
-                                    bot.send_message(msg.channel_id, "⚠️ Invalid channel. Setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel. Setup canceled.");
                                     return;
                                 }
                             }
@@ -923,7 +923,7 @@ public:
                             bot.send_message(msg.channel_id, "💬 **Application Setup Wizard**\n**Step 2/8**: Type the **mode** for this panel:\n• `post` — DM wizard -> post completed application to a staff channel.\n• `ticket` — DM wizard -> open a private channel with the applicant.\n• `channel` — Open a private channel -> ask questions directly inside it.");
                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name, target_channel](std::optional<stoatpp::events::Message> rep2) {
                                 if (!rep2 || rep2->content == "cancel") {
-                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                     return;
                                 }
                                 std::string mode = rep2->content;
@@ -935,7 +935,7 @@ public:
                                 bot.send_message(msg.channel_id, "💬 **Application Setup Wizard**\n**Step 3/8**: Type the **trigger command** name (e.g. `apply` — users can run `.apply` or `!apply` to start, or reply `skip` to disable command trigger).");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name, target_channel, mode](std::optional<stoatpp::events::Message> rep3) {
                                     if (!rep3 || rep3->content == "cancel") {
-                                        bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                         return;
                                     }
                                     std::string trigger_cmd = rep3->content == "skip" ? "" : rep3->content;
@@ -945,7 +945,7 @@ public:
                                     bot.send_message(msg.channel_id, "💬 **Application Setup Wizard**\n**Step 4/8**: Type the **trigger reaction emoji** (e.g. `📩`, or reply `skip` to disable reaction trigger).");
                                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name, target_channel, mode, trigger_cmd](std::optional<stoatpp::events::Message> rep4) {
                                         if (!rep4 || rep4->content == "cancel") {
-                                            bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                             return;
                                         }
                                         std::string trigger_emoji = rep4->content == "skip" ? "" : rep4->content;
@@ -953,7 +953,7 @@ public:
                                         bot.send_message(msg.channel_id, "💬 **Application Setup Wizard**\n**Step 5/8**: Mention the **output/staff channel** where completed apps or ticket logs should go (e.g. #staff-logs), or type its ID/name. Reply `skip` to use the current channel.");
                                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name, target_channel, mode, trigger_cmd, trigger_emoji](std::optional<stoatpp::events::Message> rep5) {
                                             if (!rep5 || rep5->content == "cancel") {
-                                                bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                 return;
                                             }
                                             std::string output_channel = msg.channel_id;
@@ -978,7 +978,7 @@ public:
                                             bot.send_message(msg.channel_id, "💬 **Application Setup Wizard**\n**Step 6/8**: Type the **Title** of the panel embed (or reply `skip` for default: `📋 Submit an Application`).");
                                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name, target_channel, mode, trigger_cmd, trigger_emoji, output_channel](std::optional<stoatpp::events::Message> rep6) {
                                                 if (!rep6 || rep6->content == "cancel") {
-                                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                     return;
                                                 }
                                                 std::string emb_title = rep6->content == "skip" ? "📋 Submit an Application" : rep6->content;
@@ -986,7 +986,7 @@ public:
                                                 bot.send_message(msg.channel_id, "💬 **Application Setup Wizard**\n**Step 7/8**: Type the **Description** of the panel embed (or reply `skip` for default).");
                                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name, target_channel, mode, trigger_cmd, trigger_emoji, output_channel, emb_title](std::optional<stoatpp::events::Message> rep7) {
                                                     if (!rep7 || rep7->content == "cancel") {
-                                                        bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                         return;
                                                     }
                                                     std::string emb_desc = rep7->content == "skip" ? "Answer the form to submit your application." : rep7->content;
@@ -1005,7 +1005,7 @@ public:
                                                             return;
                                                         }
                                                         if (rep8->content == "cancel") {
-                                                            bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                             return;
                                                         }
                                                         if (rep8->content == "done") {
@@ -1027,7 +1027,7 @@ public:
                                                             p.modal_embed_json = embed_obj.dump();
 
                                                             if (g_db->save_application_panel(p)) {
-                                                                bot.send_message(msg.channel_id, "✅ **Setup complete!** Saved panel `" + panel_name + "` with " + std::to_string(questions->size()) + " questions.");
+                                                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Setup complete!** Saved panel `" + panel_name + "` with " + std::to_string(questions->size()) + " questions.");
                                                                 // Automatically send panel if channel is configured
                                                                 if (!target_channel.empty()) {
                                                                     bot.send_message(msg.channel_id, "📢 Sending panel...");
@@ -1048,12 +1048,12 @@ public:
                                                                             p.modal_message_id = res.id;
                                                                             p.modal_channel_id = target_channel;
                                                                             g_db->save_application_panel(p);
-                                                                            bot.send_message(msg.channel_id, "✅ Panel message sent to <#" + target_channel + ">.");
+                                                                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Panel message sent to <#" + target_channel + ">.");
                                                                         }
                                                                     });
                                                                 }
                                                             } else {
-                                                                bot.send_message(msg.channel_id, "⚠️ Failed to save panel.");
+                                                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save panel.");
                                                             }
                                                             return;
                                                         }
@@ -1074,7 +1074,7 @@ public:
                         return;
                     }
 
-                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand.");
                 });
             },
             "Utility"
@@ -1088,12 +1088,12 @@ public:
             std::string cleaned_emoji = clean_emoji(e.emoji_id);
 
             // Handle Accept/Reject reactions on submission posts in the staff channel
-            if (cleaned_emoji == "✅" || cleaned_emoji == "❌") {
+            if (cleaned_emoji == "" + bronx::emj_yes + "" || cleaned_emoji == "" + bronx::emj_no + "") {
                 auto sub_opt = g_db->get_application_submission_by_message_id(e.id);
                 if (sub_opt) {
                     bot.fetch_member(sub_opt->server_id, e.user_id, [&bot, sub_opt, cleaned_emoji, e](stoatpp::models::Member member, bool success) {
                         if (success && is_user_trusted_or_owner(bot, sub_opt->server_id, e.user_id, member)) {
-                            std::string new_status = (cleaned_emoji == "✅") ? "accepted" : "rejected";
+                            std::string new_status = (cleaned_emoji == "" + bronx::emj_yes + "") ? "accepted" : "rejected";
                             if (sub_opt->status == new_status) return;
 
                             g_db->update_application_submission_status(sub_opt->id, new_status);
@@ -1136,7 +1136,7 @@ public:
                         std::lock_guard<std::mutex> lock(g_active_apps_mutex);
                         if (g_active_apps.find(e.user_id) != g_active_apps.end()) {
                             stoatpp::models::MessagePayload err;
-                            err.content = "⚠️ You already have an active application session running! Complete or cancel that one first.";
+                            err.content = "" + bronx::emj_warning + " You already have an active application session running! Complete or cancel that one first.";
                             err.delete_after = 5;
                             bot.send_message(e.channel_id, err);
                             return;
@@ -1149,7 +1149,7 @@ public:
                             bool has_role = std::find(mem_opt->roles.begin(), mem_opt->roles.end(), panel.require_role_id) != mem_opt->roles.end();
                             if (!has_role) {
                                 stoatpp::models::MessagePayload err;
-                                err.content = "⚠️ You do not meet the role requirements to apply for `" + panel.name + "`.";
+                                err.content = "" + bronx::emj_warning + " You do not meet the role requirements to apply for `" + panel.name + "`.";
                                 err.delete_after = 5;
                                 bot.send_message(e.channel_id, err);
                                 return;
@@ -1216,7 +1216,7 @@ public:
 
                 if (valid_channel) {
                     if (msg.content == "cancel") {
-                        bot.send_message(msg.channel_id, "🚫 Application canceled.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Application canceled.");
                         {
                             std::lock_guard<std::mutex> lock(g_active_apps_mutex);
                             g_active_apps.erase(msg.author.id);
@@ -1236,7 +1236,7 @@ public:
 
                     auto p_opt = g_db->get_application_panel(session.server_id, session.panel_name);
                     if (!p_opt) {
-                        bot.send_message(msg.channel_id, "⚠️ Application panel config missing. Aborting.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Application panel config missing. Aborting.");
                         std::lock_guard<std::mutex> lock(g_active_apps_mutex);
                         g_active_apps.erase(msg.author.id);
                         return;
@@ -1268,7 +1268,7 @@ public:
                         sub.status = "pending";
 
                         if (panel.mode == "post") {
-                            std::string end_msg = panel.end_message.empty() ? "✅ **Application submitted!** Staff will review it shortly." : panel.end_message;
+                            std::string end_msg = panel.end_message.empty() ? "" + bronx::emj_yes + " **Application submitted!** Staff will review it shortly." : panel.end_message;
                             bot.send_message(msg.channel_id, end_msg);
                             g_db->save_application_submission(sub);
                             post_submission_to_output(bot, panel, sub, panel.questions, session.answers);
@@ -1278,13 +1278,13 @@ public:
                                 if (!channel_id.empty()) {
                                     sub.ticket_channel_id = channel_id;
                                     g_db->save_application_submission(sub);
-                                    bot.send_message(msg.channel_id, "✅ Your private application channel has been created: <#" + channel_id + ">!");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Your private application channel has been created: <#" + channel_id + ">!");
                                 } else {
-                                    bot.send_message(msg.channel_id, "⚠️ Failed to create the private channel. Please contact an admin.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to create the private channel. Please contact an admin.");
                                 }
                             });
                         } else if (panel.mode == "channel") {
-                            std::string end_msg = panel.end_message.empty() ? "✅ **Application completed!** Staff will review it here." : panel.end_message;
+                            std::string end_msg = panel.end_message.empty() ? "" + bronx::emj_yes + " **Application completed!** Staff will review it here." : panel.end_message;
                             bot.send_message(msg.channel_id, end_msg);
                             sub.ticket_channel_id = session.current_channel_id;
                             g_db->save_application_submission(sub);
@@ -1327,7 +1327,7 @@ public:
                             std::lock_guard<std::mutex> lock(g_active_apps_mutex);
                             if (g_active_apps.find(msg.author.id) != g_active_apps.end()) {
                                 stoatpp::models::MessagePayload err;
-                                err.content = "⚠️ You already have an active application session running! Complete or cancel that one first.";
+                                err.content = "" + bronx::emj_warning + " You already have an active application session running! Complete or cancel that one first.";
                                 err.delete_after = 5;
                                 bot.send_message(msg.channel_id, err);
                                 return;
@@ -1340,7 +1340,7 @@ public:
                                 bool has_role = std::find(mem_opt->roles.begin(), mem_opt->roles.end(), panel.require_role_id) != mem_opt->roles.end();
                                 if (!has_role) {
                                     stoatpp::models::MessagePayload err;
-                                    err.content = "⚠️ You do not meet the role requirements to apply for `" + panel.name + "`.";
+                                    err.content = "" + bronx::emj_warning + " You do not meet the role requirements to apply for `" + panel.name + "`.";
                                     err.delete_after = 5;
                                     bot.send_message(msg.channel_id, err);
                                     return;
@@ -1360,7 +1360,7 @@ private:
     static void start_application_flow(stoatpp::cluster& bot, const std::string& server_id, const std::string& user_id, const Database::ApplicationPanel& panel, const std::string& source_channel_id = "") {
         if (panel.questions.empty()) {
             stoatpp::models::MessagePayload pl;
-            pl.content = "⚠️ This application panel doesn't have any questions configured yet.";
+            pl.content = "" + bronx::emj_warning + " This application panel doesn't have any questions configured yet.";
             pl.delete_after = 5;
             if (!source_channel_id.empty()) bot.send_message(source_channel_id, pl);
             return;
@@ -1391,7 +1391,7 @@ private:
                 auto dm_res = bot.rest().open_dm(user_id);
                 if (!dm_res.success()) {
                     stoatpp::models::MessagePayload pl;
-                    pl.content = "⚠️ I couldn't open DMs with you! Please check if your privacy settings allow DM messages from server members.";
+                    pl.content = "" + bronx::emj_warning + " I couldn't open DMs with you! Please check if your privacy settings allow DM messages from server members.";
                     pl.delete_after = 7;
                     if (!source_channel_id.empty()) bot.send_message(source_channel_id, pl);
                     return;

@@ -211,7 +211,7 @@ private:
 
             if (active_opt && active_opt->panel_name == panel_name) {
                 stoatpp::models::MessagePayload payload;
-                payload.content = "⚠️ You already have an open ticket for this panel: <#" + active_opt->channel_id + ">";
+                payload.content = "" + bronx::emj_warning + " You already have an open ticket for this panel: <#" + active_opt->channel_id + ">";
                 payload.delete_after = 5;
                 if (!modal_channel_id.empty()) {
                     bot.send_message(modal_channel_id, payload);
@@ -659,9 +659,9 @@ private:
                     g_db->save_ticket_config(update_tc);
                 }
 
-                bot.send_message(notify_channel_id, "✅ Ticket panel `" + tc.name + "` sent to <#" + tc.modal_channel_id + ">.");
+                bot.send_message(notify_channel_id, "" + bronx::emj_yes + " Ticket panel `" + tc.name + "` sent to <#" + tc.modal_channel_id + ">.");
             } else {
-                bot.send_message(notify_channel_id, "⚠️ Failed to send ticket panel to <#" + tc.modal_channel_id + ">. Make sure I have posting permissions in that channel.");
+                bot.send_message(notify_channel_id, "" + bronx::emj_warning + " Failed to send ticket panel to <#" + tc.modal_channel_id + ">. Make sure I have posting permissions in that channel.");
             }
         });
     }
@@ -677,12 +677,12 @@ public:
             [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
                 std::cout << "[bronx command] handling ticket...\n";
                 if (msg.server_id.empty()) {
-                    bot.send_message(msg.channel_id, "⚠️ This command can only be used in a server channel.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This command can only be used in a server channel.");
                     return;
                 }
 
                 if (!g_db) {
-                    bot.send_message(msg.channel_id, "⚠️ Database is unavailable.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Database is unavailable.");
                     return;
                 }
 
@@ -702,7 +702,7 @@ public:
 
                 auto server_opt = bot.get_server(msg.server_id);
                 if (!server_opt) {
-                    bot.send_message(msg.channel_id, "⚠️ Failed to resolve server details.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to resolve server details.");
                     return;
                 }
 
@@ -726,7 +726,7 @@ public:
                 if (subcommand == "close") {
                     auto ticket_opt = g_db->get_ticket(msg.channel_id);
                     if (!ticket_opt) {
-                        bot.send_message(msg.channel_id, "⚠️ This channel is not a registered ticket channel.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This channel is not a registered ticket channel.");
                         return;
                     }
                     execute_close_ticket(bot, msg.channel_id);
@@ -736,7 +736,7 @@ public:
                 if (subcommand == "add") {
                     auto ticket_opt = g_db->get_ticket(msg.channel_id);
                     if (!ticket_opt) {
-                        bot.send_message(msg.channel_id, "⚠️ This channel is not a registered ticket channel.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This channel is not a registered ticket channel.");
                         return;
                     }
                     if (args.size() < 2) {
@@ -757,14 +757,14 @@ public:
                                             stoatpp::permissions::UploadFiles | 
                                             stoatpp::permissions::AddReactions;
                     bot.rest().set_channel_permission(msg.channel_id, target_role_id, creator_allow, 0);
-                    bot.send_message(msg.channel_id, "✅ Added role <%" + target_role_id + "> to the ticket.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Added role <%" + target_role_id + "> to the ticket.");
                     return;
                 }
 
                 if (subcommand == "remove") {
                     auto ticket_opt = g_db->get_ticket(msg.channel_id);
                     if (!ticket_opt) {
-                        bot.send_message(msg.channel_id, "⚠️ This channel is not a registered ticket channel.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " This channel is not a registered ticket channel.");
                         return;
                     }
                     if (args.size() < 2) {
@@ -780,17 +780,17 @@ public:
                     }
 
                     bot.rest().delete_channel_permission(msg.channel_id, target_role_id);
-                    bot.send_message(msg.channel_id, "✅ Removed role <%" + target_role_id + "> from the ticket.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Removed role <%" + target_role_id + "> from the ticket.");
                     return;
                 }
 
                 bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg, pfx, args, subcommand, server_opt](stoatpp::models::Member member, bool success) {
                     if (!success) {
-                        bot.send_message(msg.channel_id, "⚠️ Failed to verify permissions.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify permissions.");
                         return;
                     }
                     if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
-                        bot.send_message(msg.channel_id, "⚠️ Permission error: you need Manage Server permission to configure the ticket system.");
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you need Manage Server permission to configure the ticket system.");
                         return;
                     }
 
@@ -824,13 +824,13 @@ public:
                         std::string target_panel = args[1];
                         auto tc_opt = g_db->get_ticket_config(msg.server_id, target_panel);
                         if (!tc_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Ticket panel `" + target_panel + "` not found.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Ticket panel `" + target_panel + "` not found.");
                             return;
                         }
                         if (g_db->delete_ticket_config(msg.server_id, target_panel)) {
-                            bot.send_message(msg.channel_id, "✅ Ticket panel `" + target_panel + "` successfully deleted.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Ticket panel `" + target_panel + "` successfully deleted.");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to delete ticket panel `" + target_panel + "`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to delete ticket panel `" + target_panel + "`.");
                         }
                         return;
                     }
@@ -897,7 +897,7 @@ public:
 
                         auto tc_opt = g_db->get_ticket_config(msg.server_id, edit_panel);
                         if (!tc_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Ticket panel `" + edit_panel + "` is not configured. Use `" + pfx + "ticket setup " + edit_panel + "` first.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Ticket panel `" + edit_panel + "` is not configured. Use `" + pfx + "ticket setup " + edit_panel + "` first.");
                             return;
                         }
 
@@ -959,7 +959,7 @@ public:
 
                         if (occ.empty()) {
                             bot.send_message(msg.channel_id,
-                                "⚠️ No valid keys found. Run `" + pfx + "ticket edit " + edit_panel + "` with no args to see all keys.");
+                                "" + bronx::emj_warning + " No valid keys found. Run `" + pfx + "ticket edit " + edit_panel + "` with no args to see all keys.");
                             return;
                         }
 
@@ -1041,7 +1041,7 @@ public:
                             } else if (k == "member_role") {
                                 if (v == "none" || v == "clear") {
                                     tc.member_role_id = "";
-                                    notes.push_back("member_role cleared (⚠️ channel will be public)");
+                                    notes.push_back("member_role cleared (" + bronx::emj_warning + " channel will be public)");
                                 } else {
                                     // Accept mention <%id> or bare ID
                                     std::string rid = v;
@@ -1054,7 +1054,7 @@ public:
                         }
 
                         if (notes.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ No valid keys applied.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid keys applied.");
                             return;
                         }
 
@@ -1064,9 +1064,9 @@ public:
                                 if (i) changes += ", ";
                                 changes += notes[i];
                             }
-                            bot.send_message(msg.channel_id, "✅ Panel `" + edit_panel + "` updated: " + changes + ".");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Panel `" + edit_panel + "` updated: " + changes + ".");
                         } else {
-                            bot.send_message(msg.channel_id, "⚠️ Failed to save panel configuration.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save panel configuration.");
                         }
                         return;
                     }
@@ -1102,7 +1102,7 @@ public:
 
                         auto tc_opt = g_db->get_ticket_config(msg.server_id, target_panel);
                         if (!tc_opt) {
-                            bot.send_message(msg.channel_id, "⚠️ Ticket panel `" + target_panel + "` is not set up yet. Use `" + pfx + "ticket setup " + target_panel + "` first.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Ticket panel `" + target_panel + "` is not set up yet. Use `" + pfx + "ticket setup " + target_panel + "` first.");
                             return;
                         }
 
@@ -1112,7 +1112,7 @@ public:
                         }
 
                         if (tc.modal_channel_id.empty()) {
-                            bot.send_message(msg.channel_id, "⚠️ No destination channel configured for panel `" + target_panel + "`. Set it using `" + pfx + "ticket edit " + target_panel + " channel:#channel`.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No destination channel configured for panel `" + target_panel + "`. Set it using `" + pfx + "ticket edit " + target_panel + " channel:#channel`.");
                             return;
                         }
 
@@ -1128,7 +1128,7 @@ public:
                                 return;
                             }
                             if (rep1->content == "cancel") {
-                                bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                 return;
                             }
 
@@ -1150,7 +1150,7 @@ public:
                             }
 
                             if (target_channel.empty()) {
-                                bot.send_message(msg.channel_id, "⚠️ Invalid channel. Setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel. Setup canceled.");
                                 return;
                             }
 
@@ -1163,7 +1163,7 @@ public:
 
                                 std::string title_resp = rep2->content;
                                 if (title_resp == "cancel") {
-                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                     return;
                                 }
 
@@ -1183,7 +1183,7 @@ public:
 
                                     std::string desc_resp = rep3->content;
                                     if (desc_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                         return;
                                     }
 
@@ -1203,7 +1203,7 @@ public:
 
                                         std::string color_resp = rep4->content;
                                         if (color_resp == "cancel") {
-                                            bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                             return;
                                         }
 
@@ -1223,7 +1223,7 @@ public:
 
                                             std::string emoji_resp = rep5->content;
                                             if (emoji_resp == "cancel") {
-                                                bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                 return;
                                             }
 
@@ -1240,7 +1240,7 @@ public:
                                                 std::string input_resp = rep6->content;
                                                 std::transform(input_resp.begin(), input_resp.end(), input_resp.begin(), ::tolower);
                                                 if (input_resp == "cancel") {
-                                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                     return;
                                                 }
 
@@ -1255,7 +1255,7 @@ public:
 
                                                     std::string scheme_resp = rep7->content;
                                                     if (scheme_resp == "cancel") {
-                                                        bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                         return;
                                                     }
 
@@ -1271,7 +1271,7 @@ public:
 
                                                         std::string cat_resp = rep8->content;
                                                         if (cat_resp == "cancel") {
-                                                            bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                             return;
                                                         }
 
@@ -1287,7 +1287,7 @@ public:
 
                                                             std::string view_resp = rep9->content;
                                                             if (view_resp == "cancel") {
-                                                                bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                                 return;
                                                             }
 
@@ -1302,7 +1302,7 @@ public:
 
                                                                 std::string t_title_resp = rep10->content;
                                                                 if (t_title_resp == "cancel") {
-                                                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                                     return;
                                                                 }
 
@@ -1322,7 +1322,7 @@ public:
 
                                                                     std::string t_desc_resp = rep11->content;
                                                                     if (t_desc_resp == "cancel") {
-                                                                        bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                                         return;
                                                                     }
 
@@ -1342,7 +1342,7 @@ public:
 
                                                                         std::string t_content_resp = rep12->content;
                                                                         if (t_content_resp == "cancel") {
-                                                                            bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                                             return;
                                                                         }
 
@@ -1358,7 +1358,7 @@ public:
 
                                                                             std::string close_emoji_resp = rep13->content;
                                                                             if (close_emoji_resp == "cancel") {
-                                                                                bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                                                 return;
                                                                             }
 
@@ -1374,7 +1374,7 @@ public:
 
                                                                                 std::string close_msg_resp = rep14->content;
                                                                                 if (close_msg_resp == "cancel") {
-                                                                                    bot.send_message(msg.channel_id, "🚫 Setup canceled.");
+                                                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");
                                                                                     return;
                                                                                 }
 
@@ -1398,10 +1398,10 @@ public:
                                                                                 config.ticket_close_content = close_content;
 
                                                                                 if (g_db->save_ticket_config(config)) {
-                                                                                    bot.send_message(msg.channel_id, "✅ **Setup complete!** Sending the ticket panel automatically...");
+                                                                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Setup complete!** Sending the ticket panel automatically...");
                                                                                     send_ticket_panel(bot, config, msg.channel_id);
                                                                                 } else {
-                                                                                    bot.send_message(msg.channel_id, "⚠️ Failed to save ticket configuration to the database.");
+                                                                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save ticket configuration to the database.");
                                                                                 }
                                                                             });
                                                                         });
@@ -1420,7 +1420,7 @@ public:
                         return;
                     }
 
-                    bot.send_message(msg.channel_id, "⚠️ Unknown subcommand. Use setup, panel, list, delete, close, add, remove, config.");
+                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Unknown subcommand. Use setup, panel, list, delete, close, add, remove, config.");
                 });
             },
             "Tickets"

@@ -170,6 +170,11 @@ public:
 
              current_channel_id_ = target_channel_id;
 
+             // Signal voice presence to the Stoat gateway — this is what
+             // makes the bot actually show up in the voice channel UI.
+             std::cout << "[bronx join] Sending ChannelVoice gateway signal...\n";
+             bot.ws().join_voice_channel(target_channel_id);
+
              std::cout << "[bronx join] Playing local join chime...\n";
              pulse_.play_chime(true);
 
@@ -189,7 +194,7 @@ public:
             const std::vector<std::string> &args) {
            std::cout << "[bronx command] handling leave...\n";
            if (current_channel_id_.empty()) {
-             bot.send_message(msg.channel_id, "⚠️ I am not currently connected to any voice channel.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " I am not currently connected to any voice channel.");
              return;
            }
 
@@ -197,9 +202,9 @@ public:
              // Play a cool leave chime
              pulse_.play_chime(false);
 
-             // Call REST API to leave the voice channel
-             auto leave_res = bot.rest().end_voice_ring(current_channel_id_, bot.current_user().id);
-             
+             // Signal departure to the Stoat gateway
+             bot.ws().leave_voice_channel(current_channel_id_);
+
              voice_.disconnect();
              pulse_.shutdown();
              current_channel_id_ = "";
@@ -220,7 +225,7 @@ public:
             const std::vector<std::string> &args) {
            std::cout << "[bronx command] handling playtone...\n";
            if (args.empty()) {
-             bot.send_message(msg.channel_id, "⚠️ Usage: `.playtone <frequency_hz> [duration_seconds]`");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Usage: `.playtone <frequency_hz> [duration_seconds]`");
              return;
            }
 
@@ -233,17 +238,17 @@ public:
                duration = std::stod(args[1]);
              }
            } catch (...) {
-             bot.send_message(msg.channel_id, "⚠️ Invalid frequency or duration values.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid frequency or duration values.");
              return;
            }
 
            if (freq < 20.0 || freq > 20000.0) {
-             bot.send_message(msg.channel_id, "⚠️ Frequency must be between 20Hz and 20kHz.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Frequency must be between 20Hz and 20kHz.");
              return;
            }
 
            if (duration < 0.1 || duration > 10.0) {
-             bot.send_message(msg.channel_id, "⚠️ Duration must be between 0.1 and 10 seconds.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Duration must be between 0.1 and 10 seconds.");
              return;
            }
 
@@ -255,9 +260,9 @@ public:
              bot.send_message(msg.channel_id, "🔈 Playing **" + std::to_string(static_cast<int>(freq)) + " Hz** tone for **" + std::to_string(duration) + "s**...");
              
              if (pulse_.play_tone(freq, duration)) {
-               bot.send_message(msg.channel_id, "✅ Finished playing tone.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Finished playing tone.");
              } else {
-               bot.send_message(msg.channel_id, "⚠️ Failed to play tone via PulseAudio.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to play tone via PulseAudio.");
              }
            }).detach();
          },
@@ -279,13 +284,13 @@ public:
              try {
                duration = std::stod(args[0]);
              } catch (...) {
-               bot.send_message(msg.channel_id, "⚠️ Invalid duration value.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid duration value.");
                return;
              }
            }
 
            if (duration < 0.5 || duration > 10.0) {
-             bot.send_message(msg.channel_id, "⚠️ Recording duration must be between 0.5 and 10 seconds.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Recording duration must be between 0.5 and 10 seconds.");
              return;
            }
 
@@ -300,7 +305,7 @@ public:
              auto samples = pulse_.record_mic(duration, average_rms);
 
              if (samples.empty()) {
-               bot.send_message(msg.channel_id, "⚠️ Failed to record audio from PulseAudio recording source.");
+               bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to record audio from PulseAudio recording source.");
                return;
              }
 
@@ -340,7 +345,7 @@ public:
             const std::vector<std::string> &args) {
            std::cout << "[bronx command] handling playyt...\n";
            if (args.empty()) {
-             bot.send_message(msg.channel_id, "⚠️ Usage: `.playyt <youtube_url>`");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Usage: `.playyt <youtube_url>`");
              return;
            }
 
@@ -350,7 +355,7 @@ public:
            if (url.find('\'') != std::string::npos || url.find('"') != std::string::npos || 
                url.find(';') != std::string::npos || url.find('`') != std::string::npos ||
                url.find('|') != std::string::npos || url.find('&') != std::string::npos) {
-             bot.send_message(msg.channel_id, "⚠️ Invalid character in URL.");
+             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid character in URL.");
              return;
            }
 

@@ -1290,4 +1290,101 @@ namespace bronx {
     return list;
   }
 
+  std::optional<GeoStats> Database::get_geo_stats(const std::string &user_id) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return std::nullopt;
+
+    std::string sql = "SELECT points, correct_countries, exact_cities, games_played, current_streak, max_streak FROM geoguessr_stats WHERE user_id = '" +
+                      escape_string(user_id) + "'";
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          GeoStats st;
+          st.user_id = user_id;
+          st.points = row[0] ? std::stoll(row[0]) : 0;
+          st.correct_countries = row[1] ? std::stoi(row[1]) : 0;
+          st.exact_cities = row[2] ? std::stoi(row[2]) : 0;
+          st.games_played = row[3] ? std::stoi(row[3]) : 0;
+          st.current_streak = row[4] ? std::stoi(row[4]) : 0;
+          st.max_streak = row[5] ? std::stoi(row[5]) : 0;
+          mysql_free_result(res);
+          return st;
+        }
+        mysql_free_result(res);
+      }
+    }
+    return std::nullopt;
+  }
+
+  bool Database::update_geo_stats(const std::string &user_id, int64_t pts_earned,
+                                  bool country_correct, bool city_correct, bool won) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    int current_streak = 0;
+    int max_streak = 0;
+
+    std::string sql_sel = "SELECT current_streak, max_streak FROM geoguessr_stats WHERE user_id = '" +
+                          escape_string(user_id) + "'";
+    if (mysql_query(mysql_, sql_sel.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        if (row) {
+          current_streak = row[0] ? std::stoi(row[0]) : 0;
+          max_streak = row[1] ? std::stoi(row[1]) : 0;
+        }
+        mysql_free_result(res);
+      }
+    }
+
+    int new_streak = won ? (current_streak + 1) : 0;
+    int new_max_streak = std::max(max_streak, new_streak);
+
+    std::string sql = "INSERT INTO geoguessr_stats (user_id, points, correct_countries, exact_cities, games_played, current_streak, max_streak) VALUES ('" +
+                      escape_string(user_id) + "', " + std::to_string(pts_earned) + ", " +
+                      (country_correct ? "1" : "0") + ", " + (city_correct ? "1" : "0") + ", 1, " +
+                      std::to_string(new_streak) + ", " + std::to_string(new_max_streak) + ") " +
+                      "ON DUPLICATE KEY UPDATE points = points + " + std::to_string(pts_earned) +
+                      ", correct_countries = correct_countries + " + (country_correct ? "1" : "0") +
+                      ", exact_cities = exact_cities + " + (city_correct ? "1" : "0") +
+                      ", games_played = games_played + 1" +
+                      ", current_streak = " + std::to_string(new_streak) +
+                      ", max_streak = GREATEST(max_streak, " + std::to_string(new_max_streak) + ")";
+    return mysql_query(mysql_, sql.c_str()) == 0;
+  }
+
+  std::vector<GeoStats> Database::get_top_geo_leaderboard(int limit) {
+    std::lock_guard<std::mutex> lock(db_mutex_);
+    std::vector<GeoStats> list;
+    if (!mysql_)
+      return list;
+
+    std::string sql = "SELECT user_id, points, correct_countries, exact_cities, games_played, current_streak, max_streak FROM geoguessr_stats ORDER BY points DESC LIMIT " +
+                      std::to_string(limit);
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          GeoStats st;
+          st.user_id = row[0] ? row[0] : "";
+          st.points = row[1] ? std::stoll(row[1]) : 0;
+          st.correct_countries = row[2] ? std::stoi(row[2]) : 0;
+          st.exact_cities = row[3] ? std::stoi(row[3]) : 0;
+          st.games_played = row[4] ? std::stoi(row[4]) : 0;
+          st.current_streak = row[5] ? std::stoi(row[5]) : 0;
+          st.max_streak = row[6] ? std::stoi(row[6]) : 0;
+          list.push_back(st);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return list;
+  }
+
 } // namespace bronx
