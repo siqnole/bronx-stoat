@@ -18,7 +18,7 @@ endif()
 add_subdirectory(.. stoatpp_build)
 
 file(GLOB DATABASE_SOURCES database/*.cpp)
-add_executable(bronx main.cpp ${DATABASE_SOURCES})
+add_executable(bronx main.cpp i18n.cpp ${DATABASE_SOURCES})
 
 find_path(MARIADB_INCLUDE_DIR mysql.h
     PATHS

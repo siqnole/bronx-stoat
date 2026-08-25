@@ -55,7 +55,7 @@ private:
             {"Japan", "Nippon", "Nihon", "JP"},
             {"Fujiyoshida", "Mount Fuji", "Mt Fuji", "Fuji"},
             "Asia", "Northern Hemisphere", "Left", "Japanese Yen (JPY)", "Tokyo",
-            "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800&fm=jpg&fit=crop&q=80",
             "Mount Fuji is an active stratovolcano that last erupted in 1707–1708."
         },
         {
@@ -63,7 +63,7 @@ private:
             {"France", "French Republic", "FR"},
             {"Paris", "Eiffel Tower", "Eiffel"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Paris",
-            "https://images.unsplash.com/photo-1511739001486-6bfe10ce785f?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1511739001486-6bfe10ce785f?w=800&fm=jpg&fit=crop&q=80",
             "The Eiffel Tower was originally built as a temporary entrance arch for the 1889 World's Fair."
         },
         {
@@ -71,7 +71,7 @@ private:
             {"United States", "USA", "US", "America", "United States of America"},
             {"New York", "NYC", "New York City", "Statue of Liberty", "Manhattan"},
             "North America", "Northern Hemisphere", "Right", "US Dollar (USD)", "Washington D.C.",
-            "https://images.unsplash.com/photo-1605130284535-11dd9eedc58a?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1605130284535-11dd9eedc58a?w=800&fm=jpg&fit=crop&q=80",
             "The Statue of Liberty was a gift from the people of France to the United States in 1886."
         },
         {
@@ -79,7 +79,7 @@ private:
             {"India", "Bharat", "IN"},
             {"Agra", "Taj Mahal", "Uttar Pradesh"},
             "Asia", "Northern Hemisphere", "Left", "Indian Rupee (INR)", "New Delhi",
-            "https://images.unsplash.com/photo-1564507592333-c60657eea523?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1564507592333-c60657eea523?w=800&fm=jpg&fit=crop&q=80",
             "The Taj Mahal was commissioned by Emperor Shah Jahan in 1631 in memory of his wife Mumtaz Mahal."
         },
         {
@@ -87,7 +87,7 @@ private:
             {"Italy", "Italia", "IT"},
             {"Rome", "Roma", "Colosseum"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Rome",
-            "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=800&fm=jpg&fit=crop&q=80",
             "The Colosseum is the largest ancient amphitheatre ever built and held up to 80,000 spectators."
         },
         {
@@ -95,7 +95,7 @@ private:
             {"Brazil", "Brasil", "BR"},
             {"Rio de Janeiro", "Rio", "Christ the Redeemer", "Corcovado"},
             "South America", "Southern Hemisphere", "Right", "Brazilian Real (BRL)", "Brasília",
-            "https://images.unsplash.com/photo-1483729558449-99ef09a8c325?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1483729558449-99ef09a8c325?w=800&fm=jpg&fit=crop&q=80",
             "The statue stands 30 meters tall atop Mount Corcovado overlooking Guanabara Bay."
         },
         {
@@ -103,7 +103,7 @@ private:
             {"Australia", "AU", "Oz"},
             {"Sydney", "Sydney Opera House", "New South Wales"},
             "Oceania", "Southern Hemisphere", "Left", "Australian Dollar (AUD)", "Canberra",
-            "https://images.unsplash.com/photo-1624138784614-87fd1b6528f8?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1624138784614-87fd1b6528f8?w=800&fm=jpg&fit=crop&q=80",
             "The Sydney Opera House was designed by Danish architect Jørn Utzon and opened in 1973."
         },
         {
@@ -111,7 +111,7 @@ private:
             {"Egypt", "EG"},
             {"Cairo", "Giza", "Pyramids", "Giza Plateau"},
             "Africa", "Northern Hemisphere", "Right", "Egyptian Pound (EGP)", "Cairo",
-            "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?w=800&fm=jpg&fit=crop&q=80",
             "The Great Pyramid of Giza is the oldest of the Seven Wonders of the Ancient World."
         },
         {
@@ -119,7 +119,7 @@ private:
             {"Peru", "PE"},
             {"Cusco", "Cuzco", "Machu Picchu", "Urubamba"},
             "South America", "Southern Hemisphere", "Right", "Peruvian Sol (PEN)", "Lima",
-            "https://images.unsplash.com/photo-1526392060635-9d6019884377?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1526392060635-9d6019884377?w=800&fm=jpg&fit=crop&q=80",
             "Machu Picchu was built in the 15th century as an estate for the Inca emperor Pachacuti."
         },
         {
@@ -127,7 +127,7 @@ private:
             {"United Kingdom", "UK", "Britain", "Great Britain", "England", "GB"},
             {"London", "Big Ben", "Westminster"},
             "Europe", "Northern Hemisphere", "Left", "Pound Sterling (GBP)", "London",
-            "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=800&fm=jpg&fit=crop&q=80",
             "'Big Ben' is actually the nickname for the Great Bell of the striking clock at the north end of the palace."
         },
         {
@@ -135,7 +135,7 @@ private:
             {"Greece", "Hellas", "GR"},
             {"Santorini", "Thira", "Oia", "Fira"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Athens",
-            "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1570077188670-e3a8d69ac5ff?w=800&fm=jpg&fit=crop&q=80",
             "Santorini is what remains after an enormous volcanic eruption that destroyed early settlements."
         },
         {
@@ -143,7 +143,7 @@ private:
             {"Singapore", "SG"},
             {"Singapore", "Marina Bay"},
             "Asia", "Northern Hemisphere", "Left", "Singapore Dollar (SGD)", "Singapore",
-            "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1525625293386-3f8f99389edd?w=800&fm=jpg&fit=crop&q=80",
             "The hotel features the world's longest elevated infinity swimming pool located on the SkyPark."
         },
         {
@@ -151,7 +151,7 @@ private:
             {"Jordan", "JO"},
             {"Petra", "Ma'an", "Wadi Musa"},
             "Asia", "Northern Hemisphere", "Right", "Jordanian Dinar (JOD)", "Amman",
-            "https://images.unsplash.com/photo-1579606032822-83b38c232f32?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1579606032822-83b38c232f32?w=800&fm=jpg&fit=crop&q=80",
             "Petra is famous for its rock-cut architecture, carved into the rose-red desert sandstone."
         },
         {
@@ -159,7 +159,7 @@ private:
             {"Germany", "Deutschland", "DE"},
             {"Berlin", "Brandenburg Gate"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Berlin",
-            "https://images.unsplash.com/photo-1560969184-10fe8719e047?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1560969184-10fe8719e047?w=800&fm=jpg&fit=crop&q=80",
             "The Brandenburg Gate was built on the orders of Prussian King Frederick William II in 1791."
         },
         {
@@ -167,7 +167,7 @@ private:
             {"Spain", "España", "ES"},
             {"Barcelona", "Sagrada Familia", "Catalonia"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Madrid",
-            "https://images.unsplash.com/photo-1583422409516-2895a77efded?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1583422409516-2895a77efded?w=800&fm=jpg&fit=crop&q=80",
             "Designed by Antoni Gaudí, construction began in 1882 and remains in progress."
         },
         {
@@ -175,7 +175,7 @@ private:
             {"United Arab Emirates", "UAE", "Emirates"},
             {"Dubai", "Burj Khalifa"},
             "Asia", "Northern Hemisphere", "Right", "UAE Dirham (AED)", "Abu Dhabi",
-            "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=800&fm=jpg&fit=crop&q=80",
             "At 828 meters (2,717 feet), the Burj Khalifa is the tallest building in the world."
         },
         {
@@ -183,7 +183,7 @@ private:
             {"Canada", "CA"},
             {"Niagara Falls", "Ontario", "Niagara"},
             "North America", "Northern Hemisphere", "Right", "Canadian Dollar (CAD)", "Ottawa",
-            "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=800&fm=jpg&fit=crop&q=80",
             "Niagara Falls consists of three waterfalls that span the international border between Canada and the US."
         },
         {
@@ -191,7 +191,7 @@ private:
             {"Mexico", "MX"},
             {"Chichen Itza", "Yucatan", "Tinum"},
             "North America", "Northern Hemisphere", "Right", "Mexican Peso (MXN)", "Mexico City",
-            "https://images.unsplash.com/photo-1518638150340-f706e86654de?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1518638150340-f706e86654de?w=800&fm=jpg&fit=crop&q=80",
             "During the equinoxes, the setting sun casts a shadow that resembles a feathered serpent crawling down the temple steps."
         },
         {
@@ -199,7 +199,7 @@ private:
             {"South Africa", "ZA"},
             {"Cape Town", "Table Mountain", "Western Cape"},
             "Africa", "Southern Hemisphere", "Right", "South African Rand (ZAR)", "Pretoria",
-            "https://images.unsplash.com/photo-1580619305218-8423a7ef79b4?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1580619305218-8423a7ef79b4?w=800&fm=jpg&fit=crop&q=80",
             "Table Mountain's flat top forms a prominent landmark overlooking the city of Cape Town."
         },
         {
@@ -207,7 +207,7 @@ private:
             {"South Korea", "Korea", "KR", "ROK"},
             {"Seoul", "Namsan", "Seoul Tower"},
             "Asia", "Northern Hemisphere", "Right", "South Korean Won (KRW)", "Seoul",
-            "https://images.unsplash.com/photo-1538485399081-7191377e8241?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1538485399081-7191377e8241?w=800&fm=jpg&fit=crop&q=80",
             "N Seoul Tower marks the highest point in Seoul and is famous for its padlocks of love."
         },
         {
@@ -215,7 +215,7 @@ private:
             {"Russia", "RU", "Russian Federation"},
             {"Moscow", "Red Square", "Saint Basils"},
             "Europe", "Northern Hemisphere", "Right", "Russian Ruble (RUB)", "Moscow",
-            "https://images.unsplash.com/photo-1513326718677-b964603b136b?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1513326718677-b964603b136b?w=800&fm=jpg&fit=crop&q=80",
             "Built between 1555 and 1561 on Red Square under Ivan the Terrible to commemorate the capture of Kazan."
         },
         {
@@ -223,7 +223,7 @@ private:
             {"Cambodia", "KH"},
             {"Siem Reap", "Angkor", "Angkor Wat"},
             "Asia", "Northern Hemisphere", "Right", "Cambodian Riel (KHR)", "Phnom Penh",
-            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&fm=jpg&fit=crop&q=80",
             "Angkor Wat is the largest religious monument in the world, originally constructed as a Hindu temple."
         },
         {
@@ -231,7 +231,7 @@ private:
             {"New Zealand", "NZ", "Aotearoa"},
             {"Auckland", "Sky Tower"},
             "Oceania", "Southern Hemisphere", "Left", "New Zealand Dollar (NZD)", "Wellington",
-            "https://images.unsplash.com/photo-1507699622108-4be3abd695ad?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1507699622108-4be3abd695ad?w=800&fm=jpg&fit=crop&q=80",
             "The Sky Tower stands at 328 meters and is the tallest freestanding structure in the Southern Hemisphere."
         },
         {
@@ -239,7 +239,7 @@ private:
             {"Croatia", "HR"},
             {"Dubrovnik", "Ragusa"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Zagreb",
-            "https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800&fm=jpg&fit=crop&q=80",
             "Dubrovnik is known for its distinctive Old Town, encircled by massive stone walls completed in the 16th century."
         },
         {
@@ -247,7 +247,7 @@ private:
             {"Netherlands", "Holland", "NL"},
             {"Amsterdam", "Canals"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Amsterdam",
-            "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?w=800&fm=jpg&fit=crop&q=80",
             "Amsterdam has over 100 kilometers of canals, about 90 islands, and 1,500 bridges."
         },
         {
@@ -255,7 +255,7 @@ private:
             {"Iceland", "IS"},
             {"Reykjavik", "Grindavik", "Blue Lagoon"},
             "Europe", "Northern Hemisphere", "Right", "Icelandic Króna (ISK)", "Reykjavik",
-            "https://images.unsplash.com/photo-1504893524553-b855bce32c67?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1504893524553-b855bce32c67?w=800&fm=jpg&fit=crop&q=80",
             "The geothermal spa is located in a lava field in Grindavík on the Reykjanes Peninsula."
         },
         {
@@ -263,7 +263,7 @@ private:
             {"China", "CN", "PRC"},
             {"Beijing", "Badaling", "Mutianyu", "Great Wall"},
             "Asia", "Northern Hemisphere", "Right", "Chinese Yuan (CNY)", "Beijing",
-            "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1508804185872-d7badad00f7d?w=800&fm=jpg&fit=crop&q=80",
             "The total length of all sections of the Great Wall built over various dynasties measures over 21,000 km."
         },
         {
@@ -271,7 +271,7 @@ private:
             {"United Kingdom", "UK", "England", "GB"},
             {"Salisbury", "Wiltshire", "Stonehenge"},
             "Europe", "Northern Hemisphere", "Left", "Pound Sterling (GBP)", "London",
-            "https://images.unsplash.com/photo-1599833975787-5c143f373c30?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1599833975787-5c143f373c30?w=800&fm=jpg&fit=crop&q=80",
             "Stonehenge was constructed in several phases from roughly 3000 BC to 2000 BC."
         },
         {
@@ -279,7 +279,7 @@ private:
             {"Chile", "CL"},
             {"Easter Island", "Rapa Nui", "Hanga Roa"},
             "South America", "Southern Hemisphere", "Right", "Chilean Peso (CLP)", "Santiago",
-            "https://images.unsplash.com/photo-1510097467424-192d713be8b2?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1510097467424-192d713be8b2?w=800&fm=jpg&fit=crop&q=80",
             "The iconic monolithic human figures were carved by the Rapa Nui people between 1250 and 1500."
         },
         {
@@ -287,7 +287,7 @@ private:
             {"Italy", "Italia", "IT"},
             {"Venice", "Venezia"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Rome",
-            "https://images.unsplash.com/photo-1514896856000-91cb6de818e0?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1514896856000-91cb6de818e0?w=800&fm=jpg&fit=crop&q=80",
             "Venice is built on a group of 118 small islands separated by canals and linked by over 400 bridges."
         },
         {
@@ -295,7 +295,7 @@ private:
             {"United States", "USA", "US", "America"},
             {"San Francisco", "SF", "Golden Gate"},
             "North America", "Northern Hemisphere", "Right", "US Dollar (USD)", "Washington D.C.",
-            "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=800&fm=jpg&fit=crop&q=80",
             "The suspension bridge spans the Golden Gate strait connecting San Francisco Bay and the Pacific Ocean."
         },
         {
@@ -303,7 +303,7 @@ private:
             {"Switzerland", "Swiss", "CH"},
             {"Zermatt", "Matterhorn"},
             "Europe", "Northern Hemisphere", "Right", "Swiss Franc (CHF)", "Bern",
-            "https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1530122037265-a5f1f91d3b99?w=800&fm=jpg&fit=crop&q=80",
             "The pyramidal peak in the Pennine Alps sits on the border between Switzerland and Italy."
         },
         {
@@ -311,7 +311,7 @@ private:
             {"Taiwan", "TW", "ROC"},
             {"Taipei", "Taipei 101"},
             "Asia", "Northern Hemisphere", "Right", "New Taiwan Dollar (TWD)", "Taipei",
-            "https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=800&fm=jpg&fit=crop&q=80",
             "Taipei 101 was officially classified as the world's tallest building from 2004 until 2010."
         },
         {
@@ -319,7 +319,7 @@ private:
             {"Australia", "AU"},
             {"Uluru", "Ayers Rock", "Alice Springs"},
             "Oceania", "Southern Hemisphere", "Left", "Australian Dollar (AUD)", "Canberra",
-            "https://images.unsplash.com/photo-1529108190281-9a4f620bc2d8?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1529108190281-9a4f620bc2d8?w=800&fm=jpg&fit=crop&q=80",
             "Uluru is sacred to the Anangu, the Aboriginal people of the area."
         },
         {
@@ -327,7 +327,7 @@ private:
             {"France", "FR"},
             {"Mont Saint Michel", "Normandy"},
             "Europe", "Northern Hemisphere", "Right", "Euro (EUR)", "Paris",
-            "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800&fm=jpg&fit=crop&q=80",
             "The tidal island and abbey in Normandy has been held as a strategic fortification since ancient times."
         },
         {
@@ -335,7 +335,7 @@ private:
             {"Malaysia", "MY"},
             {"Kuala Lumpur", "KL", "Petronas Towers"},
             "Asia", "Northern Hemisphere", "Right", "Malaysian Ringgit (MYR)", "Kuala Lumpur",
-            "https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=800&auto=format&fit=crop",
+            "https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=800&fm=jpg&fit=crop&q=80",
             "The twin skyscrapers were the tallest buildings in the world from 1998 to 2004."
         }
     };
@@ -522,24 +522,9 @@ public:
     }
 
 private:
-    std::unordered_map<std::string, std::string> autumn_cache_;
-    std::mutex autumn_cache_mutex_;
-
     std::string get_or_upload_image(stoatpp::cluster& bot, const std::string& image_url) {
         if (image_url.empty()) return "";
-        {
-            std::lock_guard<std::mutex> lock(autumn_cache_mutex_);
-            auto it = autumn_cache_.find(image_url);
-            if (it != autumn_cache_.end() && !it->second.empty()) {
-                return it->second;
-            }
-        }
-        std::string media_id = bot.rest().upload_from_url(image_url);
-        if (!media_id.empty()) {
-            std::lock_guard<std::mutex> lock(autumn_cache_mutex_);
-            autumn_cache_[image_url] = media_id;
-        }
-        return media_id;
+        return bot.rest().upload_from_url(image_url);
     }
 
     void start_new_round(stoatpp::cluster& bot, const stoatpp::events::Message& msg) {

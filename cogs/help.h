@@ -626,9 +626,9 @@ private:
         
         stoatpp::models::Embed embed;
         embed.set_colour(0x5865F2)
-             .set_title("bronx help — " + to_lower(cat) + " (page " + std::to_string(page + 1) + " of " + std::to_string(max_pages) + ")");
+             .set_title("help — " + to_lower(cat) + " (" + std::to_string(page + 1) + "/" + std::to_string(max_pages) + ")");
 
-        std::string desc = "use double-arrows to switch cogs, and single-arrows to browse pages.\n\n";
+        std::string desc = "";
 
         size_t start_idx = page * commands_per_page;
         for (size_t i = start_idx; i < start_idx + commands_per_page && i < cmds.size(); ++i) {

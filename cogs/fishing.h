@@ -611,7 +611,7 @@ public:
           (b.req_target > 0) ? (100.0 * b.req_progress / b.req_target) : 0.0;
 
       embed.set_colour(0xE74C3C);
-      embed.set_title("🗡️ Bronx Global Fish Boss — ☀️ Daily Boss");
+      embed.set_title("fish boss — daily");
       std::string desc = "**Boss Name:** " + b.boss_name +
                          "\n"
                          "**Season Theme:** " +
@@ -630,10 +630,10 @@ public:
                          std::to_string(static_cast<int>(req_pct)) + "%)\n" +
                          make_progress_bar(b.req_progress, b.req_target) +
                          "\n\n"
-                         "👤 **Your Contribution:** `" +
+                         "**Your Contribution:** `" +
                          std::to_string(u_contrib) +
                          " Catches`\n\n"
-                         "🎁 **Boss Defeat Rewards:**\n"
+                         "**Boss Defeat Rewards:**\n"
                          "• 15 Event Tokens 🎫\n"
                          "• High Value Seasonal Fish drops\n"
                          "• Random Pet Drop chance\n";
@@ -648,7 +648,7 @@ public:
           (b.req_target > 0) ? (100.0 * b.req_progress / b.req_target) : 0.0;
 
       embed.set_colour(0x9B59B6);
-      embed.set_title("🗡️ Bronx Global Fish Boss — 🌙 Monthly Boss");
+      embed.set_title("fish boss — monthly");
       std::string desc = "**Boss Name:** " + b.boss_name +
                          "\n"
                          "**Season Theme:** " +
@@ -667,10 +667,10 @@ public:
                          std::to_string(static_cast<int>(req_pct)) + "%)\n" +
                          make_progress_bar(b.req_progress, b.req_target) +
                          "\n\n"
-                         "👤 **Your Contribution:** `$" +
+                         "**Your Contribution:** `$" +
                          std::to_string(u_contrib) +
                          " Coins Sold`\n\n"
-                         "🎁 **Boss Defeat Rewards:**\n"
+                         "**Boss Defeat Rewards:**\n"
                          "• 100 Event Tokens 🎫\n"
                          "• Exclusive Mythic Pet Drop chance\n"
                          "• Legendary Rod Enchant Tokens\n";
@@ -685,8 +685,7 @@ public:
           (b.req_target > 0) ? (100.0 * b.req_progress / b.req_target) : 0.0;
 
       embed.set_colour(0xF1C40F);
-      embed.set_title("🗡️ Bronx Global Fish Boss — 🌺 Seasonal Boss (" +
-                      b.season_theme + " Theme)");
+      embed.set_title("fish boss — seasonal (" + b.season_theme + ")");
       std::string desc = "**Boss Name:** " + b.boss_name +
                          "\n"
                          "**Current Season:** " +
@@ -705,10 +704,10 @@ public:
                          std::to_string(static_cast<int>(req_pct)) + "%)\n" +
                          make_progress_bar(b.req_progress, b.req_target) +
                          "\n\n"
-                         "👤 **Your Contribution:** `" +
+                         "**Your Contribution:** `" +
                          std::to_string(u_contrib) +
                          " kg Fished`\n\n"
-                         "🎁 **Seasonal Rewards:**\n"
+                         "**Seasonal Rewards:**\n"
                          "• Golden Sun Turtle Pet 🐢\n"
                          "• Summer Sun-Fish ($2,500,000 Coins)\n"
                          "• 250 Event Tokens 🎫\n";
@@ -736,7 +735,7 @@ public:
     auto user_pets = g_db->get_user_pets(author_id);
     std::optional<PetDef> active_pet = get_pet_def(u.active_pet_id);
 
-    embed.set_title("🐾 Bronx Fishing Pets — 🐕 Companion System");
+    embed.set_title("fishing pets");
     std::string desc =
         "Equipped Pet: " +
         (active_pet ? ("**" + active_pet->emoji + " " + active_pet->name +
@@ -745,10 +744,9 @@ public:
         "\n\n"
         "Use `.fish pet equip <pet_id>` or `.fish pet unequip` to manage your "
         "equipped pet.\n\n"
-        "**YOUR UNLOCKED PETS:**\n";
+        "**UNLOCKED PETS:**\n";
     if (user_pets.empty()) {
-      desc += "*You do not own any pets yet! Earn pets from Bosses or buy them "
-              "in `.fish event` shop.*\n";
+      desc += "*No pets unlocked.*\n";
     } else {
       for (const auto &pid : user_pets) {
         auto pdef = get_pet_def(pid);
@@ -777,7 +775,7 @@ public:
     auto u_opt = g_db->get_fishing_user(author_id);
     int tokens = u_opt ? u_opt->event_tokens : 0;
 
-    embed.set_title("🎪 Bronx Fishing Event Shop — 🎫 Exclusive Event Items");
+    embed.set_title("fishing event shop");
     std::string desc =
         "Your Balance: **" + std::to_string(tokens) +
         " Event Tokens** 🎫\n"

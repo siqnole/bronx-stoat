@@ -531,7 +531,7 @@ public:
                         }
 
                         if (subcommand == "setup") {
-                            bot.send_message(msg.channel_id, "💬 **Server List Setup Wizard**\nLet's configure your server listing.\n\n**Step 1/6**: What listing/advertising mode would you like to enable?\nOptions: `website`, `bump`, `both`, `disabled`.");
+                            bot.send_message(msg.channel_id, "server list setup [1/6]: specify mode (`website`, `bump`, `both`, or `disabled`).");
                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, listing](std::optional<stoatpp::events::Message> r1) mutable {
                                 if (!r1 || r1->content == "cancel") {
                                     bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");

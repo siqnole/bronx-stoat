@@ -769,16 +769,16 @@ public:
                 }
 
                 if (subcommand == "setup") {
-                    bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\nLet's configure welcome messages for this server.\n\n**Step 1/7**: Mention a channel (e.g. #general), type its name/ID, or reply `none` to disable.");
+                    bot.send_message(msg.channel_id, "welcome setup [1/7]: specify channel (mention, ID, or `none`).");
                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg](std::optional<stoatpp::events::Message> rep1) {
                         if (!rep1) {
-                            bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                            bot.send_message(msg.channel_id, "setup timed out.");
                             return;
                         }
                         
                         std::string chan_resp = rep1->content;
                         if (chan_resp == "cancel") {
-                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                            bot.send_message(msg.channel_id, "setup cancelled.");
                             return;
                         }
                         std::string target_channel = "";
@@ -803,7 +803,7 @@ public:
                         }
 
                         if (target_channel.empty() && chan_resp != "none") {
-                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel. Welcome setup canceled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " invalid channel. setup cancelled.");
                             return;
                         }
 
@@ -811,39 +811,39 @@ public:
                             auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
                             config.welcome_channel_id = "";
                             g_db->save_welcome_leave_config(config);
-                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Welcome messages have been disabled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " welcome messages disabled.");
                             return;
                         }
 
-                        bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\n**Step 2/7**: Choose the message type. Reply with `text` or `embed`.");
+                        bot.send_message(msg.channel_id, "welcome setup [2/7]: specify message type (`text` or `embed`).");
                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, target_channel](std::optional<stoatpp::events::Message> rep2) {
                             if (!rep2) {
-                                bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                                bot.send_message(msg.channel_id, "setup timed out.");
                                 return;
                             }
 
                             std::string type_resp = rep2->content;
                             std::transform(type_resp.begin(), type_resp.end(), type_resp.begin(), ::tolower);
                             if (type_resp == "cancel") {
-                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                                bot.send_message(msg.channel_id, "setup cancelled.");
                                 return;
                             }
                             if (type_resp != "text" && type_resp != "embed") {
-                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type (must be `text` or `embed`). Welcome setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " invalid type (`text` or `embed`). setup cancelled.");
                                 return;
                             }
 
                             if (type_resp == "text") {
-                                bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\n**Step 3/3**: Type the welcome message/content.\n*(You can use tokens like `{user}`, `{username}`, `{server}`, and `{membercount}`)*");
+                                bot.send_message(msg.channel_id, "welcome setup [3/3]: specify welcome message text. tokens: `{user}`, `{username}`, `{server}`, `{membercount}`");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, target_channel, type_resp](std::optional<stoatpp::events::Message> rep3) {
                                     if (!rep3) {
-                                        bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup timed out.");
                                         return;
                                     }
 
                                     std::string content_resp = rep3->content;
                                     if (content_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup cancelled.");
                                         return;
                                     }
                                     auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
@@ -852,90 +852,90 @@ public:
                                     config.welcome_content = content_resp;
 
                                     g_db->save_welcome_leave_config(config);
-                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Welcome Setup Complete!**\nWelcome messages will be sent to <#" + target_channel + "> in text format.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " welcome setup complete. channel: <#" + target_channel + ">.");
                                 });
                                 return;
                             }
 
                             // Embed Setup flow:
-                            bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\n**Step 3/7**: Type the embed **title** (or reply `skip`).\n*Available tokens:*\n```\n{user} {username} {server} {membercount}\n```");
+                            bot.send_message(msg.channel_id, "welcome setup [3/7]: specify embed title (or `skip`). tokens: `{user}`, `{username}`, `{server}`, `{membercount}`");
                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [&bot, msg, target_channel, type_resp](std::optional<stoatpp::events::Message> rep3) {
                                 if (!rep3) {
-                                    bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                                    bot.send_message(msg.channel_id, "setup timed out.");
                                     return;
                                 }
 
                                 nlohmann::json emb = nlohmann::json::object();
                                 std::string title_resp = rep3->content;
                                 if (title_resp == "cancel") {
-                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                                    bot.send_message(msg.channel_id, "setup cancelled.");
                                     return;
                                 }
                                 if (title_resp != "skip") {
                                     emb["title"] = title_resp;
                                 }
 
-                                bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\n**Step 4/7**: Type the embed **description** (or reply `skip`).\n*Available tokens:*\n```\n{user} {username} {server} {membercount}\n```");
+                                bot.send_message(msg.channel_id, "welcome setup [4/7]: specify embed description (or `skip`). tokens: `{user}`, `{username}`, `{server}`, `{membercount}`");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(90), [&bot, msg, emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep4) {
                                     if (!rep4) {
-                                        bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup timed out.");
                                         return;
                                     }
 
                                     auto current_emb = emb;
                                     std::string desc_resp = rep4->content;
                                     if (desc_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup cancelled.");
                                         return;
                                     }
                                     if (desc_resp != "skip") {
                                         current_emb["description"] = desc_resp;
                                     }
 
-                                    bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\n**Step 5/7**: Type the embed **color hex** (e.g. `#5865f2` or `random`, or reply `skip`).");
+                                    bot.send_message(msg.channel_id, "welcome setup [5/7]: specify color hex (or `random` / `skip`).");
                                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, current_emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep5) {
                                         if (!rep5) {
-                                            bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                                            bot.send_message(msg.channel_id, "setup timed out.");
                                             return;
                                         }
 
                                         auto final_emb = current_emb;
                                         std::string color_resp = rep5->content;
                                         if (color_resp == "cancel") {
-                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                                            bot.send_message(msg.channel_id, "setup cancelled.");
                                             return;
                                         }
                                         if (color_resp != "skip") {
                                             final_emb["color"] = color_resp;
                                         }
 
-                                        bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\n**Step 6/7**: Type the embed **image URL** (or reply `skip`).");
+                                        bot.send_message(msg.channel_id, "welcome setup [6/7]: specify embed image URL (or `skip`).");
                                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, final_emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep6) {
                                             if (!rep6) {
-                                                bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                                                bot.send_message(msg.channel_id, "setup timed out.");
                                                 return;
                                             }
 
                                             auto save_emb = final_emb;
                                             std::string img_resp = rep6->content;
                                             if (img_resp == "cancel") {
-                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                                                bot.send_message(msg.channel_id, "setup cancelled.");
                                                 return;
                                             }
                                             if (img_resp != "skip") {
                                                 save_emb["image"] = img_resp;
                                             }
 
-                                            bot.send_message(msg.channel_id, "💬 **Welcome Setup Wizard**\n**Step 7/7**: Type the **message content/text** to show outside the embed (or reply `skip`).\n*(You can use tokens like `{user}`, `{username}`, `{server}`, and `{membercount}`)*");
+                                            bot.send_message(msg.channel_id, "welcome setup [7/7]: specify message text outside embed (or `skip`).");
                                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, save_emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep7) {
                                                 if (!rep7) {
-                                                    bot.send_message(msg.channel_id, "⏱️ Setup timed out. Welcome setup canceled.");
+                                                    bot.send_message(msg.channel_id, "setup timed out.");
                                                     return;
                                                 }
 
                                                 std::string content_resp = rep7->content;
                                                 if (content_resp == "cancel") {
-                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " Welcome setup canceled.");
+                                                    bot.send_message(msg.channel_id, "setup cancelled.");
                                                     return;
                                                 }
                                                 auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
@@ -949,7 +949,7 @@ public:
                                                 }
 
                                                 g_db->save_welcome_leave_config(config);
-                                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Welcome Setup Complete!**\nWelcome messages will be sent to <#" + target_channel + "> as a rich embed.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " welcome setup complete. channel: <#" + target_channel + ">.");
                                             });
                                         });
                                     });
@@ -1265,10 +1265,10 @@ public:
                 }
 
                 if (subcommand == "setup") {
-                    bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\nLet's configure departure messages for this server.\n\n**Step 1/7**: Mention a channel (e.g. #departures), type its name/ID, or reply `none` to disable.");
+                    bot.send_message(msg.channel_id, "leave setup [1/7]: specify channel (mention, ID, or `none`).");
                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg](std::optional<stoatpp::events::Message> rep1) {
                         if (!rep1) {
-                            bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                            bot.send_message(msg.channel_id, "setup timed out.");
                             return;
                         }
                         
@@ -1295,7 +1295,7 @@ public:
                         }
 
                         if (target_channel.empty() && chan_resp != "none") {
-                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel. Leave setup canceled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_warning + " invalid channel. setup cancelled.");
                             return;
                         }
 
@@ -1303,29 +1303,29 @@ public:
                             auto config = g_db->get_welcome_leave_config(msg.server_id).value_or(Database::WelcomeLeaveConfig{msg.server_id});
                             config.leave_channel_id = "";
                             g_db->save_welcome_leave_config(config);
-                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " Leave messages have been disabled.");
+                            bot.send_message(msg.channel_id, "" + bronx::emj_yes + " leave messages disabled.");
                             return;
                         }
 
-                        bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\n**Step 2/7**: Choose the message type. Reply with `text` or `embed`.");
+                        bot.send_message(msg.channel_id, "leave setup [2/7]: specify message type (`text` or `embed`).");
                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, target_channel](std::optional<stoatpp::events::Message> rep2) {
                             if (!rep2) {
-                                bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                                bot.send_message(msg.channel_id, "setup timed out.");
                                 return;
                             }
 
                             std::string type_resp = rep2->content;
                             std::transform(type_resp.begin(), type_resp.end(), type_resp.begin(), ::tolower);
                             if (type_resp != "text" && type_resp != "embed") {
-                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type (must be `text` or `embed`). Leave setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " invalid type (`text` or `embed`). setup cancelled.");
                                 return;
                             }
 
                             if (type_resp == "text") {
-                                bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\n**Step 3/3**: Type the departure message/content.\n*(You can use tokens like `{user}`, `{username}`, `{server}`, and `{membercount}`)*");
+                                bot.send_message(msg.channel_id, "leave setup [3/3]: specify departure message text. tokens: `{user}`, `{username}`, `{server}`, `{membercount}`");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, target_channel, type_resp](std::optional<stoatpp::events::Message> rep3) {
                                     if (!rep3) {
-                                        bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup timed out.");
                                         return;
                                     }
 
@@ -1336,16 +1336,16 @@ public:
                                     config.leave_content = content_resp;
 
                                     g_db->save_welcome_leave_config(config);
-                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Leave Setup Complete!**\nDeparture messages will be sent to <#" + target_channel + "> in text format.");
+                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " leave setup complete. channel: <#" + target_channel + ">.");
                                 });
                                 return;
                             }
 
                             // Embed Setup flow:
-                            bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\n**Step 3/7**: Type the embed **title** (or reply `skip`).\n*Available tokens:*\n```\n{user} {username} {server} {membercount}\n```");
+                            bot.send_message(msg.channel_id, "leave setup [3/7]: specify embed title (or `skip`). tokens: `{user}`, `{username}`, `{server}`, `{membercount}`");
                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [&bot, msg, target_channel, type_resp](std::optional<stoatpp::events::Message> rep3) {
                                 if (!rep3) {
-                                    bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                                    bot.send_message(msg.channel_id, "setup timed out.");
                                     return;
                                 }
 
@@ -1355,10 +1355,10 @@ public:
                                     emb["title"] = title_resp;
                                 }
 
-                                bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\n**Step 4/7**: Type the embed **description** (or reply `skip`).\n*Available tokens:*\n```\n{user} {username} {server} {membercount}\n```");
+                                bot.send_message(msg.channel_id, "leave setup [4/7]: specify embed description (or `skip`). tokens: `{user}`, `{username}`, `{server}`, `{membercount}`");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(90), [&bot, msg, emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep4) {
                                     if (!rep4) {
-                                        bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup timed out.");
                                         return;
                                     }
 
@@ -1368,10 +1368,10 @@ public:
                                         current_emb["description"] = desc_resp;
                                     }
 
-                                    bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\n**Step 5/7**: Type the embed **color hex** (e.g. `#ff5555` or `random`, or reply `skip`).");
+                                    bot.send_message(msg.channel_id, "leave setup [5/7]: specify color hex (or `random` / `skip`).");
                                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, current_emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep5) {
                                         if (!rep5) {
-                                            bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                                            bot.send_message(msg.channel_id, "setup timed out.");
                                             return;
                                         }
 
@@ -1381,10 +1381,10 @@ public:
                                             final_emb["color"] = color_resp;
                                         }
 
-                                        bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\n**Step 6/7**: Type the embed **image URL** (or reply `skip`).");
+                                        bot.send_message(msg.channel_id, "leave setup [6/7]: specify embed image URL (or `skip`).");
                                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, final_emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep6) {
                                             if (!rep6) {
-                                                bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                                                bot.send_message(msg.channel_id, "setup timed out.");
                                                 return;
                                             }
 
@@ -1394,10 +1394,10 @@ public:
                                                 save_emb["image"] = img_resp;
                                             }
 
-                                            bot.send_message(msg.channel_id, "💬 **Leave Setup Wizard**\n**Step 7/7**: Type the **message content/text** to show outside the embed (or reply `skip`).\n*(You can use tokens like `{user}`, `{username}`, `{server}`, and `{membercount}`)*");
+                                            bot.send_message(msg.channel_id, "leave setup [7/7]: specify message text outside embed (or `skip`).");
                                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, save_emb, target_channel, type_resp](std::optional<stoatpp::events::Message> rep7) {
                                                 if (!rep7) {
-                                                    bot.send_message(msg.channel_id, "⏱️ Setup timed out. Leave setup canceled.");
+                                                    bot.send_message(msg.channel_id, "setup timed out.");
                                                     return;
                                                 }
 
@@ -1413,7 +1413,7 @@ public:
                                                 }
 
                                                 g_db->save_welcome_leave_config(config);
-                                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **Leave Setup Complete!**\nDeparture messages will be sent to <#" + target_channel + "> as a rich embed.");
+                                                bot.send_message(msg.channel_id, "" + bronx::emj_yes + " leave setup complete. channel: <#" + target_channel + ">.");
                                             });
                                         });
                                     });

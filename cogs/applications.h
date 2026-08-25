@@ -891,7 +891,7 @@ public:
                     }
 
                     if (subcommand == "setup") {
-                        bot.send_message(msg.channel_id, "💬 **Application Setup Wizard** [Panel: `" + panel_name + "`]\nLet's configure this application panel.\n\n**Step 1/8**: Mention the channel where the trigger panel should be sent (e.g. #tickets), or type its ID/name. Reply `skip` to configure triggers manually later.");
+                        bot.send_message(msg.channel_id, "application setup [" + panel_name + "] [1/8]: specify channel (mention, ID, name, or `skip`).");
                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [this, &bot, msg, panel_name](std::optional<stoatpp::events::Message> rep1) {
                             if (!rep1 || rep1->content == "cancel") {
                                 bot.send_message(msg.channel_id, "" + bronx::emj_no + " Setup canceled.");

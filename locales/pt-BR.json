@@ -1,0 +1,12 @@
+{
+  "lang_current": "Seu idioma atual está definido como: **{lang}**",
+  "lang_server_current": "Idioma padrão do servidor definido como: **{lang}**",
+  "lang_updated": "Preferência de idioma atualizada para **{lang}** ({name}).",
+  "lang_server_updated": "Idioma padrão do servidor atualizado para **{lang}** ({name}).",
+  "lang_reset": "Preferência de idioma redefinida para o padrão.",
+  "lang_server_reset": "Idioma padrão do servidor redefinido para o padrão.",
+  "lang_invalid": "Código de idioma inválido. Suportados: `en`, `pt-BR`, `es`, `fr`, `de`.",
+  "lang_perm_error": "Erro de permissão: Você precisa da permissão Gerenciar Servidor para alterar o idioma do servidor.",
+  "lang_available_title": "🌐 Configurações de Idioma",
+  "lang_available_desc": "Use `.lang <código>` para definir seu idioma, ou `.lang server <código>` para o padrão do servidor.\n\n**Idiomas Suportados:**\n• 🇺🇸 `en` — English\n• 🇧🇷 `pt-BR` — Português (Brasil)\n• 🇪🇸 `es` — Español\n• 🇫🇷 `fr` — Français\n• 🇩🇪 `de` — Deutsch"
+}

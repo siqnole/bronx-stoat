@@ -380,6 +380,14 @@ public:
 
   bool save_user_timezone(const std::string &user_id, const std::string &timezone);
 
+  std::optional<std::string> get_user_language(const std::string &user_id);
+
+  bool save_user_language(const std::string &user_id, const std::string &language);
+
+  std::optional<std::string> get_server_language(const std::string &server_id);
+
+  bool save_server_language(const std::string &server_id, const std::string &language);
+
   bool is_user_ignored(const std::string &user_id);
 
   bool toggle_user_ignored(const std::string &user_id, bool &is_now_ignored);
@@ -1146,6 +1154,12 @@ private:
 
   std::unordered_map<std::string, std::string> user_timezones_cache_;
   std::shared_mutex user_timezones_cache_mutex_;
+
+  std::unordered_map<std::string, std::string> user_languages_cache_;
+  std::shared_mutex user_languages_cache_mutex_;
+
+  std::unordered_map<std::string, std::string> server_languages_cache_;
+  std::shared_mutex server_languages_cache_mutex_;
 
   std::unordered_set<std::string> ignored_users_cache_;
   std::shared_mutex ignored_users_cache_mutex_;

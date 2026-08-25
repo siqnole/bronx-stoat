@@ -1,0 +1,12 @@
+{
+  "lang_current": "Your language is currently set to: **{lang}**",
+  "lang_server_current": "Server default language is set to: **{lang}**",
+  "lang_updated": "Language preference updated to **{lang}** ({name}).",
+  "lang_server_updated": "Server default language updated to **{lang}** ({name}).",
+  "lang_reset": "Language preference reset to default.",
+  "lang_server_reset": "Server default language reset to default.",
+  "lang_invalid": "Invalid language code. Supported: `en`, `pt-BR`, `es`, `fr`, `de`.",
+  "lang_perm_error": "Permission error: You need Manage Server permission to change server language.",
+  "lang_available_title": "🌐 Language Settings",
+  "lang_available_desc": "Use `.lang <code>` to set your language, or `.lang server <code>` for server default.\n\n**Supported Languages:**\n• 🇺🇸 `en` — English\n• 🇧🇷 `pt-BR` — Português (Brasil)\n• 🇪🇸 `es` — Español\n• 🇫🇷 `fr` — Français\n• 🇩🇪 `de` — Deutsch"
+}

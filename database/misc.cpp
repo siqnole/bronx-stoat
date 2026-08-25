@@ -172,6 +172,80 @@ namespace bronx {
     return true;
   }
 
+  std::optional<std::string>
+  Database::get_user_language(const std::string &user_id) {
+    std::shared_lock<std::shared_mutex> lock(user_languages_cache_mutex_);
+    auto it = user_languages_cache_.find(user_id);
+    if (it != user_languages_cache_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool Database::save_user_language(const std::string &user_id, const std::string &language) {
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(user_languages_cache_mutex_);
+      if (language.empty()) {
+        user_languages_cache_.erase(user_id);
+      } else {
+        user_languages_cache_[user_id] = language;
+      }
+    }
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return true;
+
+    std::string esc_uid = escape_string(user_id);
+    std::string esc_lang = escape_string(language);
+
+    std::string query;
+    if (language.empty()) {
+      query = "DELETE FROM user_languages WHERE user_id = '" + esc_uid + "'";
+    } else {
+      query = "INSERT INTO user_languages (user_id, language) "
+              "VALUES ('" + esc_uid + "', '" + esc_lang + "') "
+              "ON DUPLICATE KEY UPDATE language = '" + esc_lang + "'";
+    }
+    mysql_query(mysql_, query.c_str());
+    return true;
+  }
+
+  std::optional<std::string>
+  Database::get_server_language(const std::string &server_id) {
+    std::shared_lock<std::shared_mutex> lock(server_languages_cache_mutex_);
+    auto it = server_languages_cache_.find(server_id);
+    if (it != server_languages_cache_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool Database::save_server_language(const std::string &server_id, const std::string &language) {
+    {
+      std::lock_guard<std::shared_mutex> cache_lock(server_languages_cache_mutex_);
+      if (language.empty()) {
+        server_languages_cache_.erase(server_id);
+      } else {
+        server_languages_cache_[server_id] = language;
+      }
+    }
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return true;
+
+    std::string esc_sid = escape_string(server_id);
+    std::string esc_lang = escape_string(language);
+
+    std::string query;
+    if (language.empty()) {
+      query = "DELETE FROM server_languages WHERE server_id = '" + esc_sid + "'";
+    } else {
+      query = "INSERT INTO server_languages (server_id, language) "
+              "VALUES ('" + esc_sid + "', '" + esc_lang + "') "
+              "ON DUPLICATE KEY UPDATE language = '" + esc_lang + "'";
+    }
+    mysql_query(mysql_, query.c_str());
+    return true;
+  }
+
   bool Database::is_user_ignored(const std::string &user_id) {
     std::shared_lock<std::shared_mutex> lock(ignored_users_cache_mutex_);
     return ignored_users_cache_.find(user_id) != ignored_users_cache_.end();

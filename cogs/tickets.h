@@ -1121,7 +1121,7 @@ public:
                     }
 
                     if (subcommand == "setup") {
-                        bot.send_message(msg.channel_id, "💬 **Ticket Setup Wizard** [Panel: `" + panel_name + "`]\nLet's configure this ticket panel.\n\n**Step 1/14**: Mention the channel where the panel should be sent (e.g. #tickets), or type its ID/name.");
+                        bot.send_message(msg.channel_id, "ticket setup [" + panel_name + "] [1/14]: specify channel (mention, ID, or name).");
                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, panel_name](std::optional<stoatpp::events::Message> rep1) {
                             if (!rep1) {
                                 bot.send_message(msg.channel_id, "⏱️ Setup timed out. Setup canceled.");

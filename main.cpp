@@ -66,7 +66,9 @@
 #include "cogs/stats.h"
 #include "cogs/tickets.h"
 #include "cogs/timezone.h"
+#include "cogs/language.h"
 #include "cogs/tupper.h"
+#include "i18n.h"
 #include "cogs/users.h"
 #include "cogs/welcome_leave.h"
 #include "cogs/voice.h"
@@ -340,6 +342,7 @@ void start_reload_server() {
 int main(int argc, char *argv[]) {
   load_env();
   bronx::load_emojis();
+  bronx::i18n::init();
 
   bool verbose = false;
   bool staging = false;
@@ -628,6 +631,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::HistoryModule>());
   bot.use(std::make_unique<bronx::cogs::SnipeModule>());
   bot.use(std::make_unique<bronx::cogs::TimezoneModule>());
+  bot.use(std::make_unique<bronx::cogs::LanguageModule>());
   bot.use(std::make_unique<bronx::cogs::SetupModule>());
   bot.use(std::make_unique<bronx::cogs::VoiceModule>());
 

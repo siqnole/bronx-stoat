@@ -229,34 +229,34 @@ public:
                             preset_name = args[1];
                         }
 
-                        bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard** [Preset: `" + preset_name + "`]\nLet's configure your custom AFK message.\n\n**Step 1/6**: Choose the template type. Reply with `text` or `embed`.");
+                        bot.send_message(msg.channel_id, "afk setup [" + preset_name + "] [1/6]: specify type (`text` or `embed`).");
                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, preset_name](std::optional<stoatpp::events::Message> rep1) {
                             if (!rep1) {
-                                bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
+                                bot.send_message(msg.channel_id, "setup timed out.");
                                 return;
                             }
                             
                             std::string type_resp = rep1->content;
                             std::transform(type_resp.begin(), type_resp.end(), type_resp.begin(), ::tolower);
                             if (type_resp == "cancel") {
-                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
+                                bot.send_message(msg.channel_id, "setup cancelled.");
                                 return;
                             }
                             if (type_resp != "text" && type_resp != "embed") {
-                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid type (must be `text` or `embed`). AFK setup canceled.");
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " invalid type (`text` or `embed`). setup cancelled.");
                                 return;
                             }
 
                             if (type_resp == "text") {
-                                bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 2/2**: Type your AFK message content.\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
+                                bot.send_message(msg.channel_id, "afk setup [2/2]: specify message content. tokens: `{user}`, `{reason}`, `{time}`");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, type_resp, preset_name](std::optional<stoatpp::events::Message> rep2) {
                                     if (!rep2) {
-                                        bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup timed out.");
                                         return;
                                     }
                                     std::string content_resp = rep2->content;
                                     if (content_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup cancelled.");
                                         return;
                                     }
                                     
@@ -265,24 +265,24 @@ public:
                                     tmpl.content = content_resp;
 
                                     if (g_db->save_user_afk_preset(msg.author.id, preset_name, tmpl.dump())) {
-                                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **AFK Setup Complete!** Your AFK template for preset `" + preset_name + "` has been saved.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_yes + " saved afk template for preset `" + preset_name + "`.");
                                     } else {
-                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save AFK template.");
+                                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " failed to save template.");
                                     }
                                 });
                                 return;
                             }
 
                             // Embed setup flow
-                            bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 2/6**: Type the embed **title** (or reply `skip`).\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
+                            bot.send_message(msg.channel_id, "afk setup [2/6]: specify embed title (or `skip`). tokens: `{user}`, `{reason}`, `{time}`");
                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(60), [&bot, msg, type_resp, preset_name](std::optional<stoatpp::events::Message> rep2) {
                                 if (!rep2) {
-                                    bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
+                                    bot.send_message(msg.channel_id, "setup timed out.");
                                     return;
                                 }
                                 std::string title_resp = rep2->content;
                                 if (title_resp == "cancel") {
-                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
+                                    bot.send_message(msg.channel_id, "setup cancelled.");
                                     return;
                                 }
 
@@ -290,57 +290,57 @@ public:
                                 tmpl.type = type_resp;
                                 if (title_resp != "skip") tmpl.title = title_resp;
 
-                                bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 3/6**: Type the embed **description** (or reply `skip`).\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
+                                bot.send_message(msg.channel_id, "afk setup [3/6]: specify embed description (or `skip`). tokens: `{user}`, `{reason}`, `{time}`");
                                 bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(90), [&bot, msg, tmpl, preset_name](std::optional<stoatpp::events::Message> rep3) {
                                     if (!rep3) {
-                                        bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup timed out.");
                                         return;
                                     }
                                     std::string desc_resp = rep3->content;
                                     if (desc_resp == "cancel") {
-                                        bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
+                                        bot.send_message(msg.channel_id, "setup cancelled.");
                                         return;
                                     }
                                     auto current_tmpl = tmpl;
                                     if (desc_resp != "skip") current_tmpl.description = desc_resp;
 
-                                    bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 4/6**: Type the embed **color hex** (e.g. `#5865f2` or `random`, or reply `skip`).");
+                                    bot.send_message(msg.channel_id, "afk setup [4/6]: specify color hex (or `random` / `skip`).");
                                     bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(30), [&bot, msg, current_tmpl, preset_name](std::optional<stoatpp::events::Message> rep4) {
                                         if (!rep4) {
-                                            bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
+                                            bot.send_message(msg.channel_id, "setup timed out.");
                                             return;
                                         }
                                         std::string color_resp = rep4->content;
                                         if (color_resp == "cancel") {
-                                            bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
+                                            bot.send_message(msg.channel_id, "setup cancelled.");
                                             return;
                                         }
                                         auto next_tmpl = current_tmpl;
                                         if (color_resp != "skip") next_tmpl.color = color_resp;
 
-                                        bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 5/6**: Type the embed **image URL** (or reply `skip`).");
+                                        bot.send_message(msg.channel_id, "afk setup [5/6]: specify embed image URL (or `skip`).");
                                         bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, next_tmpl, preset_name](std::optional<stoatpp::events::Message> rep5) {
                                             if (!rep5) {
-                                                bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
+                                                bot.send_message(msg.channel_id, "setup timed out.");
                                                 return;
                                             }
                                             std::string img_resp = rep5->content;
                                             if (img_resp == "cancel") {
-                                                bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
+                                                bot.send_message(msg.channel_id, "setup cancelled.");
                                                 return;
                                             }
                                             auto last_tmpl = next_tmpl;
                                             if (img_resp != "skip") last_tmpl.image = img_resp;
 
-                                            bot.send_message(msg.channel_id, "💬 **AFK Customization Setup Wizard**\n**Step 6/6**: Type the **message content/text** to show outside the embed (or reply `skip`).\n*Available tokens: `{user}`, `{reason}`, `{time}`*");
+                                            bot.send_message(msg.channel_id, "afk setup [6/6]: specify message text outside embed (or `skip`).");
                                             bot.await_message(msg.channel_id, msg.author.id, std::chrono::seconds(45), [&bot, msg, last_tmpl, preset_name](std::optional<stoatpp::events::Message> rep6) {
                                                 if (!rep6) {
-                                                    bot.send_message(msg.channel_id, "⏱️ Setup timed out. AFK setup canceled.");
+                                                    bot.send_message(msg.channel_id, "setup timed out.");
                                                     return;
                                                 }
                                                 std::string text_resp = rep6->content;
                                                 if (text_resp == "cancel") {
-                                                    bot.send_message(msg.channel_id, "" + bronx::emj_no + " AFK setup canceled.");
+                                                    bot.send_message(msg.channel_id, "setup cancelled.");
                                                     return;
                                                 }
                                                 auto final_tmpl = last_tmpl;
@@ -351,9 +351,9 @@ public:
                                                 }
 
                                                 if (g_db->save_user_afk_preset(msg.author.id, preset_name, final_tmpl.dump())) {
-                                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " **AFK Setup Complete!** Your custom embed AFK template for preset `" + preset_name + "` has been saved.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_yes + " saved custom embed afk template for preset `" + preset_name + "`.");
                                                 } else {
-                                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to save AFK template.");
+                                                    bot.send_message(msg.channel_id, "" + bronx::emj_warning + " failed to save afk template.");
                                                 }
                                             });
                                         });
