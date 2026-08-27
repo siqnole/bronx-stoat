@@ -72,6 +72,8 @@
 #include "cogs/users.h"
 #include "cogs/welcome_leave.h"
 #include "cogs/voice.h"
+#include "cogs/imageboard.h"
+
 
 // Simple self-contained helper to load environment variables from a .env file
 void load_env(const std::string &filepath = ".env") {
@@ -634,6 +636,8 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::LanguageModule>());
   bot.use(std::make_unique<bronx::cogs::SetupModule>());
   bot.use(std::make_unique<bronx::cogs::VoiceModule>());
+  bot.use(std::make_unique<bronx::cogs::ImageBoardModule>());
+
 
   bot.on_ready([&bot, staging](const stoatpp::events::Ready &e) {
     g_bot_ready = true;
