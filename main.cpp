@@ -344,6 +344,11 @@ void start_reload_server() {
 }
 
 int main(int argc, char *argv[]) {
+  // Force unbuffered stdout/stderr so output appears immediately in
+  // `podman logs` even when running detached without a TTY.
+  std::cout << std::unitbuf;
+  std::cerr << std::unitbuf;
+
   load_env();
   bronx::load_emojis();
   bronx::i18n::init();

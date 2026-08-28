@@ -51,6 +51,21 @@ private:
         return false;
     }
 
+    static std::string safe_json_str(const nlohmann::json& j, const std::string& key) {
+        if (j.contains(key) && !j[key].is_null() && j[key].is_string()) {
+            return j[key].get<std::string>();
+        }
+        return "";
+    }
+
+    static std::string safe_json_id(const nlohmann::json& j) {
+        if (j.contains("id") && !j["id"].is_null()) {
+            if (j["id"].is_number()) return std::to_string(j["id"].get<int64_t>());
+            if (j["id"].is_string()) return j["id"].get<std::string>();
+        }
+        return "";
+    }
+
     static bool is_post_safe(const std::string& board, const std::string& rating) {
         std::string r = rating;
         std::transform(r.begin(), r.end(), r.begin(), ::tolower);
@@ -80,12 +95,14 @@ private:
             if (!tags_query.empty()) {
                 tags_query += " ";
             }
-            if (board == "gelbooru" || board == "danbooru") {
+            if (board == "gelbooru") {
                 tags_query += "rating:general";
+            } else if (board == "danbooru") {
+                tags_query += "rating:g";
             } else if (board == "safebooru") {
                 // Safebooru is always safe
-            } else { // konachan, yandere, e621
-                tags_query += "rating:safe";
+            } else if (board == "e621" || board == "konachan" || board == "yandere") {
+                tags_query += "rating:s";
             }
         }
         
@@ -100,8 +117,8 @@ private:
 
         if (board == "gelbooru") {
             httplib::Client cli("https://gelbooru.com");
-            cli.set_connection_timeout(std::chrono::seconds(5));
-            cli.set_read_timeout(std::chrono::seconds(5));
+            cli.set_connection_timeout(std::chrono::seconds(6));
+            cli.set_read_timeout(std::chrono::seconds(6));
             cli.set_follow_location(true);
             std::string path = "/index.php?page=dapi&s=post&q=index&json=1&limit=100&tags=" + query;
             auto res = cli.Get(path, headers);
@@ -116,21 +133,17 @@ private:
                     }
                     if (posts.is_array()) {
                         for (const auto& item : posts) {
-                            BooruPost p;
-                            p.file_url = item.value("file_url", "");
-                            p.rating = item.value("rating", "");
-                            
-                            std::string id_str = "";
-                            if (item.contains("id")) {
-                                if (item["id"].is_number()) id_str = std::to_string(item["id"].get<int64_t>());
-                                else if (item["id"].is_string()) id_str = item["id"].get<std::string>();
-                            }
-                            p.id = id_str;
-                            p.post_url = "https://gelbooru.com/index.php?page=post&s=view&id=" + id_str;
-                            p.tags = item.value("tags", "");
-                            if (!p.file_url.empty()) {
-                                results.push_back(p);
-                            }
+                            try {
+                                BooruPost p;
+                                p.file_url = safe_json_str(item, "file_url");
+                                p.rating = safe_json_str(item, "rating");
+                                p.id = safe_json_id(item);
+                                p.post_url = "https://gelbooru.com/index.php?page=post&s=view&id=" + p.id;
+                                p.tags = safe_json_str(item, "tags");
+                                if (!p.file_url.empty()) {
+                                    results.push_back(p);
+                                }
+                            } catch (...) {}
                         }
                     }
                 } catch (...) {}
@@ -138,8 +151,8 @@ private:
         }
         else if (board == "danbooru") {
             httplib::Client cli("https://danbooru.donmai.us");
-            cli.set_connection_timeout(std::chrono::seconds(5));
-            cli.set_read_timeout(std::chrono::seconds(5));
+            cli.set_connection_timeout(std::chrono::seconds(6));
+            cli.set_read_timeout(std::chrono::seconds(6));
             cli.set_follow_location(true);
             std::string path = "/posts.json?limit=100&tags=" + query;
             auto res = cli.Get(path, headers);
@@ -148,24 +161,20 @@ private:
                     auto j = nlohmann::json::parse(res->body);
                     if (j.is_array()) {
                         for (const auto& item : j) {
-                            BooruPost p;
-                            p.file_url = item.value("file_url", "");
-                            if (p.file_url.empty()) p.file_url = item.value("large_file_url", "");
-                            if (p.file_url.empty()) p.file_url = item.value("preview_file_url", "");
-                            
-                            p.rating = item.value("rating", "");
-                            
-                            std::string id_str = "";
-                            if (item.contains("id")) {
-                                if (item["id"].is_number()) id_str = std::to_string(item["id"].get<int64_t>());
-                                else if (item["id"].is_string()) id_str = item["id"].get<std::string>();
-                            }
-                            p.id = id_str;
-                            p.post_url = "https://danbooru.donmai.us/posts/" + id_str;
-                            p.tags = item.value("tag_string", "");
-                            if (!p.file_url.empty()) {
-                                results.push_back(p);
-                            }
+                            try {
+                                BooruPost p;
+                                p.file_url = safe_json_str(item, "file_url");
+                                if (p.file_url.empty()) p.file_url = safe_json_str(item, "large_file_url");
+                                if (p.file_url.empty()) p.file_url = safe_json_str(item, "preview_file_url");
+                                
+                                p.rating = safe_json_str(item, "rating");
+                                p.id = safe_json_id(item);
+                                p.post_url = "https://danbooru.donmai.us/posts/" + p.id;
+                                p.tags = safe_json_str(item, "tag_string");
+                                if (!p.file_url.empty()) {
+                                    results.push_back(p);
+                                }
+                            } catch (...) {}
                         }
                     }
                 } catch (...) {}
@@ -173,8 +182,8 @@ private:
         }
         else if (board == "safebooru") {
             httplib::Client cli("https://safebooru.org");
-            cli.set_connection_timeout(std::chrono::seconds(5));
-            cli.set_read_timeout(std::chrono::seconds(5));
+            cli.set_connection_timeout(std::chrono::seconds(6));
+            cli.set_read_timeout(std::chrono::seconds(6));
             cli.set_follow_location(true);
             std::string path = "/index.php?page=dapi&s=post&q=index&json=1&limit=100&tags=" + query;
             auto res = cli.Get(path, headers);
@@ -183,28 +192,24 @@ private:
                     auto j = nlohmann::json::parse(res->body);
                     if (j.is_array()) {
                         for (const auto& item : j) {
-                            BooruPost p;
-                            p.file_url = item.value("file_url", "");
-                            if (p.file_url.empty()) {
-                                std::string directory = item.value("directory", "");
-                                std::string image = item.value("image", "");
-                                if (!directory.empty() && !image.empty()) {
-                                    p.file_url = "https://safebooru.org/images/" + directory + "/" + image;
+                            try {
+                                BooruPost p;
+                                p.file_url = safe_json_str(item, "file_url");
+                                if (p.file_url.empty()) {
+                                    std::string directory = safe_json_str(item, "directory");
+                                    std::string image = safe_json_str(item, "image");
+                                    if (!directory.empty() && !image.empty()) {
+                                        p.file_url = "https://safebooru.org/images/" + directory + "/" + image;
+                                    }
                                 }
-                            }
-                            p.rating = "safe";
-                            
-                            std::string id_str = "";
-                            if (item.contains("id")) {
-                                if (item["id"].is_number()) id_str = std::to_string(item["id"].get<int64_t>());
-                                else if (item["id"].is_string()) id_str = item["id"].get<std::string>();
-                            }
-                            p.id = id_str;
-                            p.post_url = "https://safebooru.org/index.php?page=post&s=view&id=" + id_str;
-                            p.tags = item.value("tags", "");
-                            if (!p.file_url.empty()) {
-                                results.push_back(p);
-                            }
+                                p.rating = "safe";
+                                p.id = safe_json_id(item);
+                                p.post_url = "https://safebooru.org/index.php?page=post&s=view&id=" + p.id;
+                                p.tags = safe_json_str(item, "tags");
+                                if (!p.file_url.empty()) {
+                                    results.push_back(p);
+                                }
+                            } catch (...) {}
                         }
                     }
                 } catch (...) {}
@@ -212,8 +217,8 @@ private:
         }
         else if (board == "konachan") {
             httplib::Client cli("https://konachan.com");
-            cli.set_connection_timeout(std::chrono::seconds(5));
-            cli.set_read_timeout(std::chrono::seconds(5));
+            cli.set_connection_timeout(std::chrono::seconds(6));
+            cli.set_read_timeout(std::chrono::seconds(6));
             cli.set_follow_location(true);
             std::string path = "/post.json?limit=100&tags=" + query;
             auto res = cli.Get(path, headers);
@@ -222,21 +227,17 @@ private:
                     auto j = nlohmann::json::parse(res->body);
                     if (j.is_array()) {
                         for (const auto& item : j) {
-                            BooruPost p;
-                            p.file_url = item.value("file_url", "");
-                            p.rating = item.value("rating", "");
-                            
-                            std::string id_str = "";
-                            if (item.contains("id")) {
-                                if (item["id"].is_number()) id_str = std::to_string(item["id"].get<int64_t>());
-                                else if (item["id"].is_string()) id_str = item["id"].get<std::string>();
-                            }
-                            p.id = id_str;
-                            p.post_url = "https://konachan.com/post/show/" + id_str;
-                            p.tags = item.value("tags", "");
-                            if (!p.file_url.empty()) {
-                                results.push_back(p);
-                            }
+                            try {
+                                BooruPost p;
+                                p.file_url = safe_json_str(item, "file_url");
+                                p.rating = safe_json_str(item, "rating");
+                                p.id = safe_json_id(item);
+                                p.post_url = "https://konachan.com/post/show/" + p.id;
+                                p.tags = safe_json_str(item, "tags");
+                                if (!p.file_url.empty()) {
+                                    results.push_back(p);
+                                }
+                            } catch (...) {}
                         }
                     }
                 } catch (...) {}
@@ -244,8 +245,8 @@ private:
         }
         else if (board == "yandere") {
             httplib::Client cli("https://yande.re");
-            cli.set_connection_timeout(std::chrono::seconds(5));
-            cli.set_read_timeout(std::chrono::seconds(5));
+            cli.set_connection_timeout(std::chrono::seconds(6));
+            cli.set_read_timeout(std::chrono::seconds(6));
             cli.set_follow_location(true);
             std::string path = "/post.json?limit=100&tags=" + query;
             auto res = cli.Get(path, headers);
@@ -254,21 +255,17 @@ private:
                     auto j = nlohmann::json::parse(res->body);
                     if (j.is_array()) {
                         for (const auto& item : j) {
-                            BooruPost p;
-                            p.file_url = item.value("file_url", "");
-                            p.rating = item.value("rating", "");
-                            
-                            std::string id_str = "";
-                            if (item.contains("id")) {
-                                if (item["id"].is_number()) id_str = std::to_string(item["id"].get<int64_t>());
-                                else if (item["id"].is_string()) id_str = item["id"].get<std::string>();
-                            }
-                            p.id = id_str;
-                            p.post_url = "https://yande.re/post/show/" + id_str;
-                            p.tags = item.value("tags", "");
-                            if (!p.file_url.empty()) {
-                                results.push_back(p);
-                            }
+                            try {
+                                BooruPost p;
+                                p.file_url = safe_json_str(item, "file_url");
+                                p.rating = safe_json_str(item, "rating");
+                                p.id = safe_json_id(item);
+                                p.post_url = "https://yande.re/post/show/" + p.id;
+                                p.tags = safe_json_str(item, "tags");
+                                if (!p.file_url.empty()) {
+                                    results.push_back(p);
+                                }
+                            } catch (...) {}
                         }
                     }
                 } catch (...) {}
@@ -276,8 +273,8 @@ private:
         }
         else if (board == "e621") {
             httplib::Client cli("https://e621.net");
-            cli.set_connection_timeout(std::chrono::seconds(5));
-            cli.set_read_timeout(std::chrono::seconds(5));
+            cli.set_connection_timeout(std::chrono::seconds(8));
+            cli.set_read_timeout(std::chrono::seconds(8));
             cli.set_follow_location(true);
             std::string path = "/posts.json?limit=100&tags=" + query;
             auto res = cli.Get(path, headers);
@@ -286,36 +283,39 @@ private:
                     auto j = nlohmann::json::parse(res->body);
                     if (j.is_object() && j.contains("posts") && j["posts"].is_array()) {
                         for (const auto& item : j["posts"]) {
-                            BooruPost p;
-                            if (item.contains("file") && item["file"].is_object()) {
-                                p.file_url = item["file"].value("url", "");
-                            }
-                            p.rating = item.value("rating", "");
-                            
-                            std::string id_str = "";
-                            if (item.contains("id")) {
-                                if (item["id"].is_number()) id_str = std::to_string(item["id"].get<int64_t>());
-                                else if (item["id"].is_string()) id_str = item["id"].get<std::string>();
-                            }
-                            p.id = id_str;
-                            p.post_url = "https://e621.net/posts/" + id_str;
-                            
-                            std::string e621_tags = "";
-                            if (item.contains("tags") && item["tags"].is_object()) {
-                                for (auto& [cat, tag_array] : item["tags"].items()) {
-                                    if (tag_array.is_array()) {
-                                        for (auto& t : tag_array) {
-                                            if (t.is_string()) {
-                                                e621_tags += t.get<std::string>() + " ";
+                            try {
+                                BooruPost p;
+                                if (item.contains("file") && item["file"].is_object()) {
+                                    p.file_url = safe_json_str(item["file"], "url");
+                                }
+                                if (p.file_url.empty() && item.contains("sample") && item["sample"].is_object()) {
+                                    p.file_url = safe_json_str(item["sample"], "url");
+                                }
+                                if (p.file_url.empty() && item.contains("preview") && item["preview"].is_object()) {
+                                    p.file_url = safe_json_str(item["preview"], "url");
+                                }
+                                
+                                p.rating = safe_json_str(item, "rating");
+                                p.id = safe_json_id(item);
+                                p.post_url = "https://e621.net/posts/" + p.id;
+                                
+                                std::string e621_tags = "";
+                                if (item.contains("tags") && item["tags"].is_object()) {
+                                    for (auto& [cat, tag_array] : item["tags"].items()) {
+                                        if (tag_array.is_array()) {
+                                            for (auto& t : tag_array) {
+                                                if (t.is_string() && !t.is_null()) {
+                                                    e621_tags += t.get<std::string>() + " ";
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            p.tags = e621_tags;
-                            if (!p.file_url.empty()) {
-                                results.push_back(p);
-                            }
+                                p.tags = e621_tags;
+                                if (!p.file_url.empty() && !p.id.empty()) {
+                                    results.push_back(p);
+                                }
+                            } catch (...) {}
                         }
                     }
                 } catch (...) {}

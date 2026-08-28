@@ -188,7 +188,7 @@ public:
             }
 
             // Scope filter (roles, users, channels whitelist/blacklist)
-            std::vector<std::string> member_roles = extract_member_roles(msg);
+            std::vector<std::string> member_roles = helpers::extract_member_roles(msg);
             Database::AutoScopeFilter filter = cc.filter;
             if (filter.allow_roles.empty() && !cc.allowed_roles.empty()) {
                 std::stringstream rss(cc.allowed_roles);
@@ -200,7 +200,7 @@ public:
                 }
             }
 
-            if (!is_bot_owner(bot, msg.author.id) && !passes_filter(filter, msg.author.id, msg.channel_id, member_roles)) {
+            if (!is_bot_owner(bot, msg.author.id) && !helpers::passes_filter(filter, msg.author.id, msg.channel_id, member_roles)) {
                 return;
             }
 

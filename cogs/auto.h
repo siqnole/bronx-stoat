@@ -100,46 +100,8 @@ static std::string display_auto_emoji(const std::string& e) {
     return e;
 }
 
-// ── Scope filter ──────────────────────────────────────────────────────────────
-// Returns true if this message should trigger the auto (passes all filter rules).
-// member_roles: the sender's role IDs (from msg.raw["member"]["roles"] if present).
-static bool passes_filter(const Database::AutoScopeFilter& f,
-                          const std::string& user_id,
-                          const std::string& channel_id,
-                          const std::vector<std::string>& member_roles) {
-    auto has_any = [](const std::vector<std::string>& list, const std::string& val) {
-        return std::find(list.begin(), list.end(), val) != list.end();
-    };
-    auto has_any_role = [&](const std::vector<std::string>& roles) {
-        for (const auto& r : member_roles)
-            if (has_any(roles, r)) return true;
-        return false;
-    };
-
-    // Channel allow/ignore
-    if (!f.allow_channels.empty() && !has_any(f.allow_channels, channel_id)) return false;
-    if (!f.ignore_channels.empty() && has_any(f.ignore_channels, channel_id)) return false;
-    // User allow/ignore
-    if (!f.allow_users.empty() && !has_any(f.allow_users, user_id)) return false;
-    if (!f.ignore_users.empty() && has_any(f.ignore_users, user_id)) return false;
-    // Role allow/ignore
-    if (!f.allow_roles.empty() && !has_any_role(f.allow_roles)) return false;
-    if (!f.ignore_roles.empty() && has_any_role(f.ignore_roles)) return false;
-    return true;
-}
-
-// Extract role IDs from msg.raw["member"]["roles"] if present
-static std::vector<std::string> extract_member_roles(const stoatpp::events::Message& msg) {
-    std::vector<std::string> roles;
-    if (msg.raw.contains("member") && msg.raw["member"].is_object()) {
-        const auto& m = msg.raw["member"];
-        if (m.contains("roles") && m["roles"].is_array()) {
-            for (const auto& r : m["roles"])
-                if (r.is_string()) roles.push_back(r.get<std::string>());
-        }
-    }
-    return roles;
-}
+// passes_filter and extract_member_roles are defined in helpers.h (bronx::helpers namespace).
+// Use helpers:: prefix at call sites to avoid ambiguity.
 
 // ── Keyword matching ──────────────────────────────────────────────────────────
 static bool keyword_matches(const std::string& content_lower,
@@ -1191,7 +1153,7 @@ public:
             std::transform(content_lower.begin(), content_lower.end(), content_lower.begin(), ::tolower);
 
             // Extract member roles from raw payload (Revolt includes them in message events)
-            std::vector<std::string> member_roles = extract_member_roles(msg);
+            std::vector<std::string> member_roles = helpers::extract_member_roles(msg);
 
             // ── Autoresponders ────────────────────────────────────────────
             auto responders = g_db->get_autoresponders_for_server(msg.server_id);
@@ -1199,7 +1161,7 @@ public:
                 std::string kw = ar.keyword;
                 std::transform(kw.begin(), kw.end(), kw.begin(), ::tolower);
                 if (!keyword_matches(content_lower, kw, ar.match_type)) continue;
-                if (!passes_filter(ar.filter, msg.author.id, msg.channel_id, member_roles)) continue;
+                if (!helpers::passes_filter(ar.filter, msg.author.id, msg.channel_id, member_roles)) continue;
                 // Fire in a thread to avoid blocking the event loop
                 std::thread([&bot, ar, msg]() {
                     send_auto_response(bot, ar, msg);
@@ -1213,7 +1175,7 @@ public:
                 std::string kw = are.keyword;
                 std::transform(kw.begin(), kw.end(), kw.begin(), ::tolower);
                 if (!keyword_matches(content_lower, kw, are.match_type)) continue;
-                if (!passes_filter(are.filter, msg.author.id, msg.channel_id, member_roles)) continue;
+                if (!helpers::passes_filter(are.filter, msg.author.id, msg.channel_id, member_roles)) continue;
                 auto emojis = parse_emoji_list(are.emojis);
                 std::thread([&bot, emojis, msg]() {
                     for (const auto& e : emojis) {

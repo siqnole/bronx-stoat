@@ -103,7 +103,6 @@ bool Database::init_cache() {
       while ((row = mysql_fetch_row(rr_rule_res))) {
         std::string msg_id = row[0];
         RRRule rule;
-        rule.message_id = msg_id;
         rule.emoji_id = row[1];
         rule.role_id = row[2];
         rule.rule_type = row[3] ? row[3] : "add";
@@ -133,15 +132,15 @@ bool Database::init_cache() {
           if (row[1]) wl.welcome_channel_id = row[1];
           wl.welcome_type = row[2] ? row[2] : "text";
           if (row[3]) wl.welcome_content = row[3];
-          if (row[4]) wl.welcome_embed = row[4];
+          if (row[4]) wl.welcome_embed_json = row[4];
           if (row[5]) wl.leave_channel_id = row[5];
           wl.leave_type = row[6] ? row[6] : "text";
           if (row[7]) wl.leave_content = row[7];
-          if (row[8]) wl.leave_embed = row[8];
+          if (row[8]) wl.leave_embed_json = row[8];
           if (row[9]) wl.autorole_role_id = row[9];
           wl.welcome_dm_type = row[10] ? row[10] : "none";
           if (row[11]) wl.welcome_dm_content = row[11];
-          if (row[12]) wl.welcome_dm_embed = row[12];
+          if (row[12]) wl.welcome_dm_embed_json = row[12];
           wl_cache_[wl.server_id] = wl;
         }
         mysql_free_result(wl_res);
@@ -199,8 +198,8 @@ bool Database::init_cache() {
         while ((row = mysql_fetch_row(wh_res))) {
           std::string c_id = row[0];
           WebhookCacheEntry entry;
-          entry.webhook_id = row[1];
-          entry.webhook_token = row[2];
+          entry.id = row[1];
+          entry.token = row[2];
           webhook_cache_[c_id] = entry;
         }
         mysql_free_result(wh_res);
@@ -235,14 +234,14 @@ bool Database::init_cache() {
         MYSQL_ROW row;
         std::lock_guard<std::shared_mutex> r_lock(restrictions_cache_mutex_);
         while ((row = mysql_fetch_row(r_res))) {
+          std::string e_server_id = row[0];
           RestrictionEntry e;
-          e.server_id = row[0];
           e.target_type = row[1];
           e.target_name = row[2];
           e.restriction_type = row[3];
           e.entity_type = row[4];
           e.entity_id = row[5];
-          restrictions_cache_[e.server_id].push_back(e);
+          restrictions_cache_[e_server_id].push_back(e);
         }
         mysql_free_result(r_res);
       }
@@ -434,7 +433,7 @@ bool Database::init_cache() {
           if (row[16]) tc.ticket_close_content = row[16];
           if (row[17]) tc.member_role_id = row[17];
           tc.ticket_counter = row[18] ? std::stoi(row[18]) : 0;
-          ticket_config_cache_[tc.server_id][tc.name] = tc;
+          ticket_config_cache_[tc.server_id + ":" + tc.name] = tc;
         }
         mysql_free_result(tc_res);
       }

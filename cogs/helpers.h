@@ -534,6 +534,11 @@ inline std::string get_raw_args(const stoatpp::events::Message& msg, const std::
         if (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
             break;
         }
+        idx++;
+    }
+    return msg.content.substr(idx);
+}
+
 inline std::vector<std::string> extract_member_roles(const stoatpp::events::Message& msg) {
     std::vector<std::string> roles;
     if (msg.raw.contains("member") && msg.raw["member"].is_object()) {
