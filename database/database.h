@@ -1207,6 +1207,9 @@ private:
       xp_blacklist_cache_;
   std::shared_mutex xp_blacklist_cache_mutex_;
 
+  bool init_tables();
+  bool init_cache();
+
   std::string escape_string(const std::string &input) {
     if (!mysql_)
       return "";
