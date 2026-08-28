@@ -848,6 +848,24 @@ namespace bronx {
         ")";
     mysql_query(mysql_, sql_are.c_str());
 
+    // Custom commands table
+    std::string sql_ccmd =
+        "CREATE TABLE IF NOT EXISTS custom_commands ("
+        "  id INT AUTO_INCREMENT PRIMARY KEY,"
+        "  server_id VARCHAR(30) NOT NULL,"
+        "  name VARCHAR(50) NOT NULL,"
+        "  description TEXT DEFAULT NULL,"
+        "  message_type VARCHAR(10) NOT NULL DEFAULT 'text',"
+        "  content TEXT DEFAULT NULL,"
+        "  embed_json JSON DEFAULT NULL,"
+        "  allowed_roles TEXT DEFAULT NULL,"
+        "  owner_only TINYINT(1) NOT NULL DEFAULT 0,"
+        "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+        "  UNIQUE KEY uq_server_cc (server_id, name),"
+        "  INDEX idx_cc_server (server_id)"
+        ")";
+    mysql_query(mysql_, sql_ccmd.c_str());
+
     // Create Table ticket_configs
     std::string create_ticket_configs =
         "CREATE TABLE IF NOT EXISTS ticket_configs ("
@@ -2451,6 +2469,8 @@ namespace bronx {
         mysql_free_result(res);
       }
     }
+
+    reload_custom_commands("");
 
     std::cout << "[bronx db] database successfully initialized.\n";
     return true;

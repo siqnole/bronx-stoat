@@ -73,6 +73,7 @@
 #include "cogs/welcome_leave.h"
 #include "cogs/voice.h"
 #include "cogs/imageboard.h"
+#include "cogs/customcmds.h"
 
 
 // Simple self-contained helper to load environment variables from a .env file
@@ -323,8 +324,9 @@ void start_reload_server() {
               if (module == "autoreact" || module == "all") {
                 bronx::g_db->reload_autoreacts(server_id);
               }
-              if (module == "commands" || module == "all") {
+              if (module == "commands" || module == "customcmds" || module == "all") {
                 bronx::g_db->reload_disabled_items(server_id);
+                bronx::g_db->reload_custom_commands(server_id);
               }
             }
           }
@@ -637,6 +639,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::SetupModule>());
   bot.use(std::make_unique<bronx::cogs::VoiceModule>());
   bot.use(std::make_unique<bronx::cogs::ImageBoardModule>());
+  bot.use(std::make_unique<bronx::cogs::CustomCmdsModule>());
 
 
   bot.on_ready([&bot, staging](const stoatpp::events::Ready &e) {

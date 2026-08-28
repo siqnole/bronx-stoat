@@ -43,6 +43,7 @@ public:
   using CountingConfig = ::bronx::CountingConfig;
   using CountingHighlights = ::bronx::CountingHighlights;
   using CountingStats = ::bronx::CountingStats;
+  using CustomCommand = ::bronx::CustomCommand;
   using CustomBaitRow = ::bronx::CustomBaitRow;
   using CustomFishRow = ::bronx::CustomFishRow;
   using CustomRodRow = ::bronx::CustomRodRow;
@@ -686,6 +687,26 @@ public:
   bool update_autoreact_filter(int id, const std::string &server_id,
                                const AutoScopeFilter &f);
 
+  std::vector<CustomCommand>
+  get_custom_commands_for_server(const std::string &server_id);
+
+  std::optional<CustomCommand>
+  get_custom_command_by_id(int id, const std::string &server_id);
+
+  std::optional<CustomCommand>
+  get_custom_command_by_name(const std::string &server_id,
+                             const std::string &name);
+
+  bool add_custom_command(CustomCommand &c);
+
+  bool remove_custom_command(int id, const std::string &server_id);
+
+  bool update_custom_command(const CustomCommand &c);
+
+  bool rename_custom_command(int id, const std::string &server_id, const std::string &new_name);
+
+  void reload_custom_commands(const std::string &server_id);
+
   std::optional<TicketConfig>
   get_ticket_config(const std::string &server_id,
                     const std::string &name = "default");
@@ -1126,6 +1147,11 @@ private:
   std::unordered_map<int, AutoreactConfig> arct_cache_;
   std::unordered_map<std::string, std::vector<int>> arct_server_index_;
   std::shared_mutex arct_cache_mutex_;
+
+  // id -> CustomCommand
+  std::unordered_map<int, CustomCommand> ccmd_cache_;
+  std::unordered_map<std::string, std::vector<int>> ccmd_server_index_;
+  std::shared_mutex ccmd_cache_mutex_;
 
   // Server ID -> Set of "Type:ID"
   std::unordered_map<std::string, std::unordered_set<std::string>>

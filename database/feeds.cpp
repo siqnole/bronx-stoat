@@ -780,6 +780,187 @@ namespace bronx {
     return update_autoreact(*opt);
   }
 
+  std::vector<CustomCommand>
+  Database::get_custom_commands_for_server(const std::string &server_id) {
+    std::shared_lock<std::shared_mutex> lock(ccmd_cache_mutex_);
+    std::vector<CustomCommand> out;
+    auto it = ccmd_server_index_.find(server_id);
+    if (it != ccmd_server_index_.end()) {
+      for (int id : it->second) {
+        auto it2 = ccmd_cache_.find(id);
+        if (it2 != ccmd_cache_.end())
+          out.push_back(it2->second);
+      }
+    }
+    return out;
+  }
+
+  std::optional<CustomCommand>
+  Database::get_custom_command_by_id(int id, const std::string &server_id) {
+    std::shared_lock<std::shared_mutex> lock(ccmd_cache_mutex_);
+    auto it = ccmd_cache_.find(id);
+    if (it != ccmd_cache_.end() && it->second.server_id == server_id)
+      return it->second;
+    return std::nullopt;
+  }
+
+  std::optional<CustomCommand>
+  Database::get_custom_command_by_name(const std::string &server_id,
+                             const std::string &name) {
+    std::shared_lock<std::shared_mutex> lock(ccmd_cache_mutex_);
+    std::string lower_name = name;
+    std::transform(lower_name.begin(), lower_name.end(), lower_name.begin(), ::tolower);
+    auto it = ccmd_server_index_.find(server_id);
+    if (it != ccmd_server_index_.end()) {
+      for (int id : it->second) {
+        auto it2 = ccmd_cache_.find(id);
+        if (it2 != ccmd_cache_.end()) {
+          std::string cn = it2->second.name;
+          std::transform(cn.begin(), cn.end(), cn.begin(), ::tolower);
+          if (cn == lower_name)
+            return it2->second;
+        }
+      }
+    }
+    return std::nullopt;
+  }
+
+  bool Database::add_custom_command(CustomCommand &c) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_server = escape_string(c.server_id);
+    std::string esc_name = escape_string(c.name);
+    std::string esc_desc = escape_string(c.description);
+    std::string esc_msg_type = escape_string(c.message_type);
+    std::string esc_content = escape_string(c.content);
+    std::string esc_embed = c.embed_json.empty() ? "NULL" : ("'" + escape_string(c.embed_json) + "'");
+    std::string esc_roles = escape_string(c.allowed_roles);
+    int owner_only_val = c.owner_only ? 1 : 0;
+
+    std::string sql =
+        "INSERT INTO custom_commands "
+        "(server_id, name, description, message_type, content, embed_json, allowed_roles, owner_only) VALUES ("
+        "'" + esc_server + "', '" + esc_name + "', '" + esc_desc + "', '" + esc_msg_type + "', "
+        "'" + esc_content + "', " + esc_embed + ", '" + esc_roles + "', " + std::to_string(owner_only_val) + ")";
+
+    if (mysql_query(mysql_, sql.c_str())) {
+      std::cerr << "[bronx db] add_custom_command failed: " << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    c.id = static_cast<int>(mysql_insert_id(mysql_));
+
+    std::lock_guard<std::shared_mutex> cache_lock(ccmd_cache_mutex_);
+    ccmd_cache_[c.id] = c;
+    ccmd_server_index_[c.server_id].push_back(c.id);
+    return true;
+  }
+
+  bool Database::remove_custom_command(int id, const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+    std::string sql = "DELETE FROM custom_commands WHERE id=" + std::to_string(id) +
+                      " AND server_id='" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, sql.c_str()) || mysql_affected_rows(mysql_) == 0)
+      return false;
+
+    std::lock_guard<std::shared_mutex> cache_lock(ccmd_cache_mutex_);
+    auto it = ccmd_cache_.find(id);
+    if (it != ccmd_cache_.end()) {
+      auto &sv = ccmd_server_index_[it->second.server_id];
+      sv.erase(std::remove(sv.begin(), sv.end(), id), sv.end());
+      ccmd_cache_.erase(it);
+    }
+    return true;
+  }
+
+  bool Database::update_custom_command(const CustomCommand &c) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return false;
+
+    std::string esc_name = escape_string(c.name);
+    std::string esc_desc = escape_string(c.description);
+    std::string esc_msg_type = escape_string(c.message_type);
+    std::string esc_content = escape_string(c.content);
+    std::string esc_embed = c.embed_json.empty() ? "NULL" : ("'" + escape_string(c.embed_json) + "'");
+    std::string esc_roles = escape_string(c.allowed_roles);
+    int owner_only_val = c.owner_only ? 1 : 0;
+
+    std::string sql =
+        "UPDATE custom_commands SET "
+        "name='" + esc_name + "', "
+        "description='" + esc_desc + "', "
+        "message_type='" + esc_msg_type + "', "
+        "content='" + esc_content + "', "
+        "embed_json=" + esc_embed + ", "
+        "allowed_roles='" + esc_roles + "', "
+        "owner_only=" + std::to_string(owner_only_val) + " "
+        "WHERE id=" + std::to_string(c.id) + " AND server_id='" + escape_string(c.server_id) + "'";
+
+    if (mysql_query(mysql_, sql.c_str()))
+      return false;
+
+    std::lock_guard<std::shared_mutex> cache_lock(ccmd_cache_mutex_);
+    ccmd_cache_[c.id] = c;
+    return true;
+  }
+
+  bool Database::rename_custom_command(int id, const std::string &server_id, const std::string &new_name) {
+    auto opt = get_custom_command_by_id(id, server_id);
+    if (!opt) return false;
+    opt->name = new_name;
+    return update_custom_command(*opt);
+  }
+
+  void Database::reload_custom_commands(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_)
+      return;
+
+    std::string sql = "SELECT id, server_id, name, description, message_type, content, embed_json, allowed_roles, owner_only FROM custom_commands";
+    if (!server_id.empty()) {
+      sql += " WHERE server_id = '" + escape_string(server_id) + "'";
+    }
+
+    if (mysql_query(mysql_, sql.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        std::lock_guard<std::shared_mutex> cache_lock(ccmd_cache_mutex_);
+        if (server_id.empty()) {
+          ccmd_cache_.clear();
+          ccmd_server_index_.clear();
+        } else {
+          auto &index = ccmd_server_index_[server_id];
+          for (int id : index) {
+            ccmd_cache_.erase(id);
+          }
+          index.clear();
+        }
+
+        MYSQL_ROW row;
+        while ((row = mysql_fetch_row(res))) {
+          CustomCommand c;
+          c.id = std::stoi(row[0] ? row[0] : "0");
+          c.server_id = row[1] ? row[1] : "";
+          c.name = row[2] ? row[2] : "";
+          c.description = row[3] ? row[3] : "";
+          c.message_type = row[4] ? row[4] : "text";
+          c.content = row[5] ? row[5] : "";
+          c.embed_json = row[6] ? row[6] : "";
+          c.allowed_roles = row[7] ? row[7] : "";
+          c.owner_only = (row[8] && std::string(row[8]) == "1");
+
+          ccmd_cache_[c.id] = c;
+          ccmd_server_index_[c.server_id].push_back(c.id);
+        }
+        mysql_free_result(res);
+      }
+    }
+  }
+
   std::vector<SocialSubscription> Database::get_all_social_subs() {
     std::shared_lock<std::shared_mutex> lock(social_sub_cache_mutex_);
     std::vector<SocialSubscription> out;

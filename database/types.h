@@ -137,6 +137,18 @@ struct AutoresponderConfig {
     AutoScopeFilter filter;
 };
 
+struct CustomCommand {
+    int id = 0;
+    std::string server_id;
+    std::string name;
+    std::string description;
+    std::string message_type = "text"; // "text" or "embed"
+    std::string content;
+    std::string embed_json;
+    std::string allowed_roles; // comma-separated role IDs (empty = everyone)
+    bool owner_only = false;
+};
+
 struct CaughtFish {
     int id = 0;
     std::string user_id;

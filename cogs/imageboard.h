@@ -12,7 +12,6 @@
 #include <thread>
 #include <httplib.h>
 #include <nlohmann/json.hpp>
-#include "emojis.h"
 
 namespace bronx::cogs {
 
