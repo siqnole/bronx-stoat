@@ -534,10 +534,43 @@ inline std::string get_raw_args(const stoatpp::events::Message& msg, const std::
         if (c != ' ' && c != '\t' && c != '\r' && c != '\n') {
             break;
         }
-        idx++;
+inline std::vector<std::string> extract_member_roles(const stoatpp::events::Message& msg) {
+    std::vector<std::string> roles;
+    if (msg.raw.contains("member") && msg.raw["member"].is_object()) {
+        const auto& m = msg.raw["member"];
+        if (m.contains("roles") && m["roles"].is_array()) {
+            for (const auto& r : m["roles"])
+                if (r.is_string()) roles.push_back(r.get<std::string>());
+        }
     }
-    return msg.content.substr(idx);
+    return roles;
 }
+
+inline bool passes_filter(const Database::AutoScopeFilter& f,
+                          const std::string& user_id,
+                          const std::string& channel_id,
+                          const std::vector<std::string>& member_roles) {
+    auto has_any = [](const std::vector<std::string>& list, const std::string& val) {
+        return std::find(list.begin(), list.end(), val) != list.end();
+    };
+    auto has_any_role = [&](const std::vector<std::string>& roles) {
+        for (const auto& r : member_roles)
+            if (has_any(roles, r)) return true;
+        return false;
+    };
+
+    // Channel allow/ignore
+    if (!f.allow_channels.empty() && !has_any(f.allow_channels, channel_id)) return false;
+    if (!f.ignore_channels.empty() && has_any(f.ignore_channels, channel_id)) return false;
+    // User allow/ignore
+    if (!f.allow_users.empty() && !has_any(f.allow_users, user_id)) return false;
+    if (!f.ignore_users.empty() && has_any(f.ignore_users, user_id)) return false;
+    // Role allow/ignore
+    if (!f.allow_roles.empty() && !has_any_role(f.allow_roles)) return false;
+    if (!f.ignore_roles.empty() && has_any_role(f.ignore_roles)) return false;
+    return true;
+}
+
 } // namespace bronx::helpers
 
 namespace bronx::cogs {
@@ -545,4 +578,6 @@ namespace bronx::cogs {
     using helpers::parse_duration_from_args;
     using helpers::format_duration;
     using helpers::get_raw_args;
+    using helpers::extract_member_roles;
+    using helpers::passes_filter;
 }

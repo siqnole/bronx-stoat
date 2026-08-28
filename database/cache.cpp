@@ -600,7 +600,7 @@ bool Database::init_cache() {
     if (mysql_query(mysql_,
                     "SELECT id,server_id,name,keyword,match_type,message_type,"
                     "content,embed_json,allow_roles,allow_users,allow_channels,"
-                    "ignore_roles,ignore_users,ignore_channels "
+                    "ignore_roles,ignore_users,ignore_channels,actions "
                     "FROM autoresponders") == 0) {
       MYSQL_RES *res = mysql_store_result(mysql_);
       if (res) {
@@ -622,6 +622,7 @@ bool Database::init_cache() {
           c.filter.ignore_roles = load_json_arr(row[11]);
           c.filter.ignore_users = load_json_arr(row[12]);
           c.filter.ignore_channels = load_json_arr(row[13]);
+          c.actions = row[14] ? row[14] : "";
           arsp_cache_[c.id] = c;
           arsp_server_index_[c.server_id].push_back(c.id);
         }

@@ -63,8 +63,8 @@ static std::string apply_cc_tokens(std::string text, stoatpp::cluster& bot,
     // Channel tokens
     std::string channel_name = msg.channel_id;
     auto chan = bot.get_channel(msg.channel_id);
-    if (chan) {
-        channel_name = chan->name;
+    if (chan && chan->name) {
+        channel_name = *chan->name;
     }
     replace_all(text, "{channel.mention}", "<#" + msg.channel_id + ">");
     replace_all(text, "{channel.id}", msg.channel_id);
@@ -187,28 +187,21 @@ public:
                 return;
             }
 
-            // Check allowed_roles restriction
-            if (!cc.allowed_roles.empty()) {
-                std::vector<std::string> member_roles = extract_member_roles(msg);
-                std::vector<std::string> allowed_list;
+            // Scope filter (roles, users, channels whitelist/blacklist)
+            std::vector<std::string> member_roles = extract_member_roles(msg);
+            Database::AutoScopeFilter filter = cc.filter;
+            if (filter.allow_roles.empty() && !cc.allowed_roles.empty()) {
                 std::stringstream rss(cc.allowed_roles);
                 std::string r_item;
                 while (std::getline(rss, r_item, ',')) {
                     r_item.erase(0, r_item.find_first_not_of(" \t\r\n"));
                     r_item.erase(r_item.find_last_not_of(" \t\r\n") + 1);
-                    if (!r_item.empty()) allowed_list.push_back(r_item);
+                    if (!r_item.empty()) filter.allow_roles.push_back(r_item);
                 }
+            }
 
-                bool has_role = false;
-                for (const auto& mr : member_roles) {
-                    if (std::find(allowed_list.begin(), allowed_list.end(), mr) != allowed_list.end()) {
-                        has_role = true;
-                        break;
-                    }
-                }
-                if (!has_role && !is_bot_owner(bot, msg.author.id)) {
-                    return;
-                }
+            if (!is_bot_owner(bot, msg.author.id) && !passes_filter(filter, msg.author.id, msg.channel_id, member_roles)) {
+                return;
             }
 
             // Prepare & send payload
@@ -259,6 +252,10 @@ public:
             }
 
             bot.send_message(msg.channel_id, payload);
+
+            if (!cc.actions.empty()) {
+                execute_trigger_actions(bot, cc.actions, msg, cmd_args);
+            }
         });
 
         // ────────────────────────────────────────────────────────────────────
@@ -470,9 +467,11 @@ public:
                             if (!opt->description.empty()) desc += "**Description:** " + opt->description + "\n";
                             if (!opt->content.empty()) desc += "**Content:**\n```\n" + opt->content.substr(0, 200) + "\n```\n";
                             if (!opt->allowed_roles.empty()) desc += "**Allowed Roles:** `" + opt->allowed_roles + "`\n";
+                            if (!opt->actions.empty()) desc += "**Actions:** `" + opt->actions + "`\n";
                             if (opt->owner_only) desc += "**Restriction:** Server Owner Only\n";
 
                             desc += "\n**Variables:** `{user}`, `{user.mention}`, `{server}`, `{channel}`, `{args}`, `{args[0]}`, `{random: a | b}`, `{ping}`, `{uptime}`";
+                            desc += "\n**Actions:** `timeout:10m`, `addrole:ROLE_ID`, `removerole:ROLE_ID`, `kick`, `ban`, `delete`";
 
                             embed["description"] = desc;
                             payload.embeds.push_back(embed);
@@ -516,6 +515,18 @@ public:
                             auto pairs = parse_kv_pairs(pairs_text);
                             if (pairs.empty()) { bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No valid key:value pairs found."); return; }
 
+                            auto split_list = [](const std::string& str) {
+                                std::vector<std::string> vec;
+                                std::stringstream ss(str);
+                                std::string item;
+                                while (std::getline(ss, item, ',')) {
+                                    item.erase(0, item.find_first_not_of(" \t\r\n"));
+                                    item.erase(item.find_last_not_of(" \t\r\n") + 1);
+                                    if (!item.empty()) vec.push_back(item);
+                                }
+                                return vec;
+                            };
+
                             Database::CustomCommand updated = *opt;
                             nlohmann::json emb = nlohmann::json::object();
                             if (!updated.embed_json.empty()) { try { emb = nlohmann::json::parse(updated.embed_json); } catch (...) {} }
@@ -527,6 +538,13 @@ public:
                                 else if (k == "type") { updated.message_type = v; notes.push_back("type→`" + v + "`"); }
                                 else if (k == "content") { updated.content = v; notes.push_back("content updated"); }
                                 else if (k == "roles") { updated.allowed_roles = v; notes.push_back("roles updated"); }
+                                else if (k == "action" || k == "actions") { updated.actions = v; notes.push_back("actions→`" + v + "`"); }
+                                else if (k == "allowroles" || k == "allow_roles") { updated.filter.allow_roles = split_list(v); notes.push_back("allow_roles updated"); }
+                                else if (k == "ignoreroles" || k == "ignore_roles") { updated.filter.ignore_roles = split_list(v); notes.push_back("ignore_roles updated"); }
+                                else if (k == "allowusers" || k == "allow_users") { updated.filter.allow_users = split_list(v); notes.push_back("allow_users updated"); }
+                                else if (k == "ignoreusers" || k == "ignore_users") { updated.filter.ignore_users = split_list(v); notes.push_back("ignore_users updated"); }
+                                else if (k == "allowchannels" || k == "allow_channels") { updated.filter.allow_channels = split_list(v); notes.push_back("allow_channels updated"); }
+                                else if (k == "ignorechannels" || k == "ignore_channels") { updated.filter.ignore_channels = split_list(v); notes.push_back("ignore_channels updated"); }
                                 else if (k == "title" || k == "color" || k == "image") {
                                     if (v == "none" || v == "clear") emb.erase(k); else emb[k] = v;
                                     notes.push_back(k + " updated");

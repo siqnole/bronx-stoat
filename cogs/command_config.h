@@ -119,6 +119,86 @@ inline bool is_user_trusted_or_owner(stoatpp::cluster& bot, const std::string& s
     return false;
 }
 
+inline void execute_trigger_actions(stoatpp::cluster& bot,
+                                    const std::string& actions_str,
+                                    const stoatpp::events::Message& msg,
+                                    const std::vector<std::string>& cmd_args = {}) {
+    if (actions_str.empty() || msg.server_id.empty()) return;
+
+    // Determine target user ID
+    std::string target_user_id = msg.author.id;
+
+    if (!cmd_args.empty()) {
+        std::string candidate = cmd_args[0];
+        if (candidate.rfind("<@", 0) == 0 && candidate.back() == '>') {
+            target_user_id = candidate.substr(2, candidate.length() - 3);
+            if (target_user_id.rfind("!", 0) == 0) target_user_id = target_user_id.substr(1);
+        } else if (candidate.length() >= 20 && std::all_of(candidate.begin(), candidate.end(), ::isalnum)) {
+            target_user_id = candidate;
+        }
+    } else if (!msg.mentions.empty()) {
+        target_user_id = msg.mentions[0];
+    }
+
+    std::vector<std::string> actions;
+    std::stringstream ss(actions_str);
+    std::string act;
+    while (std::getline(ss, act, ',')) {
+        act.erase(0, act.find_first_not_of(" \t\r\n"));
+        act.erase(act.find_last_not_of(" \t\r\n") + 1);
+        if (!act.empty()) actions.push_back(act);
+    }
+    if (actions.empty()) return;
+
+    bot.fetch_member(msg.server_id, msg.author.id,
+        [&bot, msg, target_user_id, actions](stoatpp::models::Member invoker, bool ok) {
+            bool is_admin = ok && is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, invoker);
+
+            for (const auto& action : actions) {
+                std::string lower_act = action;
+                std::transform(lower_act.begin(), lower_act.end(), lower_act.begin(), ::tolower);
+
+                if (lower_act == "delete" || lower_act == "delete_trigger" || lower_act == "deleteresp") {
+                    bot.delete_message(msg.channel_id, msg.id);
+                }
+                else if (lower_act.rfind("timeout:", 0) == 0 || lower_act.rfind("mute:", 0) == 0) {
+                    if (!is_admin) continue;
+                    std::size_t colon = action.find(':');
+                    std::string dur_str = action.substr(colon + 1);
+                    uint64_t secs = helpers::parse_duration(dur_str);
+                    if (secs > 0) {
+                        std::string iso = "PT" + std::to_string(secs) + "S";
+                        bot.timeout_member(msg.server_id, target_user_id, iso);
+                    }
+                }
+                else if (lower_act.rfind("addrole:", 0) == 0 || lower_act.rfind("add_role:", 0) == 0) {
+                    if (!is_admin) continue;
+                    std::size_t colon = action.find(':');
+                    std::string role_id = action.substr(colon + 1);
+                    if (!role_id.empty()) {
+                        bot.add_role_to_member(msg.server_id, target_user_id, role_id);
+                    }
+                }
+                else if (lower_act.rfind("removerole:", 0) == 0 || lower_act.rfind("remove_role:", 0) == 0) {
+                    if (!is_admin) continue;
+                    std::size_t colon = action.find(':');
+                    std::string role_id = action.substr(colon + 1);
+                    if (!role_id.empty()) {
+                        bot.remove_role_from_member(msg.server_id, target_user_id, role_id);
+                    }
+                }
+                else if (lower_act == "kick") {
+                    if (!is_admin) continue;
+                    bot.kick_member(msg.server_id, target_user_id);
+                }
+                else if (lower_act == "ban") {
+                    if (!is_admin) continue;
+                    bot.ban_user(msg.server_id, target_user_id, "Custom command / autoresponder trigger action");
+                }
+            }
+        });
+}
+
 // Returns true if the user has been explicitly allowed to run a command via
 // `.command allow <cmd> <role/permission>`, regardless of trusted/ManageServer status.
 inline bool is_user_command_allowed(stoatpp::cluster& bot, const std::string& server_id,

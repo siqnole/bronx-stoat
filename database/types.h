@@ -135,6 +135,7 @@ struct AutoresponderConfig {
     std::string content;
     std::string embed_json;
     AutoScopeFilter filter;
+    std::string actions; // comma-sep action strings: "timeout:10m,addrole:123,kick,ban,delete"
 };
 
 struct CustomCommand {
@@ -145,8 +146,10 @@ struct CustomCommand {
     std::string message_type = "text"; // "text" or "embed"
     std::string content;
     std::string embed_json;
-    std::string allowed_roles; // comma-separated role IDs (empty = everyone)
+    std::string allowed_roles; // legacy comma-separated role IDs
     bool owner_only = false;
+    std::string actions; // comma-sep action strings: "timeout:10m,addrole:123,kick,ban,delete"
+    AutoScopeFilter filter; // allow/ignore roles, users, channels
 };
 
 struct CaughtFish {

@@ -489,7 +489,7 @@ namespace bronx {
         "INSERT INTO autoresponders "
         "(server_id,name,keyword,match_type,message_type,content,embed_json,"
         "allow_roles,allow_users,allow_channels,ignore_roles,ignore_users,"
-        "ignore_channels) VALUES ("
+        "ignore_channels,actions) VALUES ("
         "'" +
         escape_string(c.server_id) +
         "',"
@@ -513,7 +513,8 @@ namespace bronx {
         null_or(c.filter.allow_users) + "," + null_or(c.filter.allow_channels) +
         "," + null_or(c.filter.ignore_roles) + "," +
         null_or(c.filter.ignore_users) + "," +
-        null_or(c.filter.ignore_channels) + ")";
+        null_or(c.filter.ignore_channels) + ",'" +
+        escape_string(c.actions) + "')";
     if (mysql_query(mysql_, sql.c_str())) {
       std::cerr << "[bronx db] add_autoresponder failed: "
                 << mysql_error(mysql_) << "\n";
@@ -593,6 +594,10 @@ namespace bronx {
         ","
         "ignore_channels=" +
         null_or(c.filter.ignore_channels) +
+        ","
+        "actions='" +
+        escape_string(c.actions) + "' "
+        "WHERE id=" + std::to_string(c.id) + " AND server_id='" + escape_string(c.server_id) + "'"; +
         " "
         "WHERE id=" +
         std::to_string(c.id) + " AND server_id='" + escape_string(c.server_id) +
@@ -830,6 +835,12 @@ namespace bronx {
     if (!mysql_)
       return false;
 
+    auto null_or = [](const std::vector<std::string> &v) -> std::string {
+      if (v.empty()) return "NULL";
+      nlohmann::json j = v;
+      return "'" + j.dump() + "'";
+    };
+
     std::string esc_server = escape_string(c.server_id);
     std::string esc_name = escape_string(c.name);
     std::string esc_desc = escape_string(c.description);
@@ -837,13 +848,17 @@ namespace bronx {
     std::string esc_content = escape_string(c.content);
     std::string esc_embed = c.embed_json.empty() ? "NULL" : ("'" + escape_string(c.embed_json) + "'");
     std::string esc_roles = escape_string(c.allowed_roles);
+    std::string esc_actions = escape_string(c.actions);
     int owner_only_val = c.owner_only ? 1 : 0;
 
     std::string sql =
         "INSERT INTO custom_commands "
-        "(server_id, name, description, message_type, content, embed_json, allowed_roles, owner_only) VALUES ("
+        "(server_id, name, description, message_type, content, embed_json, allowed_roles, owner_only, actions, "
+        "allow_roles, allow_users, allow_channels, ignore_roles, ignore_users, ignore_channels) VALUES ("
         "'" + esc_server + "', '" + esc_name + "', '" + esc_desc + "', '" + esc_msg_type + "', "
-        "'" + esc_content + "', " + esc_embed + ", '" + esc_roles + "', " + std::to_string(owner_only_val) + ")";
+        "'" + esc_content + "', " + esc_embed + ", '" + esc_roles + "', " + std::to_string(owner_only_val) + ", '" + esc_actions + "', " +
+        null_or(c.filter.allow_roles) + ", " + null_or(c.filter.allow_users) + ", " + null_or(c.filter.allow_channels) + ", " +
+        null_or(c.filter.ignore_roles) + ", " + null_or(c.filter.ignore_users) + ", " + null_or(c.filter.ignore_channels) + ")";
 
     if (mysql_query(mysql_, sql.c_str())) {
       std::cerr << "[bronx db] add_custom_command failed: " << mysql_error(mysql_) << "\n";
@@ -881,12 +896,19 @@ namespace bronx {
     if (!mysql_)
       return false;
 
+    auto null_or = [](const std::vector<std::string> &v) -> std::string {
+      if (v.empty()) return "NULL";
+      nlohmann::json j = v;
+      return "'" + j.dump() + "'";
+    };
+
     std::string esc_name = escape_string(c.name);
     std::string esc_desc = escape_string(c.description);
     std::string esc_msg_type = escape_string(c.message_type);
     std::string esc_content = escape_string(c.content);
     std::string esc_embed = c.embed_json.empty() ? "NULL" : ("'" + escape_string(c.embed_json) + "'");
     std::string esc_roles = escape_string(c.allowed_roles);
+    std::string esc_actions = escape_string(c.actions);
     int owner_only_val = c.owner_only ? 1 : 0;
 
     std::string sql =
@@ -897,7 +919,14 @@ namespace bronx {
         "content='" + esc_content + "', "
         "embed_json=" + esc_embed + ", "
         "allowed_roles='" + esc_roles + "', "
-        "owner_only=" + std::to_string(owner_only_val) + " "
+        "owner_only=" + std::to_string(owner_only_val) + ", "
+        "actions='" + esc_actions + "', "
+        "allow_roles=" + null_or(c.filter.allow_roles) + ", "
+        "allow_users=" + null_or(c.filter.allow_users) + ", "
+        "allow_channels=" + null_or(c.filter.allow_channels) + ", "
+        "ignore_roles=" + null_or(c.filter.ignore_roles) + ", "
+        "ignore_users=" + null_or(c.filter.ignore_users) + ", "
+        "ignore_channels=" + null_or(c.filter.ignore_channels) + " "
         "WHERE id=" + std::to_string(c.id) + " AND server_id='" + escape_string(c.server_id) + "'";
 
     if (mysql_query(mysql_, sql.c_str()))
@@ -920,7 +949,17 @@ namespace bronx {
     if (!mysql_)
       return;
 
-    std::string sql = "SELECT id, server_id, name, description, message_type, content, embed_json, allowed_roles, owner_only FROM custom_commands";
+    auto load_json_arr = [](const char *raw) -> std::vector<std::string> {
+      if (!raw) return {};
+      try {
+        auto j = nlohmann::json::parse(raw);
+        if (j.is_array()) return j.get<std::vector<std::string>>();
+      } catch (...) {}
+      return {};
+    };
+
+    std::string sql = "SELECT id, server_id, name, description, message_type, content, embed_json, allowed_roles, owner_only, actions, "
+                      "allow_roles, allow_users, allow_channels, ignore_roles, ignore_users, ignore_channels FROM custom_commands";
     if (!server_id.empty()) {
       sql += " WHERE server_id = '" + escape_string(server_id) + "'";
     }
@@ -952,6 +991,13 @@ namespace bronx {
           c.embed_json = row[6] ? row[6] : "";
           c.allowed_roles = row[7] ? row[7] : "";
           c.owner_only = (row[8] && std::string(row[8]) == "1");
+          c.actions = row[9] ? row[9] : "";
+          c.filter.allow_roles = load_json_arr(row[10]);
+          c.filter.allow_users = load_json_arr(row[11]);
+          c.filter.allow_channels = load_json_arr(row[12]);
+          c.filter.ignore_roles = load_json_arr(row[13]);
+          c.filter.ignore_users = load_json_arr(row[14]);
+          c.filter.ignore_channels = load_json_arr(row[15]);
 
           ccmd_cache_[c.id] = c;
           ccmd_server_index_[c.server_id].push_back(c.id);

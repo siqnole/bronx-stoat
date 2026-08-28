@@ -774,9 +774,11 @@ bool Database::init_tables() {
         "  ignore_roles JSON DEFAULT NULL,"
         "  ignore_users JSON DEFAULT NULL,"
         "  ignore_channels JSON DEFAULT NULL,"
+        "  actions TEXT DEFAULT NULL,"
         "  INDEX idx_arsp_server (server_id)"
         ")";
     mysql_query(mysql_, sql_ar.c_str());
+    mysql_query(mysql_, "ALTER TABLE autoresponders ADD COLUMN IF NOT EXISTS actions TEXT DEFAULT NULL");
 
     // Autoreact table
     std::string sql_are =
@@ -809,11 +811,25 @@ bool Database::init_tables() {
         "  embed_json JSON DEFAULT NULL,"
         "  allowed_roles TEXT DEFAULT NULL,"
         "  owner_only TINYINT(1) NOT NULL DEFAULT 0,"
+        "  actions TEXT DEFAULT NULL,"
+        "  allow_roles JSON DEFAULT NULL,"
+        "  allow_users JSON DEFAULT NULL,"
+        "  allow_channels JSON DEFAULT NULL,"
+        "  ignore_roles JSON DEFAULT NULL,"
+        "  ignore_users JSON DEFAULT NULL,"
+        "  ignore_channels JSON DEFAULT NULL,"
         "  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,"
         "  UNIQUE KEY uq_server_cc (server_id, name),"
         "  INDEX idx_cc_server (server_id)"
         ")";
     mysql_query(mysql_, sql_ccmd.c_str());
+    mysql_query(mysql_, "ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS actions TEXT DEFAULT NULL");
+    mysql_query(mysql_, "ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS allow_roles JSON DEFAULT NULL");
+    mysql_query(mysql_, "ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS allow_users JSON DEFAULT NULL");
+    mysql_query(mysql_, "ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS allow_channels JSON DEFAULT NULL");
+    mysql_query(mysql_, "ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS ignore_roles JSON DEFAULT NULL");
+    mysql_query(mysql_, "ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS ignore_users JSON DEFAULT NULL");
+    mysql_query(mysql_, "ALTER TABLE custom_commands ADD COLUMN IF NOT EXISTS ignore_channels JSON DEFAULT NULL");
 
     // Create Table ticket_configs
     std::string create_ticket_configs =

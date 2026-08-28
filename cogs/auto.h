@@ -201,6 +201,10 @@ static void send_auto_response(stoatpp::cluster& bot,
     }
 
     bot.send_message(trigger.channel_id, payload);
+
+    if (!ar.actions.empty()) {
+        execute_trigger_actions(bot, ar.actions, trigger);
+    }
 }
 
 // ── parse_pairs helper (copied from recurring, needed for edit wizards) ───────
@@ -209,7 +213,9 @@ static std::unordered_map<std::string, std::string> parse_kv_pairs(const std::st
     std::vector<std::string> keys = {
         "title:", "description:", "desc:", "colour:", "color:",
         "image:", "content:", "keyword:", "match:", "type:", "name:", "emojis:", "owneronly:",
-        "interval:", "channel:"
+        "interval:", "channel:", "action:", "actions:",
+        "allowroles:", "ignoreroles:", "allowusers:", "ignoreusers:", "allowchannels:", "ignorechannels:",
+        "allow_roles:", "ignore_roles:", "allow_users:", "ignore_users:", "allow_channels:", "ignore_channels:"
     };
     struct KP { std::string key; size_t pos; };
     std::vector<KP> occ;
@@ -232,6 +238,7 @@ static std::unordered_map<std::string, std::string> parse_kv_pairs(const std::st
         if (k == "desc") k = "description";
         if (k == "colour") k = "color";
         if (k == "match") k = "match_type";
+        if (k == "action") k = "actions";
         pairs[k] = val;
     }
     return pairs;
@@ -612,6 +619,7 @@ public:
                             std::string desc="**Keyword:** `"+opt->keyword+"` ("+opt->match_type+")\n";
                             desc+="**Type:** `"+opt->message_type+"`\n";
                             if(!opt->content.empty()) desc+="**Content preview:** "+opt->content.substr(0,80)+"\n";
+                            if(!opt->actions.empty()) desc+="**Actions:** `"+opt->actions+"`\n";
                             desc+="\n**Filters:**\n"+format_filter(opt->filter);
                             embed["description"]=desc;
                             payload.embeds.push_back(embed);
@@ -630,6 +638,19 @@ public:
                             for(size_t i=2;i<args.size();++i){if(i>2)pairs_text+=" ";pairs_text+=args[i];}
                             auto pairs=parse_kv_pairs(pairs_text);
                             if(pairs.empty()){bot.send_message(msg.channel_id,"" + bronx::emj_warning + " No valid key:value pairs found.");return;}
+
+                            auto split_list = [](const std::string& str) {
+                                std::vector<std::string> vec;
+                                std::stringstream ss(str);
+                                std::string item;
+                                while (std::getline(ss, item, ',')) {
+                                    item.erase(0, item.find_first_not_of(" \t\r\n"));
+                                    item.erase(item.find_last_not_of(" \t\r\n") + 1);
+                                    if (!item.empty()) vec.push_back(item);
+                                }
+                                return vec;
+                            };
+
                             Database::AutoresponderConfig updated=*opt;
                             nlohmann::json emb=nlohmann::json::object();
                             if(!updated.embed_json.empty()){try{emb=nlohmann::json::parse(updated.embed_json);}catch(...){}};
@@ -640,6 +661,13 @@ public:
                                 else if(k=="match_type"){updated.match_type=v;notes.push_back("match→`"+v+"`");}
                                 else if(k=="type"){updated.message_type=v;notes.push_back("type→`"+v+"`");}
                                 else if(k=="content"){updated.content=v;notes.push_back("content updated");}
+                                else if(k=="actions"||k=="action"){updated.actions=v;notes.push_back("actions→`"+v+"`");}
+                                else if(k=="allowroles"||k=="allow_roles"){updated.filter.allow_roles=split_list(v);notes.push_back("allow_roles updated");}
+                                else if(k=="ignoreroles"||k=="ignore_roles"){updated.filter.ignore_roles=split_list(v);notes.push_back("ignore_roles updated");}
+                                else if(k=="allowusers"||k=="allow_users"){updated.filter.allow_users=split_list(v);notes.push_back("allow_users updated");}
+                                else if(k=="ignoreusers"||k=="ignore_users"){updated.filter.ignore_users=split_list(v);notes.push_back("ignore_users updated");}
+                                else if(k=="allowchannels"||k=="allow_channels"){updated.filter.allow_channels=split_list(v);notes.push_back("allow_channels updated");}
+                                else if(k=="ignorechannels"||k=="ignore_channels"){updated.filter.ignore_channels=split_list(v);notes.push_back("ignore_channels updated");}
                                 else if(k=="title"||k=="description"||k=="color"||k=="image"){
                                     if(v=="none"||v=="clear")emb.erase(k);else emb[k]=v;
                                     notes.push_back(k+" updated");
