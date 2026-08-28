@@ -44,6 +44,9 @@ Brotli_encoder:FILEPATH=/home/linuxbrew/.linuxbrew/lib/libbrotlienc.so
 //Set calling convention of C API callbacks stdcall
 CAPI_STDCALL:BOOL=OFF
 
+//Enable clang-tidy
+CLANG_TIDY:BOOL=OFF
+
 //Path to clang-tidy executable
 CLANG_TIDY_EXE:FILEPATH=CLANG_TIDY_EXE-NOTFOUND
 
@@ -334,8 +337,17 @@ CPACK_SOURCE_TZ:BOOL=ON
 //Enable to build ZIP source packages
 CPACK_SOURCE_ZIP:BOOL=OFF
 
+//Disable RFC 7675 Consent Freshness
+DISABLE_CONSENT_FRESHNESS:BOOL=OFF
+
 //Enable debug logging in all modules
 ENABLE_DEBUG_LOGGING:BOOL=OFF
+
+//List localhost addresses in candidates
+ENABLE_LOCALHOST_ADDRESS:BOOL=OFF
+
+//Translate local addresses to localhost
+ENABLE_LOCAL_ADDRESS_TRANSLATION:BOOL=OFF
 
 //Enable MbedTLS crypto engine
 ENABLE_MBEDTLS:BOOL=OFF
@@ -439,6 +451,9 @@ FTXUI_MICROSOFT_TERMINAL_FALLBACK:BOOL=OFF
 //Set to ON for FTXUI to be quiet
 FTXUI_QUIET:BOOL=OFF
 
+//Enable oss-fuzz fuzzing
+FUZZER:BOOL=OFF
+
 //INTERNAL
 GCM:BOOL=ON
 
@@ -541,6 +556,9 @@ NO_EXAMPLES:BOOL=OFF
 
 //Disable media transport support
 NO_MEDIA:BOOL=OFF
+
+//Disable server support
+NO_SERVER:BOOL=OFF
 
 //Disable submodules
 NO_SUBMODULES:BOOL=OFF
@@ -713,11 +731,11 @@ USE_GNUTLS:BOOL=OFF
 //Use Mbed TLS instead of OpenSSL
 USE_MBEDTLS:BOOL=OFF
 
-//Use Nettle in libjuice
+//Use Nettle for hash functions
 USE_NETTLE:BOOL=OFF
 
 //Use libnice instead of libjuice
-USE_NICE:BOOL=ON
+USE_NICE:BOOL=OFF
 
 //Use system Nlohmann JSON
 USE_SYSTEM_JSON:BOOL=ON
@@ -753,10 +771,10 @@ ZLIB_LIBRARY_DEBUG:FILEPATH=ZLIB_LIBRARY_DEBUG-NOTFOUND
 ZLIB_LIBRARY_RELEASE:FILEPATH=/usr/lib64/libz.so
 
 //Dependencies for the target
-datachannel-static_LIB_DEPENDS:STATIC=general;Usrsctp::Usrsctp;general;srtp2;general;OpenSSL::SSL;general;LibNice::LibNice;
+datachannel-static_LIB_DEPENDS:STATIC=general;Usrsctp::Usrsctp;general;srtp2;general;OpenSSL::SSL;general;LibJuice::LibJuiceStatic;
 
 //Dependencies for the target
-datachannel_LIB_DEPENDS:STATIC=general;Usrsctp::Usrsctp;general;srtp2;general;OpenSSL::SSL;general;LibNice::LibNice;
+datachannel_LIB_DEPENDS:STATIC=general;Usrsctp::Usrsctp;general;srtp2;general;OpenSSL::SSL;general;LibJuice::LibJuiceStatic;
 
 //Value Computed by CMake
 ftxui_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/ftxui-build
@@ -796,6 +814,15 @@ libdatachannel_IS_TOP_LEVEL:STATIC=OFF
 
 //Value Computed by CMake
 libdatachannel_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-src
+
+//Value Computed by CMake
+libjuice_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build/deps/libjuice
+
+//Value Computed by CMake
+libjuice_IS_TOP_LEVEL:STATIC=OFF
+
+//Value Computed by CMake
+libjuice_SOURCE_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-src/deps/libjuice
 
 //Value Computed by CMake
 libsrtp2_BINARY_DIR:STATIC=/var/home/siq/Documents/bots/stoat++/bronx/_deps/libdatachannel-build/deps/libsrtp
@@ -1141,7 +1168,7 @@ CMAKE_MODULE_LINKER_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_NM
 CMAKE_NM-ADVANCED:INTERNAL=1
 //number of local generators
-CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=13
+CMAKE_NUMBER_OF_MAKEFILES:INTERNAL=25
 //ADVANCED property for variable: CMAKE_OBJCOPY
 CMAKE_OBJCOPY-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: CMAKE_OBJDUMP
@@ -1312,7 +1339,6 @@ HAVE_XMMINTRIN_H:INTERNAL=1
 HIDDEN_VISIBILITY_SUPPORTED:INTERNAL=1
 //CHECK_TYPE_SIZE: sizeof(int32_t)
 INT32_T:INTERNAL=4
-//Build the unit tests when BUILD_TESTING is enabled.
 JSON_BuildTests:INTERNAL=OFF
 //ADVANCED property for variable: LIBNICE_INCLUDE_DIR
 LIBNICE_INCLUDE_DIR-ADVANCED:INTERNAL=1

@@ -30,10 +30,24 @@ namespace bronx {
 
     if (!mysql_real_connect(mysql_, host.c_str(), user.c_str(),
                             password.c_str(), nullptr, port, nullptr, 0)) {
+      if (host == "127.0.0.1" || host == "localhost") {
+        std::cout << "[bronx db] connection to " << host << " failed (" << mysql_error(mysql_)
+                  << "), trying host.containers.internal...\n";
+        mysql_close(mysql_);
+        mysql_ = mysql_init(nullptr);
+        mysql_options(mysql_, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
+        mysql_options(mysql_, MYSQL_OPT_RECONNECT, &reconnect);
+        if (mysql_real_connect(mysql_, "host.containers.internal", user.c_str(),
+                               password.c_str(), nullptr, port, nullptr, 0)) {
+          goto connected;
+        }
+      }
       std::cerr << "[bronx db] connection failed: " << mysql_error(mysql_)
                 << "\n";
       return false;
     }
+
+connected:
 
     // Ensure database exists with utf8mb4
     std::string create_db_sql = "CREATE DATABASE IF NOT EXISTS `" + dbname +

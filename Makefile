@@ -208,6 +208,344 @@ ixwebsocket/fast:
 .PHONY : ixwebsocket/fast
 
 #=============================================================================
+# Target rules for targets named opus
+
+# Build rule for target.
+opus: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 opus
+.PHONY : opus
+
+# fast build rule for target.
+opus/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/opus-build/CMakeFiles/opus.dir/build.make _deps/opus-build/CMakeFiles/opus.dir/build
+.PHONY : opus/fast
+
+#=============================================================================
+# Target rules for targets named datachannel
+
+# Build rule for target.
+datachannel: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel
+.PHONY : datachannel
+
+# fast build rule for target.
+datachannel/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/CMakeFiles/datachannel.dir/build.make _deps/libdatachannel-build/CMakeFiles/datachannel.dir/build
+.PHONY : datachannel/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-static
+
+# Build rule for target.
+datachannel-static: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-static
+.PHONY : datachannel-static
+
+# fast build rule for target.
+datachannel-static/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/CMakeFiles/datachannel-static.dir/build.make _deps/libdatachannel-build/CMakeFiles/datachannel-static.dir/build
+.PHONY : datachannel-static/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-tests
+
+# Build rule for target.
+datachannel-tests: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-tests
+.PHONY : datachannel-tests
+
+# fast build rule for target.
+datachannel-tests/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/CMakeFiles/datachannel-tests.dir/build.make _deps/libdatachannel-build/CMakeFiles/datachannel-tests.dir/build
+.PHONY : datachannel-tests/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-benchmark
+
+# Build rule for target.
+datachannel-benchmark: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-benchmark
+.PHONY : datachannel-benchmark
+
+# fast build rule for target.
+datachannel-benchmark/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/CMakeFiles/datachannel-benchmark.dir/build.make _deps/libdatachannel-build/CMakeFiles/datachannel-benchmark.dir/build
+.PHONY : datachannel-benchmark/fast
+
+#=============================================================================
+# Target rules for targets named usrsctp
+
+# Build rule for target.
+usrsctp: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 usrsctp
+.PHONY : usrsctp
+
+# fast build rule for target.
+usrsctp/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/usrsctp/usrsctplib/CMakeFiles/usrsctp.dir/build.make _deps/libdatachannel-build/deps/usrsctp/usrsctplib/CMakeFiles/usrsctp.dir/build
+.PHONY : usrsctp/fast
+
+#=============================================================================
+# Target rules for targets named srtp2
+
+# Build rule for target.
+srtp2: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 srtp2
+.PHONY : srtp2
+
+# fast build rule for target.
+srtp2/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/srtp2.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/srtp2.dir/build
+.PHONY : srtp2/fast
+
+#=============================================================================
+# Target rules for targets named datatypes_driver
+
+# Build rule for target.
+datatypes_driver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datatypes_driver
+.PHONY : datatypes_driver
+
+# fast build rule for target.
+datatypes_driver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/datatypes_driver.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/datatypes_driver.dir/build
+.PHONY : datatypes_driver/fast
+
+#=============================================================================
+# Target rules for targets named cipher_driver
+
+# Build rule for target.
+cipher_driver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 cipher_driver
+.PHONY : cipher_driver
+
+# fast build rule for target.
+cipher_driver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/cipher_driver.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/cipher_driver.dir/build
+.PHONY : cipher_driver/fast
+
+#=============================================================================
+# Target rules for targets named kernel_driver
+
+# Build rule for target.
+kernel_driver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 kernel_driver
+.PHONY : kernel_driver
+
+# fast build rule for target.
+kernel_driver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/kernel_driver.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/kernel_driver.dir/build
+.PHONY : kernel_driver/fast
+
+#=============================================================================
+# Target rules for targets named rdbx_driver
+
+# Build rule for target.
+rdbx_driver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 rdbx_driver
+.PHONY : rdbx_driver
+
+# fast build rule for target.
+rdbx_driver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/rdbx_driver.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/rdbx_driver.dir/build
+.PHONY : rdbx_driver/fast
+
+#=============================================================================
+# Target rules for targets named replay_driver
+
+# Build rule for target.
+replay_driver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 replay_driver
+.PHONY : replay_driver
+
+# fast build rule for target.
+replay_driver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/replay_driver.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/replay_driver.dir/build
+.PHONY : replay_driver/fast
+
+#=============================================================================
+# Target rules for targets named roc_driver
+
+# Build rule for target.
+roc_driver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 roc_driver
+.PHONY : roc_driver
+
+# fast build rule for target.
+roc_driver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/roc_driver.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/roc_driver.dir/build
+.PHONY : roc_driver/fast
+
+#=============================================================================
+# Target rules for targets named srtp_driver
+
+# Build rule for target.
+srtp_driver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 srtp_driver
+.PHONY : srtp_driver
+
+# fast build rule for target.
+srtp_driver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/srtp_driver.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/srtp_driver.dir/build
+.PHONY : srtp_driver/fast
+
+#=============================================================================
+# Target rules for targets named test_srtp
+
+# Build rule for target.
+test_srtp: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_srtp
+.PHONY : test_srtp
+
+# fast build rule for target.
+test_srtp/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/test_srtp.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/test_srtp.dir/build
+.PHONY : test_srtp/fast
+
+#=============================================================================
+# Target rules for targets named rtpw
+
+# Build rule for target.
+rtpw: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 rtpw
+.PHONY : rtpw
+
+# fast build rule for target.
+rtpw/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/rtpw.dir/build.make _deps/libdatachannel-build/deps/libsrtp/CMakeFiles/rtpw.dir/build
+.PHONY : rtpw/fast
+
+#=============================================================================
+# Target rules for targets named juice
+
+# Build rule for target.
+juice: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 juice
+.PHONY : juice
+
+# fast build rule for target.
+juice/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libjuice/CMakeFiles/juice.dir/build.make _deps/libdatachannel-build/deps/libjuice/CMakeFiles/juice.dir/build
+.PHONY : juice/fast
+
+#=============================================================================
+# Target rules for targets named juice-static
+
+# Build rule for target.
+juice-static: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 juice-static
+.PHONY : juice-static
+
+# fast build rule for target.
+juice-static/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libjuice/CMakeFiles/juice-static.dir/build.make _deps/libdatachannel-build/deps/libjuice/CMakeFiles/juice-static.dir/build
+.PHONY : juice-static/fast
+
+#=============================================================================
+# Target rules for targets named juice-tests
+
+# Build rule for target.
+juice-tests: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 juice-tests
+.PHONY : juice-tests
+
+# fast build rule for target.
+juice-tests/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/deps/libjuice/CMakeFiles/juice-tests.dir/build.make _deps/libdatachannel-build/deps/libjuice/CMakeFiles/juice-tests.dir/build
+.PHONY : juice-tests/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-media-receiver
+
+# Build rule for target.
+datachannel-media-receiver: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-media-receiver
+.PHONY : datachannel-media-receiver
+
+# fast build rule for target.
+datachannel-media-receiver/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/examples/media-receiver/CMakeFiles/datachannel-media-receiver.dir/build.make _deps/libdatachannel-build/examples/media-receiver/CMakeFiles/datachannel-media-receiver.dir/build
+.PHONY : datachannel-media-receiver/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-media-sender
+
+# Build rule for target.
+datachannel-media-sender: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-media-sender
+.PHONY : datachannel-media-sender
+
+# fast build rule for target.
+datachannel-media-sender/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/examples/media-sender/CMakeFiles/datachannel-media-sender.dir/build.make _deps/libdatachannel-build/examples/media-sender/CMakeFiles/datachannel-media-sender.dir/build
+.PHONY : datachannel-media-sender/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-media-sfu
+
+# Build rule for target.
+datachannel-media-sfu: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-media-sfu
+.PHONY : datachannel-media-sfu
+
+# fast build rule for target.
+datachannel-media-sfu/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/examples/media-sfu/CMakeFiles/datachannel-media-sfu.dir/build.make _deps/libdatachannel-build/examples/media-sfu/CMakeFiles/datachannel-media-sfu.dir/build
+.PHONY : datachannel-media-sfu/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-copy-paste-offerer
+
+# Build rule for target.
+datachannel-copy-paste-offerer: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-copy-paste-offerer
+.PHONY : datachannel-copy-paste-offerer
+
+# fast build rule for target.
+datachannel-copy-paste-offerer/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/examples/copy-paste/CMakeFiles/datachannel-copy-paste-offerer.dir/build.make _deps/libdatachannel-build/examples/copy-paste/CMakeFiles/datachannel-copy-paste-offerer.dir/build
+.PHONY : datachannel-copy-paste-offerer/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-copy-paste-answerer
+
+# Build rule for target.
+datachannel-copy-paste-answerer: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-copy-paste-answerer
+.PHONY : datachannel-copy-paste-answerer
+
+# fast build rule for target.
+datachannel-copy-paste-answerer/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/examples/copy-paste/CMakeFiles/datachannel-copy-paste-answerer.dir/build.make _deps/libdatachannel-build/examples/copy-paste/CMakeFiles/datachannel-copy-paste-answerer.dir/build
+.PHONY : datachannel-copy-paste-answerer/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-copy-paste-capi-offerer
+
+# Build rule for target.
+datachannel-copy-paste-capi-offerer: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-copy-paste-capi-offerer
+.PHONY : datachannel-copy-paste-capi-offerer
+
+# fast build rule for target.
+datachannel-copy-paste-capi-offerer/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/examples/copy-paste-capi/CMakeFiles/datachannel-copy-paste-capi-offerer.dir/build.make _deps/libdatachannel-build/examples/copy-paste-capi/CMakeFiles/datachannel-copy-paste-capi-offerer.dir/build
+.PHONY : datachannel-copy-paste-capi-offerer/fast
+
+#=============================================================================
+# Target rules for targets named datachannel-copy-paste-capi-answerer
+
+# Build rule for target.
+datachannel-copy-paste-capi-answerer: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 datachannel-copy-paste-capi-answerer
+.PHONY : datachannel-copy-paste-capi-answerer
+
+# fast build rule for target.
+datachannel-copy-paste-capi-answerer/fast:
+	$(MAKE) $(MAKESILENT) -f _deps/libdatachannel-build/examples/copy-paste-capi/CMakeFiles/datachannel-copy-paste-capi-answerer.dir/build.make _deps/libdatachannel-build/examples/copy-paste-capi/CMakeFiles/datachannel-copy-paste-capi-answerer.dir/build
+.PHONY : datachannel-copy-paste-capi-answerer/fast
+
+#=============================================================================
 # Target rules for targets named ping_bot
 
 # Build rule for target.
@@ -636,6 +974,30 @@ src/utils/ratelimiter.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/utils/ratelimiter.cpp.s
 .PHONY : src/utils/ratelimiter.cpp.s
 
+src/voice_connection.o: src/voice_connection.cpp.o
+.PHONY : src/voice_connection.o
+
+# target to build an object file
+src/voice_connection.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/voice_connection.cpp.o
+.PHONY : src/voice_connection.cpp.o
+
+src/voice_connection.i: src/voice_connection.cpp.i
+.PHONY : src/voice_connection.i
+
+# target to preprocess a source file
+src/voice_connection.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/voice_connection.cpp.i
+.PHONY : src/voice_connection.cpp.i
+
+src/voice_connection.s: src/voice_connection.cpp.s
+.PHONY : src/voice_connection.s
+
+# target to generate assembly for a file
+src/voice_connection.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/stoatpp.dir/build.make CMakeFiles/stoatpp.dir/src/voice_connection.cpp.s
+.PHONY : src/voice_connection.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -650,17 +1012,43 @@ help:
 	@echo "... package"
 	@echo "... package_source"
 	@echo "... rebuild_cache"
+	@echo "... cipher_driver"
 	@echo "... component"
 	@echo "... custom_prefix_bot"
+	@echo "... datachannel"
+	@echo "... datachannel-benchmark"
+	@echo "... datachannel-copy-paste-answerer"
+	@echo "... datachannel-copy-paste-capi-answerer"
+	@echo "... datachannel-copy-paste-capi-offerer"
+	@echo "... datachannel-copy-paste-offerer"
+	@echo "... datachannel-media-receiver"
+	@echo "... datachannel-media-sender"
+	@echo "... datachannel-media-sfu"
+	@echo "... datachannel-static"
+	@echo "... datachannel-tests"
+	@echo "... datatypes_driver"
 	@echo "... dom"
 	@echo "... full_bot"
 	@echo "... ixwebsocket"
+	@echo "... juice"
+	@echo "... juice-static"
+	@echo "... juice-tests"
+	@echo "... kernel_driver"
 	@echo "... moderation_bot"
+	@echo "... opus"
 	@echo "... ping_bot"
+	@echo "... rdbx_driver"
 	@echo "... reaction_roles_bot"
+	@echo "... replay_driver"
+	@echo "... roc_driver"
+	@echo "... rtpw"
 	@echo "... screen"
+	@echo "... srtp2"
+	@echo "... srtp_driver"
 	@echo "... stoat-client"
 	@echo "... stoatpp"
+	@echo "... test_srtp"
+	@echo "... usrsctp"
 	@echo "... src/cluster.o"
 	@echo "... src/cluster.i"
 	@echo "... src/cluster.s"
@@ -700,6 +1088,9 @@ help:
 	@echo "... src/utils/ratelimiter.o"
 	@echo "... src/utils/ratelimiter.i"
 	@echo "... src/utils/ratelimiter.s"
+	@echo "... src/voice_connection.o"
+	@echo "... src/voice_connection.i"
+	@echo "... src/voice_connection.s"
 .PHONY : help
 
 
