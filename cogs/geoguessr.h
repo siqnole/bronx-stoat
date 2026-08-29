@@ -365,19 +365,84 @@ private:
         return result;
     }
 
-    bool matches_any(const std::string& user_guess, const std::vector<std::string>& aliases) {
+    bool matches_alias(const std::string& user_guess, const std::string& alias) {
         std::string norm_guess = normalize_text(user_guess);
-        if (norm_guess.empty()) return false;
-        for (const auto& alias : aliases) {
-            std::string norm_alias = normalize_text(alias);
-            if (norm_guess == norm_alias) return true;
-            // Substring match for longer strings
-            if (norm_alias.size() >= 4 && norm_guess.size() >= 4) {
-                if (norm_alias.find(norm_guess) != std::string::npos || norm_guess.find(norm_alias) != std::string::npos) {
-                    return true;
-                }
+        std::string norm_alias = normalize_text(alias);
+        if (norm_guess.empty() || norm_alias.empty()) return false;
+
+        if (norm_guess == norm_alias) return true;
+
+        // For short aliases (<= 3 chars, e.g. "jp", "uk", "us", "fr", "ny"), match as a distinct word in norm_guess
+        if (norm_alias.size() <= 3) {
+            std::string word;
+            std::stringstream ss(norm_guess);
+            while (ss >> word) {
+                if (word == norm_alias) return true;
             }
+            return false;
         }
+
+        // For longer aliases (>= 4 chars), match as word or substring in norm_guess
+        if (norm_guess.find(norm_alias) != std::string::npos) {
+            return true;
+        }
+        if (norm_alias.find(norm_guess) != std::string::npos && norm_guess.size() >= 4) {
+            return true;
+        }
+        return false;
+    }
+
+    bool matches_any(const std::string& user_guess, const std::vector<std::string>& aliases) {
+        for (const auto& alias : aliases) {
+            if (matches_alias(user_guess, alias)) return true;
+        }
+        return false;
+    }
+
+    bool is_any_known_place(const std::string& user_guess) {
+        std::string norm = normalize_text(user_guess);
+        if (norm.empty()) return false;
+
+        // Check location pool items and aliases
+        for (const auto& loc : location_pool_) {
+            if (matches_alias(user_guess, loc.title)) return true;
+            if (matches_alias(user_guess, loc.city)) return true;
+            if (matches_alias(user_guess, loc.country)) return true;
+            if (matches_alias(user_guess, loc.continent)) return true;
+            if (matches_any(user_guess, loc.country_aliases)) return true;
+            if (matches_any(user_guess, loc.city_aliases)) return true;
+        }
+
+        // Additional common countries/regions for robust guess recognition
+        static const std::vector<std::string> extra_countries = {
+            "afghanistan", "albania", "algeria", "andorra", "angola", "argentina", "armenia",
+            "australia", "austria", "azerbaijan", "bahamas", "bahrain", "bangladesh", "barbados",
+            "belarus", "belgium", "belize", "benin", "bhutan", "bolivia", "bosnia", "botswana",
+            "brazil", "brunei", "bulgaria", "burkina faso", "burundi", "cambodia", "cameroon",
+            "canada", "chile", "china", "colombia", "congo", "costa rica", "croatia", "cuba",
+            "cyprus", "czechia", "czech republic", "denmark", "djibouti", "dominican republic",
+            "ecuador", "egypt", "el salvador", "england", "estonia", "ethiopia", "fiji", "finland",
+            "france", "georgia", "germany", "ghana", "greece", "guatemala", "haiti", "honduras",
+            "hungary", "iceland", "india", "indonesia", "iran", "iraq", "ireland", "israel",
+            "italy", "jamaica", "japan", "jordan", "kazakhstan", "kenya", "korea", "kosovo",
+            "kuwait", "laos", "latvia", "lebanon", "libya", "lithuania", "luxembourg", "madagascar",
+            "malaysia", "maldives", "mali", "malta", "mexico", "moldova", "monaco", "mongolia",
+            "montenegro", "morocco", "mozambique", "myanmar", "namibia", "nepal", "netherlands",
+            "new zealand", "nicaragua", "nigeria", "north korea", "norway", "oman", "pakistan",
+            "palestine", "panama", "paraguay", "peru", "philippines", "poland", "portugal",
+            "qatar", "romania", "russia", "rwanda", "saudi arabia", "scotland", "senegal",
+            "serbia", "singapore", "slovakia", "slovenia", "somalia", "south africa", "south korea",
+            "spain", "sri lanka", "sudan", "sweden", "switzerland", "syria", "taiwan", "tanzania",
+            "thailand", "tunisia", "turkey", "turkmenistan", "uganda", "ukraine", "united arab emirates",
+            "united kingdom", "united states", "uruguay", "uzbekistan", "venezuela", "vietnam",
+            "wales", "yemen", "zambia", "zimbabwe", "asia", "europe", "africa", "north america",
+            "south america", "oceania", "antarctica"
+        };
+
+        for (const auto& country : extra_countries) {
+            if (matches_alias(user_guess, country)) return true;
+        }
+
         return false;
     }
 
@@ -422,7 +487,7 @@ public:
                 return; // ignore bot commands
             }
 
-            check_and_process_guess(bot, msg, session, msg.content);
+            check_and_process_guess(bot, msg, session, msg.content, false);
         });
 
         // Command handler `.geo` / `.geoguessr`
@@ -473,7 +538,7 @@ public:
                             }
                         }
                         if (found) {
-                            check_and_process_guess(bot, msg, session, user_guess);
+                            check_and_process_guess(bot, msg, session, user_guess, true);
                         } else {
                             bot.send_message(msg.channel_id, "" + bronx::emj_warning + " No active GeoGuessr game in this channel! Start one with `" + pfx + "geo`.");
                         }
@@ -505,7 +570,7 @@ public:
                                 if (i > 0) full_guess += " ";
                                 full_guess += args[i];
                             }
-                            check_and_process_guess(bot, msg, sess, full_guess);
+                            check_and_process_guess(bot, msg, sess, full_guess, true);
                             return;
                         } else {
                             show_active_game_info(bot, msg, sess);
@@ -554,7 +619,7 @@ private:
                 "• **City/Landmark**: 300 pts (Master Guess)\n"
                 "• **Country**: 100 pts\n"
                 "• **Continent**: 25 pts\n\n"
-                "💬 *Type your guess directly in chat or use `.geo guess <name>`.*\n"
+                "💬 *Actively listening in chat! Type any country or place name directly — the bot will react (🎯/🚩/🌐 if correct, ❌ if wrong).*\n"
                 "💡 *Use `.geo hint` for clues or `.geo skip` to reveal solution.*"
             );
 
@@ -592,7 +657,7 @@ private:
                 "A round is already running in this channel!\n\n"
                 "⏱️ **Time Remaining**: " + std::to_string(std::max(0L, (long)remaining_sec)) + " seconds\n"
                 "💡 **Hints Used**: " + std::to_string(session.hints_revealed) + "/3\n\n"
-                "Type your guess directly in chat (e.g. `Japan`, `Paris`, `Europe`) or run `" + pfx + "geo hint`!"
+                "💬 *Actively listening in chat! Type any country or place name directly (e.g. `Japan`, `Paris`, `Europe`) — the bot will react to your message!*"
             );
 
             if (!media_id.empty()) {
@@ -606,17 +671,27 @@ private:
         }).detach();
     }
 
-    void check_and_process_guess(stoatpp::cluster& bot, const stoatpp::events::Message& msg, const GeoSession& session, const std::string& raw_guess) {
+    void check_and_process_guess(stoatpp::cluster& bot, const stoatpp::events::Message& msg, const GeoSession& session, const std::string& raw_guess, bool is_explicit_cmd = false) {
         std::string norm_guess = normalize_text(raw_guess);
         if (norm_guess.empty()) return;
 
-        bool is_city = matches_any(raw_guess, session.location.city_aliases) || (normalize_text(session.location.city) == norm_guess);
-        bool is_country = matches_any(raw_guess, session.location.country_aliases) || (normalize_text(session.location.country) == norm_guess);
-        bool is_continent = (normalize_text(session.location.continent) == norm_guess);
+        bool is_city = matches_alias(raw_guess, session.location.city) || matches_any(raw_guess, session.location.city_aliases) || matches_alias(raw_guess, session.location.title);
+        bool is_country = matches_alias(raw_guess, session.location.country) || matches_any(raw_guess, session.location.country_aliases);
+        bool is_continent = matches_alias(raw_guess, session.location.continent);
 
         if (!is_city && !is_country && !is_continent) {
+            if (is_explicit_cmd || is_any_known_place(raw_guess)) {
+                bot.react_to_message(msg.channel_id, msg.id, "❌");
+            }
             return; // Not a matching guess, let normal chat flow continue
         }
+
+        std::string reaction_emoji = "🎯";
+        if (is_city) reaction_emoji = "🎯";
+        else if (is_country) reaction_emoji = "🚩";
+        else if (is_continent) reaction_emoji = "🌐";
+
+        bot.react_to_message(msg.channel_id, msg.id, reaction_emoji);
 
         // Remove active game session
         {

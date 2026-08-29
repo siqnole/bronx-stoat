@@ -706,6 +706,7 @@ public:
   bool rename_custom_command(int id, const std::string &server_id, const std::string &new_name);
 
   void reload_custom_commands(const std::string &server_id);
+  void reload_custom_commands_unlocked(const std::string &server_id);
 
   std::optional<TicketConfig>
   get_ticket_config(const std::string &server_id,

@@ -1,15 +1,26 @@
 #include "database.h"
 #include <mysql.h>
 #include <algorithm>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <random>
 #include <shared_mutex>
 #include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 namespace bronx {
+
+  static bool is_socket_file(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == 0) {
+      return S_ISSOCK(st.st_mode);
+    }
+    return false;
+  }
 
   bool Database::init(const std::string &host, const std::string &user,
                       const std::string &password, const std::string &dbname,
@@ -23,32 +34,40 @@ namespace bronx {
     }
 
     // Set connection timeout and reconnect options
-    unsigned int timeout = 10;
+    unsigned int timeout = 3;
     bool reconnect = true;
     mysql_options(mysql_, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
     mysql_options(mysql_, MYSQL_OPT_RECONNECT, &reconnect);
 
-    if (!mysql_real_connect(mysql_, host.c_str(), user.c_str(),
-                            password.c_str(), nullptr, port, nullptr, 0)) {
-      if (host == "127.0.0.1" || host == "localhost") {
-        std::cout << "[bronx db] connection to " << host << " failed (" << mysql_error(mysql_)
-                  << "), trying host.containers.internal...\n";
-        mysql_close(mysql_);
-        mysql_ = mysql_init(nullptr);
-        mysql_options(mysql_, MYSQL_OPT_CONNECT_TIMEOUT, &timeout);
-        mysql_options(mysql_, MYSQL_OPT_RECONNECT, &reconnect);
-        if (mysql_real_connect(mysql_, "host.containers.internal", user.c_str(),
-                               password.c_str(), nullptr, port, nullptr, 0)) {
-          goto connected;
-        }
-      }
-      std::cerr << "[bronx db] connection failed: " << mysql_error(mysql_)
-                << "\n";
-      return false;
+    // Check for UNIX domain socket first for high performance and container support
+    const char *socket_path = nullptr;
+    if (is_socket_file("/var/lib/mysql/mysql.sock") || access("/var/lib/mysql/mysql.sock", F_OK) == 0) {
+      socket_path = "/var/lib/mysql/mysql.sock";
+    } else if (is_socket_file("/run/mariadb/mariadb.sock") || access("/run/mariadb/mariadb.sock", F_OK) == 0) {
+      socket_path = "/run/mariadb/mariadb.sock";
     }
 
-connected:
+    if (socket_path) {
+      std::cout << "[bronx db] connecting to MariaDB via UNIX socket (" << socket_path << ")...\n";
+      if (mysql_real_connect(mysql_, "localhost", user.c_str(),
+                             password.c_str(), nullptr, 0, socket_path, 0)) {
+        std::cout << "[bronx db] UNIX socket connect succeeded!\n";
+        goto connected;
+      }
+      std::cout << "[bronx db] UNIX socket connection failed (" << mysql_error(mysql_)
+                << "), falling back to TCP " << host << "...\n";
+    }
 
+    std::cout << "[bronx db] attempting mysql_real_connect to TCP host " << host << "...\n";
+    if (!mysql_real_connect(mysql_, host.c_str(), user.c_str(),
+                            password.c_str(), nullptr, port, nullptr, 0)) {
+      std::cerr << "[bronx db] connection to " << host << " failed: " << mysql_error(mysql_) << "\n";
+      return false;
+    }
+    std::cout << "[bronx db] TCP connect succeeded!\n";
+
+connected:
+    std::cout << "[bronx db] ensuring database exists...\n";
     // Ensure database exists with utf8mb4
     std::string create_db_sql = "CREATE DATABASE IF NOT EXISTS `" + dbname +
                                 "` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci";
@@ -58,6 +77,7 @@ connected:
       return false;
     }
 
+    std::cout << "[bronx db] selecting database " << dbname << "...\n";
     // Select database
     if (mysql_select_db(mysql_, dbname.c_str())) {
       std::cerr << "[bronx db] failed to select database: " << mysql_error(mysql_)
@@ -68,12 +88,14 @@ connected:
     // Set connection character set to utf8mb4
     mysql_set_character_set(mysql_, "utf8mb4");
 
+    std::cout << "[bronx db] initializing tables...\n";
     // 1. Initialize DB tables and migrations
     if (!init_tables()) {
       std::cerr << "[bronx db] init_tables failed\n";
       return false;
     }
 
+    std::cout << "[bronx db] initializing cache...\n";
     // 2. Populate in-memory caches
     if (!init_cache()) {
       std::cerr << "[bronx db] init_cache failed\n";

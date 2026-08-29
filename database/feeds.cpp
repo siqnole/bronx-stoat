@@ -946,6 +946,10 @@ namespace bronx {
 
   void Database::reload_custom_commands(const std::string &server_id) {
     std::lock_guard<std::mutex> db_lock(db_mutex_);
+    reload_custom_commands_unlocked(server_id);
+  }
+
+  void Database::reload_custom_commands_unlocked(const std::string &server_id) {
     if (!mysql_)
       return;
 

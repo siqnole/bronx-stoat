@@ -942,7 +942,7 @@ bool Database::init_cache() {
       }
     }
 
-    reload_custom_commands("");
+    reload_custom_commands_unlocked("");
 
     return true;
 }

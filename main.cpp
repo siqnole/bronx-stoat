@@ -11,6 +11,8 @@
 #include <iostream>
 #include <map>
 #include <mutex>
+#include <arpa/inet.h>
+#include <ifaddrs.h>
 #include <netinet/in.h>
 #include <nlohmann/json.hpp>
 #include <sstream>
@@ -22,6 +24,32 @@
 #include <unordered_set>
 #include <vector>
 #include "emojis.h"
+
+static std::string get_primary_host_ip() {
+  struct ifaddrs *ifaddr = nullptr;
+  if (getifaddrs(&ifaddr) == -1) return "127.0.0.1";
+
+  std::string found_ip = "";
+  for (struct ifaddrs *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) continue;
+    
+    char host[INET_ADDRSTRLEN];
+    struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+    inet_ntop(AF_INET, &(sa->sin_addr), host, INET_ADDRSTRLEN);
+    std::string ip(host);
+
+    // Skip loopback (127.x.x.x)
+    if (ip != "127.0.0.1" && ip.find("127.") != 0) {
+      if (ip.find("192.168.") == 0 || ip.find("100.") == 0 || ip.find("10.") == 0) {
+        found_ip = ip;
+        break;
+      }
+      if (found_ip.empty()) found_ip = ip;
+    }
+  }
+  freeifaddrs(ifaddr);
+  return found_ip.empty() ? "127.0.0.1" : found_ip;
+}
 
 // Include our Cogs
 #include "cogs/afk.h"
@@ -110,7 +138,8 @@ void load_env(const std::string &filepath = ".env") {
       value = value.substr(1, value.size() - 2);
     }
 
-    setenv(key.c_str(), value.c_str(), 1);
+    // 0 = do not overwrite existing environment variables (allows container -e overrides)
+    setenv(key.c_str(), value.c_str(), 0);
   }
   std::cout << "[bronx env] successfully loaded variables from " << path_used
             << "\n";
@@ -386,6 +415,21 @@ int main(int argc, char *argv[]) {
   // DB configuration
   const char *db_host_env = std::getenv("DB_HOST");
   std::string db_host = db_host_env ? db_host_env : "127.0.0.1";
+
+  // If running inside a container (Podman / Docker) and db_host is local,
+  // automatically resolution host IP via local interfaces or fallback
+  if (db_host == "127.0.0.1" || db_host == "localhost" || db_host == "host.containers.internal") {
+    if (access("/run/.containerenv", F_OK) == 0 || access("/.dockerenv", F_OK) == 0) {
+      std::string detected_ip = get_primary_host_ip();
+      if (detected_ip != "127.0.0.1") {
+        db_host = detected_ip;
+        std::cout << "[bronx db] container environment detected, resolved host IP to " << db_host << "\n";
+      } else {
+        db_host = "host.containers.internal";
+        std::cout << "[bronx db] container environment detected, set DB host to " << db_host << "\n";
+      }
+    }
+  }
 
   const char *db_user_env = std::getenv("DB_USER");
   std::string db_user = db_user_env ? db_user_env : "root";
