@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <optional>
 #include <algorithm>
+#include <unordered_set>
 #include "stoatpp/cluster.h"
 #include "stoatpp/utils/ulid.h"
 #include <nlohmann/json.hpp>

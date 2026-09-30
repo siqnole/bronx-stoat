@@ -1545,6 +1545,91 @@ namespace bronx {
     return true;
   }
 
+  std::optional<MultiSpamConfig>
+  Database::get_multispam_config(const std::string &server_id) {
+    std::shared_lock<std::shared_mutex> lock(multispam_cache_mutex_);
+    auto it = multispam_cache_.find(server_id);
+    if (it != multispam_cache_.end()) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  bool Database::save_multispam_config(const MultiSpamConfig &cfg) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+
+    std::string esc_srv = escape_string(cfg.server_id);
+    std::string esc_act = escape_string(cfg.action);
+    
+    nlohmann::json j_wl = cfg.whitelist;
+    std::string esc_wl = escape_string(j_wl.dump());
+
+    std::string query =
+        "INSERT INTO multispam_configs (server_id, enabled, action, threshold_count, "
+        "time_window, delete_messages, whitelist) VALUES ("
+        "'" + esc_srv + "', "
+        + std::to_string(cfg.enabled ? 1 : 0) + ", "
+        "'" + esc_act + "', "
+        + std::to_string(cfg.threshold_count) + ", "
+        + std::to_string(cfg.time_window) + ", "
+        + std::to_string(cfg.delete_messages ? 1 : 0) + ", "
+        "'" + esc_wl + "') "
+        "ON DUPLICATE KEY UPDATE "
+        "enabled = VALUES(enabled), "
+        "action = VALUES(action), "
+        "threshold_count = VALUES(threshold_count), "
+        "time_window = VALUES(time_window), "
+        "delete_messages = VALUES(delete_messages), "
+        "whitelist = VALUES(whitelist)";
+
+    if (mysql_query(mysql_, query.c_str())) {
+      std::cerr << "[bronx db] failed to save multispam config: "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+    std::lock_guard<std::shared_mutex> cache_lock(multispam_cache_mutex_);
+    multispam_cache_[cfg.server_id] = cfg;
+    return true;
+  }
+
+  bool Database::reload_multispam_config(const std::string &server_id) {
+    std::lock_guard<std::mutex> db_lock(db_mutex_);
+    if (!mysql_) return false;
+    std::string q = "SELECT server_id, enabled, action, threshold_count, "
+                    "time_window, delete_messages, whitelist FROM multispam_configs WHERE server_id = '" + escape_string(server_id) + "'";
+    if (mysql_query(mysql_, q.c_str()) == 0) {
+      MYSQL_RES *res = mysql_store_result(mysql_);
+      if (res) {
+        MYSQL_ROW row = mysql_fetch_row(res);
+        std::lock_guard<std::shared_mutex> cache_lock(multispam_cache_mutex_);
+        if (row) {
+          MultiSpamConfig cfg;
+          cfg.server_id = row[0] ? row[0] : "";
+          cfg.enabled = row[1] ? (std::stoi(row[1]) != 0) : false;
+          if (row[2]) cfg.action = row[2];
+          if (row[3]) cfg.threshold_count = std::stoi(row[3]);
+          if (row[4]) cfg.time_window = std::stoi(row[4]);
+          cfg.delete_messages = row[5] ? (std::stoi(row[5]) != 0) : true;
+          if (row[6]) {
+            try {
+              auto j = nlohmann::json::parse(row[6]);
+              if (j.is_array()) {
+                cfg.whitelist = j.get<std::vector<std::string>>();
+              }
+            } catch (...) {}
+          }
+          multispam_cache_[server_id] = cfg;
+        } else {
+          multispam_cache_.erase(server_id);
+        }
+        mysql_free_result(res);
+      }
+    }
+    return true;
+  }
+
+
   bool Database::add_ban_link(const std::string &guild_id, const std::string &target_guild_id) {
     std::lock_guard<std::mutex> db_lock(db_mutex_);
     if (!mysql_) return false;

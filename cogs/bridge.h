@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <nlohmann/json.hpp>
+#include <httplib.h>
 #include <iostream>
 #include "command_config.h"
 #include "logging.h"
@@ -307,7 +308,8 @@ public:
                                                      "• `.bridge remove`: Tears down the current channel's bridge.\n"
                                                      "• `.bridge check`: Shows active bridges for this channel.\n"
                                                      "• `.bridge info`: Shows origin metadata for a replied message.\n"
-                                                     "• `.bridge emojis`: Shows custom emojis sync status across platforms.");
+                                                     "• `.bridge emojis`: Shows custom emojis sync status across platforms.\n"
+                                                     "• `.bridge emojis sync`: Copies missing custom emojis from Discord/Fluxer to Stoat.");
                     return;
                 }
                 
@@ -488,68 +490,194 @@ public:
                     send_json(req);
                 }
                 else if (subcommand == "emojis") {
-                    std::string user_id = msg.author.id;
-                    std::string channel_id = msg.channel_id;
-                    {
-                        std::lock_guard<std::mutex> lock(pending_bridge_emojis_mutex_);
-                        pending_bridge_emojis_[user_id] = [&bot, channel_id](bool found, const nlohmann::json& emojis) {
-                            if (found) {
-                                std::string out = "🔗 **Bridged Emojis Sync Status**\n\n";
-                                std::string matches = "";
-                                std::string unmatched_discord = "";
-                                std::string unmatched_stoat = "";
-                                std::string unmatched_fluxer = "";
-                                int match_count = 0;
+                    bool is_sync = (args.size() > 1 && (args[1] == "sync" || args[1] == "copy"));
 
-                                for (const auto& item : emojis) {
-                                    std::string name = item["name"].get<std::string>();
-                                    bool has_disc = item.contains("discord") && !item["discord"].is_null();
-                                    bool has_stoat = item.contains("stoat") && !item["stoat"].is_null();
-                                    bool has_fluxer = item.contains("fluxer") && !item["fluxer"].is_null();
-
-                                    std::vector<std::string> platforms;
-                                    if (has_disc) platforms.push_back("Discord");
-                                    if (has_stoat) platforms.push_back("Revolt");
-                                    if (has_fluxer) platforms.push_back("Guilded");
-
-                                    if (platforms.size() >= 2) {
-                                        matches += "• **:" + name + ":** (";
-                                        for (size_t i = 0; i < platforms.size(); ++i) {
-                                            matches += platforms[i] + (i == platforms.size() - 1 ? "" : ", ");
-                                        }
-                                        matches += ")\n";
-                                        match_count++;
-                                    } else {
-                                        if (has_disc) unmatched_discord += "• **:" + name + ":**\n";
-                                        if (has_stoat) unmatched_stoat += "• **:" + name + ":**\n";
-                                        if (has_fluxer) unmatched_fluxer += "• **:" + name + ":**\n";
-                                    }
-                                }
-
-                                if (match_count > 0) {
-                                    out += "**Matched Emojis (" + std::to_string(match_count) + ")**:\n" + matches + "\n";
-                                } else {
-                                    out += "**Matched Emojis**: *none*\n\n";
-                                }
-
-                                out += "**Unmatched Emojis**:\n";
-                                out += "• **Discord**: " + (unmatched_discord.empty() ? "*none*" : "\n" + unmatched_discord) + "\n";
-                                out += "• **Revolt (Stoat)**: " + (unmatched_stoat.empty() ? "*none*" : "\n" + unmatched_stoat) + "\n";
-                                out += "• **Guilded (Fluxer)**: " + (unmatched_fluxer.empty() ? "*none*" : "\n" + unmatched_fluxer) + "\n";
-
-                                bot.send_message(channel_id, out);
-                            } else {
-                                bot.send_message(channel_id, "" + bronx::emj_no + " **Bridge Error:** This channel is not bridged.");
+                    if (is_sync) {
+                        bot.fetch_member(msg.server_id, msg.author.id, [this, &bot, msg](stoatpp::models::Member member, bool success) {
+                            if (!success) {
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Failed to verify your permissions.");
+                                return;
                             }
-                        };
-                    }
+                            if (!is_user_trusted_or_owner(bot, msg.server_id, msg.author.id, member)) {
+                                bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Permission error: you must be an administrator or trusted user to sync bridge emojis.");
+                                return;
+                            }
 
-                    nlohmann::json req = {
-                        {"type", "bridge_emojis_query"},
-                        {"user_id", user_id},
-                        {"channel_id", channel_id}
-                    };
-                    send_json(req);
+                            std::string user_id = msg.author.id;
+                            std::string channel_id = msg.channel_id;
+                            std::string server_id = msg.server_id;
+
+                            bot.send_message(channel_id, "🎨 **Syncing Bridged Emojis...**\nFetching missing custom emojis from bridged platforms...");
+
+                            {
+                                std::lock_guard<std::mutex> lock(pending_bridge_emojis_mutex_);
+                                pending_bridge_emojis_[user_id] = [this, &bot, channel_id, server_id](bool found, const nlohmann::json& emojis) {
+                                    if (!found) {
+                                        bot.send_message(channel_id, "" + bronx::emj_no + " **Bridge Error:** This channel is not bridged or no emojis were found.");
+                                        return;
+                                    }
+
+                                    std::thread([this, &bot, channel_id, server_id, emojis]() {
+                                        std::unordered_set<std::string> existing_names;
+                                        auto existing_res = bot.rest().get_server_emojis(server_id);
+                                        if (existing_res.success() && existing_res.body.is_array()) {
+                                            for (const auto& item : existing_res.body) {
+                                                if (item.contains("name") && item["name"].is_string()) {
+                                                    std::string n = item["name"].get<std::string>();
+                                                    std::transform(n.begin(), n.end(), n.begin(), ::tolower);
+                                                    existing_names.insert(n);
+                                                }
+                                            }
+                                        }
+
+                                        int added_count = 0;
+                                        int skipped_count = 0;
+                                        int failed_count = 0;
+                                        std::vector<std::string> added_names;
+
+                                        for (const auto& item : emojis) {
+                                            if (!item.contains("name") || !item["name"].is_string()) continue;
+                                            std::string raw_name = item["name"].get<std::string>();
+
+                                            std::string clean_name = "";
+                                            for (char c : raw_name) {
+                                                if (std::isalnum((unsigned char)c) || c == '_') clean_name += c;
+                                            }
+                                            if (clean_name.empty()) clean_name = "emoji";
+                                            if (clean_name.length() > 32) clean_name = clean_name.substr(0, 32);
+
+                                            std::string name_lower = clean_name;
+                                            std::transform(name_lower.begin(), name_lower.end(), name_lower.begin(), ::tolower);
+
+                                            bool has_stoat = item.contains("stoat") && !item["stoat"].is_null() && !item["stoat"].get<std::string>().empty();
+                                            if (has_stoat || existing_names.count(name_lower)) {
+                                                skipped_count++;
+                                                continue;
+                                            }
+
+                                            std::string img_url = "";
+                                            if (item.contains("url") && item["url"].is_string() && !item["url"].get<std::string>().empty()) {
+                                                img_url = item["url"].get<std::string>();
+                                            } else if (item.contains("discord") && item["discord"].is_string() && item["discord"].get<std::string>().rfind("http", 0) == 0) {
+                                                img_url = item["discord"].get<std::string>();
+                                            } else if (item.contains("fluxer") && item["fluxer"].is_string() && item["fluxer"].get<std::string>().rfind("http", 0) == 0) {
+                                                img_url = item["fluxer"].get<std::string>();
+                                            } else if (item.contains("discord_url") && item["discord_url"].is_string()) {
+                                                img_url = item["discord_url"].get<std::string>();
+                                            } else if (item.contains("fluxer_url") && item["fluxer_url"].is_string()) {
+                                                img_url = item["fluxer_url"].get<std::string>();
+                                            } else if (item.contains("image_url") && item["image_url"].is_string()) {
+                                                img_url = item["image_url"].get<std::string>();
+                                            }
+
+                                            if (img_url.empty()) {
+                                                failed_count++;
+                                                continue;
+                                            }
+
+                                            bool is_animated = (img_url.find(".gif") != std::string::npos);
+                                            bool uploaded_ok = download_and_create_emoji(bot, server_id, clean_name, img_url, is_animated);
+                                            if (uploaded_ok) {
+                                                added_count++;
+                                                added_names.push_back("`:" + clean_name + ":`");
+                                                existing_names.insert(name_lower);
+                                            } else {
+                                                failed_count++;
+                                            }
+                                        }
+
+                                        std::string out = "🎉 **Bridged Emojis Sync Complete!**\n\n";
+                                        out += "• **Added to Stoat**: " + std::to_string(added_count) + "\n";
+                                        out += "• **Already Synced/Present**: " + std::to_string(skipped_count) + "\n";
+                                        if (failed_count > 0) {
+                                            out += "• **Failed**: " + std::to_string(failed_count) + "\n";
+                                        }
+                                        if (!added_names.empty()) {
+                                            out += "\n**Newly Added Emojis:** ";
+                                            for (size_t i = 0; i < added_names.size(); ++i) {
+                                                out += added_names[i] + (i + 1 < added_names.size() ? ", " : "");
+                                            }
+                                        }
+
+                                        bot.send_message(channel_id, out);
+                                        send_emoji_registry();
+                                    }).detach();
+                                };
+                            }
+
+                            nlohmann::json req = {
+                                {"type", "bridge_emojis_sync_request"},
+                                {"user_id", user_id},
+                                {"channel_id", channel_id},
+                                {"server_id", server_id}
+                            };
+                            send_json(req);
+                        });
+                    } else {
+                        std::string user_id = msg.author.id;
+                        std::string channel_id = msg.channel_id;
+                        {
+                            std::lock_guard<std::mutex> lock(pending_bridge_emojis_mutex_);
+                            pending_bridge_emojis_[user_id] = [&bot, channel_id](bool found, const nlohmann::json& emojis) {
+                                if (found) {
+                                    std::string out = "🔗 **Bridged Emojis Sync Status**\n\n";
+                                    std::string matches = "";
+                                    std::string unmatched_discord = "";
+                                    std::string unmatched_stoat = "";
+                                    std::string unmatched_fluxer = "";
+                                    int match_count = 0;
+
+                                    for (const auto& item : emojis) {
+                                        std::string name = item["name"].get<std::string>();
+                                        bool has_disc = item.contains("discord") && !item["discord"].is_null();
+                                        bool has_stoat = item.contains("stoat") && !item["stoat"].is_null();
+                                        bool has_fluxer = item.contains("fluxer") && !item["fluxer"].is_null();
+
+                                        std::vector<std::string> platforms;
+                                        if (has_disc) platforms.push_back("Discord");
+                                        if (has_stoat) platforms.push_back("Revolt");
+                                        if (has_fluxer) platforms.push_back("Guilded");
+
+                                        if (platforms.size() >= 2) {
+                                            matches += "• **:" + name + ":** (";
+                                            for (size_t i = 0; i < platforms.size(); ++i) {
+                                                matches += platforms[i] + (i == platforms.size() - 1 ? "" : ", ");
+                                            }
+                                            matches += ")\n";
+                                            match_count++;
+                                        } else {
+                                            if (has_disc) unmatched_discord += "• **:" + name + ":**\n";
+                                            if (has_stoat) unmatched_stoat += "• **:" + name + ":**\n";
+                                            if (has_fluxer) unmatched_fluxer += "• **:" + name + ":**\n";
+                                        }
+                                    }
+
+                                    if (match_count > 0) {
+                                        out += "**Matched Emojis (" + std::to_string(match_count) + ")**:\n" + matches + "\n";
+                                    } else {
+                                        out += "**Matched Emojis**: *none*\n\n";
+                                    }
+
+                                    out += "**Unmatched Emojis**:\n";
+                                    out += "• **Discord**: " + (unmatched_discord.empty() ? "*none*" : "\n" + unmatched_discord) + "\n";
+                                    out += "• **Revolt (Stoat)**: " + (unmatched_stoat.empty() ? "*none*" : "\n" + unmatched_stoat) + "\n";
+                                    out += "• **Guilded (Fluxer)**: " + (unmatched_fluxer.empty() ? "*none*" : "\n" + unmatched_fluxer) + "\n\n";
+                                    out += "*Run `.bridge emojis sync` to copy missing custom emojis from Discord/Fluxer to Stoat.*";
+
+                                    bot.send_message(channel_id, out);
+                                } else {
+                                    bot.send_message(channel_id, "" + bronx::emj_no + " **Bridge Error:** This channel is not bridged.");
+                                }
+                            };
+                        }
+
+                        nlohmann::json req = {
+                            {"type", "bridge_emojis_query"},
+                            {"user_id", user_id},
+                            {"channel_id", channel_id}
+                        };
+                        send_json(req);
+                    }
                 }
             },
             "Utility"
@@ -1049,6 +1177,82 @@ private:
             reg["emojis"] = emojis_array;
             send_json(reg);
         }).detach();
+    }
+
+    bool download_and_create_emoji(stoatpp::cluster& bot, const std::string& server_id, const std::string& emoji_name, const std::string& img_url, bool is_animated) {
+        if (img_url.empty()) return false;
+
+        std::string host, path;
+        bool is_https = (img_url.rfind("https://", 0) == 0);
+        size_t prefix_len = is_https ? 8 : 7;
+        size_t path_pos = img_url.find('/', prefix_len);
+        if (path_pos == std::string::npos) {
+            host = img_url.substr(prefix_len);
+            path = "/";
+        } else {
+            host = img_url.substr(prefix_len, path_pos - prefix_len);
+            path = img_url.substr(path_pos);
+        }
+
+        std::string base_url = (is_https ? "https://" : "http://") + host;
+        httplib::Client cli(base_url);
+        cli.set_connection_timeout(std::chrono::milliseconds(5000));
+        cli.set_read_timeout(std::chrono::milliseconds(5000));
+        cli.set_follow_location(true);
+
+        auto download_res = cli.Get(path);
+        if (!download_res || download_res->status != 200) {
+            return false;
+        }
+
+        std::vector<uint8_t> data(download_res->body.begin(), download_res->body.end());
+        std::string mime_type = download_res->get_header_value("Content-Type");
+        if (mime_type.empty()) {
+            mime_type = is_animated ? "image/gif" : "image/png";
+        }
+
+        std::string ext = (mime_type == "image/gif") ? ".gif" : ".png";
+        std::string filename = emoji_name + ext;
+
+        httplib::Client upload_cli(bot.config().cdn_url);
+        upload_cli.set_connection_timeout(std::chrono::milliseconds(10000));
+        upload_cli.set_read_timeout(std::chrono::milliseconds(10000));
+        upload_cli.set_follow_location(true);
+
+        httplib::Headers upload_headers;
+        if (bot.config().token_type == stoatpp::TokenType::BOT) {
+            upload_headers.emplace("X-Bot-Token", bot.token());
+        } else {
+            upload_headers.emplace("X-Session-Token", bot.token());
+        }
+        for (const auto& [k, v] : bot.config().extra_headers) {
+            upload_headers.emplace(k, v);
+        }
+
+        std::string file_content(data.begin(), data.end());
+        httplib::MultipartFormDataItems upload_items = {
+            { "file", file_content, filename, mime_type }
+        };
+
+        auto upload_res = upload_cli.Post("/emojis", upload_headers, upload_items);
+        if (!upload_res || (upload_res->status != 200 && upload_res->status != 201)) {
+            return false;
+        }
+
+        nlohmann::json upload_json;
+        try {
+            upload_json = nlohmann::json::parse(upload_res->body);
+        } catch (...) {
+            return false;
+        }
+
+        if (!upload_json.contains("id") || !upload_json["id"].is_string()) {
+            return false;
+        }
+
+        std::string new_file_id = upload_json["id"].get<std::string>();
+        auto create_res = bot.rest().create_custom_emoji(emoji_name, new_file_id, server_id);
+        return create_res.success();
     }
 
     std::atomic<bool> running_;

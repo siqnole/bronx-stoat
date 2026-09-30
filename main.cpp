@@ -72,6 +72,7 @@ static std::string get_primary_host_ip() {
 #include "cogs/help.h"
 #include "cogs/history.h"
 #include "cogs/honeypot.h"
+#include "cogs/multispam.h"
 #include "cogs/lastfm.h"
 #include "cogs/leveling.h"
 #include "cogs/logging.h"
@@ -662,6 +663,7 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::RemindersModule>());
   bot.use(std::make_unique<bronx::cogs::AntiRaidModule>());
   bot.use(std::make_unique<bronx::cogs::HoneypotModule>());
+  bot.use(std::make_unique<bronx::cogs::MultiSpamModule>());
   bot.use(std::make_unique<bronx::cogs::AutoModule>());
   bot.use(std::make_unique<bronx::cogs::TicketsModule>());
   bot.use(std::make_unique<bronx::cogs::ApplicationsModule>());

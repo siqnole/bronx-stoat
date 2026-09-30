@@ -708,6 +708,24 @@ bool Database::init_tables() {
       return false;
     }
 
+    // Create Table multispam_configs
+    std::string create_multispam =
+        "CREATE TABLE IF NOT EXISTS multispam_configs ("
+        "  server_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+        "  enabled TINYINT(1) NOT NULL DEFAULT 0,"
+        "  action VARCHAR(100) NOT NULL DEFAULT 'timeout',"
+        "  threshold_count INT NOT NULL DEFAULT 2,"
+        "  time_window INT NOT NULL DEFAULT 60,"
+        "  delete_messages TINYINT(1) NOT NULL DEFAULT 1,"
+        "  whitelist JSON DEFAULT NULL"
+        ")";
+    if (mysql_query(mysql_, create_multispam.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'multispam_configs': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
+
     mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN "
                         "joins_action VARCHAR(100) NOT NULL DEFAULT 'none'");
     mysql_query(mysql_, "ALTER TABLE antiraid_configs MODIFY COLUMN "

@@ -33,6 +33,7 @@ public:
   using ActiveJail = ::bronx::ActiveJail;
   using AntiRaidConfig = ::bronx::AntiRaidConfig;
   using HoneypotConfig = ::bronx::HoneypotConfig;
+  using MultiSpamConfig = ::bronx::MultiSpamConfig;
   using ApplicationPanel = ::bronx::ApplicationPanel;
   using ApplicationSubmission = ::bronx::ApplicationSubmission;
   using AutoreactConfig = ::bronx::AutoreactConfig;
@@ -449,6 +450,13 @@ public:
   get_honeypot_config(const std::string &server_id);
 
   bool save_honeypot_config(const HoneypotConfig &hp);
+
+  std::optional<MultiSpamConfig>
+  get_multispam_config(const std::string &server_id);
+
+  bool save_multispam_config(const MultiSpamConfig &cfg);
+
+  bool reload_multispam_config(const std::string &server_id);
 
   bool save_logging_channel(const std::string &server_id,
                             const std::string &event_type,
@@ -1054,6 +1062,9 @@ private:
   // Server ID -> HoneypotConfig
   std::unordered_map<std::string, HoneypotConfig> hp_cache_;
   std::shared_mutex hp_cache_mutex_;
+
+  std::unordered_map<std::string, MultiSpamConfig> multispam_cache_;
+  std::shared_mutex multispam_cache_mutex_;
 
   // Server ID -> {Event Type -> Channel ID}
   std::unordered_map<std::string, std::unordered_map<std::string, std::string>>

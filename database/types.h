@@ -64,6 +64,17 @@ struct HoneypotConfig {
     bool enabled = false;
 };
 
+struct MultiSpamConfig {
+    std::string server_id;
+    bool enabled = false;
+    std::string action = "timeout"; // timeout, ban, kick, warn, delete, jail, log, none
+    int threshold_count = 2;
+    int time_window = 60; // seconds, 0 = unlimited
+    bool delete_messages = true;
+    std::vector<std::string> whitelist; // whitelisted words/phrases ignored during spam detection
+};
+
+
 
 struct ApplicationPanel {
     std::string server_id;

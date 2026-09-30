@@ -406,7 +406,8 @@ connected:
     const char *tables[] = {
         "prefixes",          "rr_messages",       "rr_rules",
         "server_aliases",    "user_aliases",      "guild_leveling_config",
-        "honeypot_configs",
+        "honeypot_configs",   "multispam_configs",
+
         "level_roles",       "xp_blacklist",      "user_xp",
         "counting_config",   "masquerade_config", "user_masquerade",
         "tuppers",           "tupper_proxies",    "starboards",

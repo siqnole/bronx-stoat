@@ -342,6 +342,38 @@ bool Database::init_cache() {
       }
     }
 
+    // Load multispam_configs
+    std::string select_ms =
+        "SELECT server_id, enabled, action, threshold_count, time_window, "
+        "delete_messages, whitelist FROM multispam_configs";
+    if (mysql_query(mysql_, select_ms.c_str()) == 0) {
+      MYSQL_RES *ms_res = mysql_store_result(mysql_);
+      if (ms_res) {
+        MYSQL_ROW row;
+        std::lock_guard<std::shared_mutex> ms_lock(multispam_cache_mutex_);
+        while ((row = mysql_fetch_row(ms_res))) {
+          MultiSpamConfig cfg;
+          cfg.server_id = row[0] ? row[0] : "";
+          cfg.enabled = row[1] ? (std::stoi(row[1]) != 0) : false;
+          if (row[2]) cfg.action = row[2];
+          if (row[3]) cfg.threshold_count = std::stoi(row[3]);
+          if (row[4]) cfg.time_window = std::stoi(row[4]);
+          cfg.delete_messages = row[5] ? (std::stoi(row[5]) != 0) : true;
+          if (row[6]) {
+            try {
+              auto j = nlohmann::json::parse(row[6]);
+              if (j.is_array()) {
+                cfg.whitelist = j.get<std::vector<std::string>>();
+              }
+            } catch (...) {}
+          }
+          multispam_cache_[cfg.server_id] = cfg;
+        }
+        mysql_free_result(ms_res);
+      }
+    }
+
+
     // Load recurring_messages
     std::string select_rm =
         "SELECT id, server_id, channel_id, name, message_type, content, "

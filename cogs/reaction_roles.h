@@ -49,7 +49,7 @@ inline std::string display_emoji(const std::string& raw_emoji) {
     return raw_emoji;
 }
 
-inline std::string format_rr_description(const std::vector<bronx::Database::RRRule>& rules) {
+inline std::string format_rr_description(const std::vector<bronx::Database::RRRule>& rules, stoatpp::cluster* bot = nullptr, const std::string& server_id = "") {
     if (rules.empty()) return "";
     
     // Group rules by emoji while preserving the order of first appearance
@@ -67,16 +67,34 @@ inline std::string format_rr_description(const std::vector<bronx::Database::RRRu
         emoji_roles[rule.emoji_id].push_back({rule.role_id, rule.rule_type});
     }
 
+    std::unordered_map<std::string, std::string> role_names;
+    if (bot && !server_id.empty()) {
+        auto server_opt = bot->get_server(server_id);
+        if (server_opt) {
+            for (const auto& r : server_opt->roles) {
+                role_names[r.id] = r.name;
+            }
+        }
+    }
+
     std::string desc;
     for (const auto& emoji : ordered_emojis) {
         desc += "• " + display_emoji(emoji) + " ➔ ";
         const auto& details = emoji_roles[emoji];
         for (size_t i = 0; i < details.size(); ++i) {
             if (i > 0) desc += " ";
-            if (details[i].rule_type == "remove") {
-                desc += "[Remove] <%" + details[i].role_id + ">";
+            std::string role_disp;
+            auto it = role_names.find(details[i].role_id);
+            if (it != role_names.end()) {
+                role_disp = "**" + it->second + "**";
             } else {
-                desc += "<%" + details[i].role_id + ">";
+                role_disp = "**" + details[i].role_id + "**";
+            }
+
+            if (details[i].rule_type == "remove") {
+                desc += "[Remove] " + role_disp;
+            } else {
+                desc += role_disp;
             }
         }
         desc += "\n";
@@ -229,7 +247,7 @@ inline std::vector<EmojiRolePair> parse_emoji_role_pairs(const std::string& text
 }
 
 
-inline stoatpp::models::MessagePayload build_rr_payload(const bronx::Database::RRMessage& rr_msg) {
+inline stoatpp::models::MessagePayload build_rr_payload(const bronx::Database::RRMessage& rr_msg, stoatpp::cluster* bot = nullptr) {
     stoatpp::models::MessagePayload payload;
     nlohmann::json embed = nlohmann::json::object();
     
@@ -257,7 +275,7 @@ inline stoatpp::models::MessagePayload build_rr_payload(const bronx::Database::R
     }
     
     if (!rr_msg.rules.empty()) {
-        desc += format_rr_description(rr_msg.rules);
+        desc += format_rr_description(rr_msg.rules, bot, rr_msg.server_id);
         std::vector<std::string> rx;
         for (const auto& rule : rr_msg.rules) {
             rx.push_back(rule.emoji_id);
@@ -365,8 +383,9 @@ public:
                     }
 
                     bronx::Database::RRMessage tmp_msg;
+                    tmp_msg.server_id = msg.server_id;
                     tmp_msg.modal_name = modalname;
-                    stoatpp::models::MessagePayload payload = build_rr_payload(tmp_msg);
+                    stoatpp::models::MessagePayload payload = build_rr_payload(tmp_msg, &bot);
 
                     bot.send_message(msg.channel_id, payload, [modalname, msg](stoatpp::models::Message res, bool ok) {
                         if (ok) {
@@ -419,16 +438,18 @@ public:
                         }
                     }
 
-                    stoatpp::models::MessagePayload payload = build_rr_payload(*rr_msg_opt);
+                    stoatpp::models::MessagePayload payload = build_rr_payload(*rr_msg_opt, &bot);
 
                     bot.send_message(target_channel, payload, [modalname, msg, target_channel, rr_msg_opt, &bot](stoatpp::models::Message res, bool ok) {
                         if (ok) {
                             g_db->add_rr_message(res.id, target_channel, msg.server_id, modalname);
                             std::cout << "[bronx rr] sent additional reaction role modal: " << modalname << " (message: " << res.id << ")\n";
                             
-                            // Copy rules to database and cache
+                            // Copy rules to database, cache, and add reactions
                             for (const auto& rule : rr_msg_opt->rules) {
-                                g_db->add_rr_rule(res.id, rule.emoji_id, rule.role_id);
+                                g_db->add_rr_rule(res.id, rule.emoji_id, rule.role_id, rule.rule_type);
+                                bot.react_to_message(target_channel, res.id, rule.emoji_id);
+                                std::this_thread::sleep_for(std::chrono::milliseconds(100));
                             }
                         }
                     });
@@ -654,7 +675,7 @@ public:
 
                                         auto updated_rr = g_db->get_rr_message(target_msg_id);
                                         if (updated_rr) {
-                                            stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                            stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr, &bot);
 
                                             bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
                                         }
@@ -783,7 +804,7 @@ public:
                                 updated = true;
                                 auto updated_rr = g_db->get_rr_message(target);
                                 if (updated_rr) {
-                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr, &bot);
                                     bot.edit_message(updated_rr->channel_id, target, payload);
                                 }
                             }
@@ -795,7 +816,7 @@ public:
                                 updated = true;
                                 auto updated_rr = g_db->get_rr_message(msg_id);
                                 if (updated_rr) {
-                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr, &bot);
                                     bot.edit_message(updated_rr->channel_id, msg_id, payload);
                                 }
                             }
@@ -1020,7 +1041,7 @@ public:
                                     if (res.success()) {
                                         auto m = stoatpp::models::Message::from_json(res.body);
                                         if (m.author == bot.current_user().id) {
-                                            stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                            stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr, &bot);
                                             
                                             bot.edit_message(updated_rr->channel_id, target_msg_id, payload, [](auto, bool){});
                                         }
@@ -1057,7 +1078,7 @@ public:
                             g_db->update_rr_embed_json(target_msg_id, json_str);
                             auto updated_rr = g_db->get_rr_message(target_msg_id);
                             if (updated_rr) {
-                                stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr, &bot);
                                 bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
                             }
                         }
@@ -1248,7 +1269,7 @@ public:
 
                                                 auto updated_rr = g_db->get_rr_message(target_msg_id);
                                                 if (updated_rr) {
-                                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                                    stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr, &bot);
                                                     bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
                                                 }
                                             }
@@ -1317,7 +1338,7 @@ public:
                         if (updated) {
                             auto updated_rr = g_db->get_rr_message(target_msg_id);
                             if (updated_rr) {
-                                stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr);
+                                stoatpp::models::MessagePayload payload = build_rr_payload(*updated_rr, &bot);
 
                                 bot.edit_message(updated_rr->channel_id, target_msg_id, payload);
                             }
@@ -1621,11 +1642,12 @@ public:
                         if (!parse_modal_name.empty()) {
                             // Build the modal message payload
                             bronx::Database::RRMessage tmp_rr;
+                            tmp_rr.server_id = msg.server_id;
                             tmp_rr.modal_name = parse_modal_name;
                             for (const auto& r : rules) {
                                 tmp_rr.rules.push_back({r.emoji, r.role_id});
                             }
-                            stoatpp::models::MessagePayload modal_payload = build_rr_payload(tmp_rr);
+                            stoatpp::models::MessagePayload modal_payload = build_rr_payload(tmp_rr, &bot);
 
                             bot.send_message(msg.channel_id, modal_payload, [parse_modal_name, rules, msg, &bot](stoatpp::models::Message res, bool ok) {
                                 if (!ok) {
@@ -1842,7 +1864,7 @@ public:
                             if (res.success()) {
                                 auto m = stoatpp::models::Message::from_json(res.body);
                                 if (m.author == bot.current_user().id) {
-                                    stoatpp::models::MessagePayload target_payload = build_rr_payload(*updated_rr);
+                                    stoatpp::models::MessagePayload target_payload = build_rr_payload(*updated_rr, &bot);
                                     bot.edit_message(updated_rr->channel_id, scan.target_message_id, target_payload);
                                 }
                             }

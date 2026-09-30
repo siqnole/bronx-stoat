@@ -125,7 +125,7 @@ namespace bronx {
       std::lock_guard<std::shared_mutex> cache_lock(rr_cache_mutex_);
       auto it = rr_cache_.find(message_id);
       if (it != rr_cache_.end()) {
-        bool found;
+        bool found = false;
         for (auto &rule : it->second.rules) {
           if (rule.emoji_id == emoji_id && rule.role_id == role_id) {
             rule.rule_type = rule_type;
