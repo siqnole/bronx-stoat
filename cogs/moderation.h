@@ -861,12 +861,8 @@ public:
                         bot.send_message(msg.channel_id, "usage: `.jail role <%role|role_id>`");
                         return;
                     }
-                    std::string role_query = args[1];
-                    if (role_query.rfind("<%", 0) == 0 && role_query.back() == '>') {
-                        role_query = role_query.substr(2, role_query.size() - 3);
-                    } else if (role_query.rfind("<@&", 0) == 0 && role_query.back() == '>') {
-                        role_query = role_query.substr(3, role_query.size() - 4);
-                    }
+                    std::string role_query = helpers::clean_role_id(args[1]);
+                    if (role_query.empty()) role_query = args[1];
 
                     auto server_opt = bot.get_server(msg.server_id);
                     if (!server_opt) {
@@ -899,9 +895,10 @@ public:
                         bot.send_message(msg.channel_id, "usage: `.jail channel <#channel|channel_id>`");
                         return;
                     }
-                    std::string chan_query = args[1];
-                    if (chan_query.rfind("<#", 0) == 0 && chan_query.back() == '>') {
-                        chan_query = chan_query.substr(2, chan_query.size() - 3);
+                    std::string chan_query = helpers::clean_channel_id(args[1]);
+                    if (chan_query.empty()) {
+                        bot.send_message(msg.channel_id, "" + bronx::emj_warning + " Invalid channel provided.");
+                        return;
                     }
 
                     auto cfg = g_db->get_jail_config(msg.server_id).value_or(Database::JailConfig{msg.server_id, "", ""});
@@ -1772,9 +1769,9 @@ public:
 
                 std::string target_channel = msg.channel_id;
                 if (args.size() > 1) {
-                    target_channel = args[1];
-                    if (target_channel.rfind("<#", 0) == 0 && target_channel.back() == '>') {
-                        target_channel = target_channel.substr(2, target_channel.size() - 3);
+                    std::string cleaned = helpers::clean_channel_id(args[1]);
+                    if (!cleaned.empty()) {
+                        target_channel = cleaned;
                     }
                 }
 

@@ -351,18 +351,48 @@ inline std::string get_future_iso_timestamp(int offset_seconds) {
     return out_str;
 }
 
+inline std::string clean_channel_id(const std::string& input) {
+    return stoatpp::utils::extract_ulid(input);
+}
+
+inline std::string clean_user_id(const std::string& input) {
+    return stoatpp::utils::extract_ulid(input);
+}
+
+inline std::string clean_role_id(const std::string& input) {
+    return stoatpp::utils::extract_ulid(input);
+}
+
 inline void resolve_user(stoatpp::cluster& bot, const std::string& server_id, const std::string& query, std::function<void(stoatpp::models::User, stoatpp::models::Member, bool)> callback) {
     if (query.empty()) {
         callback({}, {}, false);
         return;
     }
 
-    std::string target_id = query;
+    std::string target_id = clean_user_id(query);
+    if (!target_id.empty()) {
+        bot.fetch_user(target_id, [&bot, server_id, callback](stoatpp::models::User user, bool success) {
+            if (!success) {
+                callback({}, {}, false);
+                return;
+            }
+            if (!server_id.empty()) {
+                bot.fetch_member(server_id, user.id, [user, callback](stoatpp::models::Member member, bool success_mem) {
+                    callback(user, member, true);
+                });
+            } else {
+                callback(user, {}, true);
+            }
+        });
+        return;
+    }
+
+    target_id = query;
     if (target_id.rfind("<@", 0) == 0 && target_id.back() == '>') {
         target_id = target_id.substr(2, target_id.size() - 3);
     }
 
-    if (target_id.size() == 26 && target_id.find_first_not_of("0123456789ABCDEFGHJKMNPQRSTVWXYZabcdefghjkmnpqrstvwxyz") == std::string::npos) {
+    if (target_id.size() == 26 && stoatpp::utils::is_valid_ulid(target_id)) {
         bot.fetch_user(target_id, [&bot, server_id, callback](stoatpp::models::User user, bool success) {
             if (!success) {
                 callback({}, {}, false);
@@ -475,25 +505,47 @@ inline void resolve_user(stoatpp::cluster& bot, const std::string& server_id, co
     }).detach();
 }
 
+inline bool is_valid_image_file(const std::string& path) {
+    if (!std::filesystem::exists(path) || std::filesystem::file_size(path) < 8) return false;
+    std::ifstream file(path, std::ios::binary);
+    if (!file) return false;
+    unsigned char header[12] = {0};
+    file.read(reinterpret_cast<char*>(header), 12);
+    // JPEG
+    if (header[0] == 0xFF && header[1] == 0xD8 && header[2] == 0xFF) return true;
+    // PNG
+    if (header[0] == 0x89 && header[1] == 'P' && header[2] == 'N' && header[3] == 'G') return true;
+    // GIF
+    if (header[0] == 'G' && header[1] == 'I' && header[2] == 'F' && header[3] == '8') return true;
+    // WebP
+    if (header[0] == 'R' && header[1] == 'I' && header[2] == 'F' && header[3] == 'F' &&
+        header[8] == 'W' && header[9] == 'E' && header[10] == 'B' && header[11] == 'P') return true;
+    return false;
+}
+
 inline std::string upload_avatar(stoatpp::cluster& bot, const std::string& input_url) {
     if (input_url.empty()) return "";
+    if (input_url.rfind("http://", 0) != 0 && input_url.rfind("https://", 0) != 0) {
+        return "";
+    }
     if (input_url.rfind(bot.config().autumn_url, 0) == 0) {
         return input_url;
     }
     try {
         std::string file_id = bot.rest().upload_from_url(input_url);
-        if (!file_id.empty()) {
+        if (!file_id.empty() && stoatpp::utils::is_valid_ulid(file_id)) {
             return bot.config().autumn_url + "/attachments/" + file_id;
         }
-    } catch (...) {
-        // Fall back to original url if download/upload fails
-    }
-    return input_url;
+    } catch (...) {}
+    return "";
 }
 
 inline std::optional<std::string> extract_file_id(const std::optional<std::string>& avatar_str) {
     if (!avatar_str) return std::nullopt;
     std::string s = *avatar_str;
+    if (stoatpp::utils::is_valid_ulid(s)) {
+        return s;
+    }
     if (s.rfind("http://", 0) == 0 || s.rfind("https://", 0) == 0) {
         size_t q = s.find_first_of("?#");
         if (q != std::string::npos) s = s.substr(0, q);
@@ -510,18 +562,13 @@ inline std::optional<std::string> extract_file_id(const std::optional<std::strin
             if (parts.size() >= 2 && file_id.find('.') != std::string::npos) {
                 file_id = parts[parts.size() - 2];
             }
-            if (!file_id.empty() && file_id.find('.') == std::string::npos &&
-                file_id != "attachments" && file_id != "avatars" &&
-                file_id != "backgrounds" && file_id != "icons") {
+            if (stoatpp::utils::is_valid_ulid(file_id)) {
                 return file_id;
             }
         }
         return std::nullopt;
     }
-    if (s.find('.') != std::string::npos) {
-        return std::nullopt;
-    }
-    return s;
+    return std::nullopt;
 }
 
 inline std::string get_raw_args(const stoatpp::events::Message& msg, const std::string& command_name) {

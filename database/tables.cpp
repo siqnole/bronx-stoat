@@ -1344,6 +1344,20 @@ bool Database::init_tables() {
                         "  max_streak INT NOT NULL DEFAULT 0"
                         ")");
 
+    // Create Table server_sync_pairs
+    mysql_query(mysql_, "CREATE TABLE IF NOT EXISTS server_sync_pairs ("
+                        "  id INT AUTO_INCREMENT PRIMARY KEY,"
+                        "  local_server_id VARCHAR(64) NOT NULL,"
+                        "  local_channel_id VARCHAR(64) NOT NULL,"
+                        "  remote_platform VARCHAR(32) NOT NULL,"
+                        "  remote_server_id VARCHAR(64) NOT NULL,"
+                        "  remote_channel_id VARCHAR(64) NOT NULL,"
+                        "  created_at BIGINT UNSIGNED NOT NULL DEFAULT 0,"
+                        "  UNIQUE KEY uq_local_chan_platform"
+                        "    (local_server_id, local_channel_id, remote_platform),"
+                        "  INDEX idx_ssp_server (local_server_id)"
+                        ")");
+
     return true;
 }
 

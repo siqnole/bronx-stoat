@@ -159,6 +159,13 @@ static std::unordered_set<std::string> g_handling_channels;
 static std::atomic<bool> g_verbose_logging{false};
 static std::atomic<bool> g_bot_ready{false};
 
+// Rolling version stamp injected into .env at build time by restart.sh.
+// Format: YYYYMMDD.HHMM.<git-shortsha>  (e.g. "20261006.1205.a3f9c12")
+static std::string g_bot_version = "dev";
+
+// Process start time (set once at top of main, used by .uptime)
+static std::chrono::steady_clock::time_point g_start_time;
+
 bool bot_has_masquerade_permission(stoatpp::cluster &bot,
                                    const std::string &channel_id) {
   auto chan_opt = bot.get_channel(channel_id);
@@ -382,6 +389,13 @@ int main(int argc, char *argv[]) {
   load_env();
   bronx::load_emojis();
   bronx::i18n::init();
+
+  // Record start time and read version stamp
+  g_start_time = std::chrono::steady_clock::now();
+  if (const char* ver_env = std::getenv("BOT_VERSION")) {
+    if (std::string(ver_env) != "") g_bot_version = ver_env;
+  }
+  std::cout << "[bronx] version: " << g_bot_version << "\n";
 
   bool verbose = false;
   bool staging = false;
@@ -692,6 +706,69 @@ int main(int argc, char *argv[]) {
   bot.use(std::make_unique<bronx::cogs::ImageBoardModule>());
   bot.use(std::make_unique<bronx::cogs::CustomCmdsModule>());
 
+
+  // ── Built-in: ping ──────────────────────────────────────────────────────────
+  bot.register_command({
+    "ping",
+    {"pong", "latency"},
+    "Check the bot's response time and version.",
+    "",
+    {},
+    [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>&) {
+      auto t0 = std::chrono::steady_clock::now();
+      bot.send_message(msg.channel_id, "🏓 pinging...",
+        [&bot, msg, t0](stoatpp::models::Message sent, bool ok) {
+          if (!ok) return;
+          auto t1 = std::chrono::steady_clock::now();
+          int64_t rtt_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+
+          stoatpp::models::MessagePayload payload;
+          nlohmann::json embed = nlohmann::json::object();
+          embed["title"] = "🏓 Pong!";
+          embed["colour"] = "#a78bfa";
+          embed["description"] =
+            "• **Latency:** `" + std::to_string(rtt_ms) + " ms`\n"
+            "• **Version:** `" + g_bot_version + "`";
+          payload.embeds.push_back(embed);
+          bot.edit_message(msg.channel_id, sent.id, payload);
+        });
+    },
+    "Utility"
+  });
+
+  // ── Built-in: uptime ────────────────────────────────────────────────────────
+  bot.register_command({
+    "uptime",
+    {},
+    "Show how long the bot has been running and its version.",
+    "",
+    {},
+    [](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>&) {
+      auto now = std::chrono::steady_clock::now();
+      int64_t total_secs = std::chrono::duration_cast<std::chrono::seconds>(now - g_start_time).count();
+      int64_t days  = total_secs / 86400;
+      int64_t hours = (total_secs % 86400) / 3600;
+      int64_t mins  = (total_secs % 3600)  / 60;
+      int64_t secs  = total_secs % 60;
+
+      std::string uptime_str;
+      if (days)  uptime_str += std::to_string(days)  + "d ";
+      if (hours) uptime_str += std::to_string(hours) + "h ";
+      if (mins)  uptime_str += std::to_string(mins)  + "m ";
+      uptime_str += std::to_string(secs) + "s";
+
+      stoatpp::models::MessagePayload payload;
+      nlohmann::json embed = nlohmann::json::object();
+      embed["title"] = "⏱️ Uptime";
+      embed["colour"] = "#34d399";
+      embed["description"] =
+        "• **Running for:** `" + uptime_str + "`\n"
+        "• **Version:** `" + g_bot_version + "`";
+      payload.embeds.push_back(embed);
+      bot.send_message(msg.channel_id, payload);
+    },
+    "Utility"
+  });
 
   bot.on_ready([&bot, staging](const stoatpp::events::Ready &e) {
     g_bot_ready = true;

@@ -724,4 +724,14 @@ struct XPBlacklistEntry {
     std::string added_by;
 };
 
+struct ServerSyncPair {
+    int id = 0;
+    std::string local_server_id;
+    std::string local_channel_id;
+    std::string remote_platform;    // "fluxer", "discord"
+    std::string remote_server_id;
+    std::string remote_channel_id;
+    uint64_t created_at = 0;
+};
+
 } // namespace bronx

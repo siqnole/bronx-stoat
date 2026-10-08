@@ -485,7 +485,7 @@ private:
                     // Use shell curl to download the file
                     std::string dl_cmd = "curl -k -L -s -o " + helpers::shell_escape(raw_avatar_path) + " " + helpers::shell_escape(avatar_url);
                     int dl_status = std::system(dl_cmd.c_str());
-                    if (dl_status == 0 && std::filesystem::exists(raw_avatar_path) && std::filesystem::file_size(raw_avatar_path) > 0) {
+                    if (dl_status == 0 && helpers::is_valid_image_file(raw_avatar_path)) {
                         // Use Leptonica to load the raw image and write it as PNG format
                         Pix* pix = pixRead(raw_avatar_path.c_str());
                         if (pix) {
@@ -520,7 +520,7 @@ private:
                     // Use shell curl to download the file
                     std::string dl_cmd = "curl -k -L -s -o " + helpers::shell_escape(raw_bg_path) + " " + helpers::shell_escape(bg_url);
                     int dl_status = std::system(dl_cmd.c_str());
-                    if (dl_status == 0 && std::filesystem::exists(raw_bg_path) && std::filesystem::file_size(raw_bg_path) > 0) {
+                    if (dl_status == 0 && helpers::is_valid_image_file(raw_bg_path)) {
                         Pix* pix = pixRead(raw_bg_path.c_str());
                         if (pix) {
                             int write_status = pixWrite(converted_bg_png.c_str(), pix, IFF_PNG);

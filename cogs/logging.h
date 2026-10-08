@@ -18,6 +18,57 @@ inline std::string truncate_str(const std::string &str, size_t max_len = 1900) {
   return str.substr(0, max_len - 3) + "...";
 }
 
+inline void format_edited_diff(const std::string &old_text,
+                               const std::string &new_text,
+                               std::string &out_before,
+                               std::string &out_after,
+                               size_t max_full_len = 120,
+                               size_t context_padding = 25) {
+  if (old_text.empty() || new_text.empty() ||
+      (old_text.size() <= max_full_len && new_text.size() <= max_full_len)) {
+    out_before = truncate_str(old_text, 800);
+    out_after  = truncate_str(new_text, 800);
+    return;
+  }
+
+  size_t prefix_len = 0;
+  size_t min_len = std::min(old_text.size(), new_text.size());
+  while (prefix_len < min_len && old_text[prefix_len] == new_text[prefix_len]) {
+    prefix_len++;
+  }
+
+  size_t suffix_len = 0;
+  while (suffix_len < (min_len - prefix_len) &&
+         old_text[old_text.size() - 1 - suffix_len] == new_text[new_text.size() - 1 - suffix_len]) {
+    suffix_len++;
+  }
+
+  size_t start_idx = (prefix_len > context_padding) ? (prefix_len - context_padding) : 0;
+  size_t old_end_idx = old_text.size() - ((suffix_len > context_padding) ? (suffix_len - context_padding) : 0);
+  if (old_end_idx < start_idx) old_end_idx = old_text.size();
+
+  size_t new_end_idx = new_text.size() - ((suffix_len > context_padding) ? (suffix_len - context_padding) : 0);
+  if (new_end_idx < start_idx) new_end_idx = new_text.size();
+
+  std::string old_snippet = old_text.substr(start_idx, old_end_idx - start_idx);
+  std::string new_snippet = new_text.substr(start_idx, new_end_idx - start_idx);
+
+  if (start_idx > 0) {
+    old_snippet = "..." + old_snippet;
+    new_snippet = "..." + new_snippet;
+  }
+
+  if (old_end_idx < old_text.size()) {
+    old_snippet += "...";
+  }
+  if (new_end_idx < new_text.size()) {
+    new_snippet += "...";
+  }
+
+  out_before = truncate_str(old_snippet, 800);
+  out_after  = truncate_str(new_snippet, 800);
+}
+
 inline std::string format_log_placeholders(
     std::string text,
     const std::unordered_map<std::string, std::string> &placeholders) {
@@ -1490,8 +1541,9 @@ public:
         std::string author_id = cached_opt ? cached_opt->author.id : "";
         std::string username = cached_opt ? cached_opt->author.username : "";
 
-        std::string trunc_old = truncate_str(old_content, 800);
-        std::string trunc_new = truncate_str(new_content, 800);
+        std::string trunc_old;
+        std::string trunc_new;
+        format_edited_diff(old_content, new_content, trunc_old, trunc_new);
 
         std::unordered_map<std::string, std::string> placeholders = {
             {"author", "<@" + author_id + ">"},

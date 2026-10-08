@@ -97,6 +97,7 @@ public:
   using WelcomeLeaveConfig = ::bronx::WelcomeLeaveConfig;
   using WordFilterGroup = ::bronx::WordFilterGroup;
   using WordFilterWhitelist = ::bronx::WordFilterWhitelist;
+  using ServerSyncPair = ::bronx::ServerSyncPair;
   using XPBlacklistEntry = ::bronx::XPBlacklistEntry;
 
   bool init(const std::string &host, const std::string &user,
@@ -1030,6 +1031,21 @@ public:
   std::vector<std::string> get_linked_ban_servers(const std::string &guild_id);
   std::vector<std::string> get_pending_ban_links(const std::string &guild_id);
   std::vector<std::string> get_incoming_ban_links(const std::string &guild_id);
+
+  // Server sync pairs
+  void save_server_sync_pairs(const std::string &local_server_id,
+                              const std::string &remote_platform,
+                              const std::vector<ServerSyncPair> &pairs);
+
+  std::vector<ServerSyncPair> get_server_sync_pairs(
+      const std::string &local_server_id);
+
+  std::optional<ServerSyncPair> get_server_sync_pair(
+      const std::string &local_channel_id,
+      const std::string &remote_platform);
+
+  void remove_server_sync_pairs(const std::string &local_server_id,
+                                const std::string &remote_platform);
 
 private:
   MYSQL *mysql_ = nullptr;

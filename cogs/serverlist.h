@@ -27,6 +27,60 @@ public:
         return "01KYBC5KZG865D8BNYA2CTW7XS";
     }
 
+    // Clamp a string to at most `max_len` bytes, appending "…" if truncated.
+    static std::string trunc(const std::string& s, size_t max_len = 1000) {
+        if (s.size() <= max_len) return s;
+        // Walk back from max_len to avoid splitting a UTF-8 multibyte sequence.
+        size_t cut = max_len;
+        while (cut > 0 && (s[cut] & 0xC0) == 0x80) --cut;
+        return s.substr(0, cut) + "\u2026";
+    }
+
+    // Resolve a user-supplied colour string to a valid Revolt hex colour.
+    // Returns an empty string if the input cannot be resolved to a valid colour
+    // (caller should skip setting the field).
+    static std::string resolve_colour(const std::string& raw) {
+        if (raw.empty()) return "";
+        std::string c = raw;
+        std::transform(c.begin(), c.end(), c.begin(), ::tolower);
+
+        // Named colours
+        static const std::unordered_map<std::string, std::string> named = {
+            {"random",  ""},           // handled separately below
+            {"red",     "#ef4444"},
+            {"orange",  "#f97316"},
+            {"yellow",  "#f59e0b"},
+            {"green",   "#10b981"},
+            {"teal",    "#14b8a6"},
+            {"cyan",    "#06b6d4"},
+            {"blue",    "#3b82f6"},
+            {"indigo",  "#6366f1"},
+            {"purple",  "#8b5cf6"},
+            {"pink",    "#ec4899"},
+            {"white",   "#ffffff"},
+            {"black",   "#000000"},
+            {"grey",    "#6b7280"},
+            {"gray",    "#6b7280"},
+        };
+        if (c == "random") {
+            static const std::vector<std::string> pool = {
+                "#a78bfa", "#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#f97316", "#ec4899"
+            };
+            return pool[static_cast<size_t>(std::rand()) % pool.size()];
+        }
+        auto it = named.find(c);
+        if (it != named.end()) return it->second;
+
+        // Raw hex: strip leading '#' for validation, then re-add it.
+        std::string hex = (c.rfind('#', 0) == 0) ? c.substr(1) : c;
+        if ((hex.size() == 6 || hex.size() == 8) &&
+            hex.find_first_not_of("0123456789abcdef") == std::string::npos) {
+            return "#" + hex;
+        }
+        // Not a valid colour — return empty so callers skip the field.
+        return "";
+    }
+
     void register_handlers(stoatpp::cluster& bot) override {
         bot.register_command({
             "list",
@@ -197,14 +251,14 @@ public:
 
                             stoatpp::models::MessagePayload staff_payload;
                             nlohmann::json embed = nlohmann::json::object();
-                            embed["title"] = "📥 New Server Listing Submission";
+                            embed["title"] = trunc("📥 New Server Listing Submission: " + listing.name, 128);
                             embed["colour"] = "#fdcb6e";
-                            std::string desc = "• **Server Name:** " + listing.name + "\n"
+                            std::string desc = "• **Server Name:** " + trunc(listing.name, 100) + "\n"
                                                "• **Server ID:** `" + listing.server_id + "`\n"
                                                "• **Mode:** `" + listing.mode + "`\n"
-                                               "• **Tags:** `" + listing.tags + "`\n"
+                                               "• **Tags:** `" + trunc(listing.tags, 200) + "`\n"
                                                "• **Invite:** [Join](" + listing.invite_url + ")\n"
-                                               "• **Description:** " + listing.description + "\n\n"
+                                               "• **Description:** " + trunc(listing.description, 500) + "\n\n"
                                                "To approve: `.list approve " + listing.server_id + "`\n"
                                                "To deny: `.list deny " + listing.server_id + " [reason]`";
                             embed["description"] = desc;
@@ -321,28 +375,8 @@ public:
                                         if (!title.empty()) embed["title"] = title;
                                         if (!description.empty()) embed["description"] = description;
                                         if (!colour.empty()) {
-                                            std::string clean_col = colour;
-                                            std::transform(clean_col.begin(), clean_col.end(), clean_col.begin(), ::tolower);
-                                            if (clean_col == "random") {
-                                                std::vector<std::string> cols = {"#a78bfa", "#3b82f6", "#10b981", "#f59e0b", "#ef4444"};
-                                                embed["colour"] = cols[std::rand() % cols.size()];
-                                            } else if (clean_col == "green") {
-                                                embed["colour"] = "#10b981";
-                                            } else if (clean_col == "blue") {
-                                                embed["colour"] = "#3b82f6";
-                                            } else if (clean_col == "red") {
-                                                embed["colour"] = "#ef4444";
-                                            } else if (clean_col == "yellow") {
-                                                embed["colour"] = "#f59e0b";
-                                            } else if (clean_col == "purple") {
-                                                embed["colour"] = "#8b5cf6";
-                                            } else {
-                                                if (colour.rfind("#", 0) != 0 && (colour.length() == 6 || colour.length() == 8)) {
-                                                    embed["colour"] = "#" + colour;
-                                                } else {
-                                                    embed["colour"] = colour;
-                                                }
-                                            }
+                                            std::string resolved = resolve_colour(colour);
+                                            if (!resolved.empty()) embed["colour"] = resolved;
                                         }
 
                                         std::string final_img = "";
@@ -463,18 +497,18 @@ public:
                                         ? custom_embed["description"].get<std::string>() : "";
                                     if (cur_desc.find(listing.invite_url) == std::string::npos) {
                                         cur_desc += "\n\n👉 **Join here:** " + listing.invite_url;
-                                        custom_embed["description"] = cur_desc;
                                     }
+                                    custom_embed["description"] = trunc(cur_desc, 1000);
                                 }
                                 ad_payload.embeds.push_back(custom_embed);
                             } else {
                                 nlohmann::json embed = nlohmann::json::object();
-                                embed["title"] = "📢 Server Bump: " + listing.name;
+                                embed["title"] = trunc("📢 Server Bump: " + listing.name, 128);
                                 embed["colour"] = "#a78bfa";
-                                std::string desc = listing.description;
-                                if (!listing.tags.empty()) desc += "\n\n**Tags:** " + listing.tags;
+                                std::string desc = trunc(listing.description, 700);
+                                if (!listing.tags.empty()) desc += "\n\n**Tags:** " + trunc(listing.tags, 200);
                                 if (!listing.invite_url.empty()) desc += "\n\n👉 **Join here:** " + listing.invite_url;
-                                embed["description"] = desc;
+                                embed["description"] = trunc(desc, 1000);
                                 ad_payload.embeds.push_back(embed);
                             }
 
@@ -639,28 +673,8 @@ public:
                                                         if (!title.empty()) embed["title"] = title;
                                                         if (!description.empty()) embed["description"] = description;
                                                         if (!colour.empty()) {
-                                                            std::string clean_col = colour;
-                                                            std::transform(clean_col.begin(), clean_col.end(), clean_col.begin(), ::tolower);
-                                                            if (clean_col == "random") {
-                                                                std::vector<std::string> cols = {"#a78bfa", "#3b82f6", "#10b981", "#f59e0b", "#ef4444"};
-                                                                embed["colour"] = cols[std::rand() % cols.size()];
-                                                            } else if (clean_col == "green") {
-                                                                embed["colour"] = "#10b981";
-                                                            } else if (clean_col == "blue") {
-                                                                embed["colour"] = "#3b82f6";
-                                                            } else if (clean_col == "red") {
-                                                                embed["colour"] = "#ef4444";
-                                                            } else if (clean_col == "yellow") {
-                                                                embed["colour"] = "#f59e0b";
-                                                            } else if (clean_col == "purple") {
-                                                                embed["colour"] = "#8b5cf6";
-                                                            } else {
-                                                                if (colour.rfind("#", 0) != 0 && (colour.length() == 6 || colour.length() == 8)) {
-                                                                    embed["colour"] = "#" + colour;
-                                                                } else {
-                                                                    embed["colour"] = colour;
-                                                                }
-                                                            }
+                                                            std::string resolved = resolve_colour(colour);
+                                                            if (!resolved.empty()) embed["colour"] = resolved;
                                                         }
 
                                                         std::string final_img = "";

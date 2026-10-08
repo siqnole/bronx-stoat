@@ -53,6 +53,16 @@ public:
             if (msg.raw.contains("webhookId") && !msg.raw["webhookId"].is_null()) return;
             if (msg.raw.contains("webhook_id") && !msg.raw["webhook_id"].is_null()) return;
 
+            // Check if this user is in an active server-sync wizard
+            {
+                std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                auto it = sync_wizards_.find(msg.author.id);
+                if (it != sync_wizards_.end()) {
+                    handle_sync_wizard_input(bot, msg, it->second);
+                    return;
+                }
+            }
+
             // Ignore commands
             std::vector<std::string> prefixes;
             if (bot.config().prefix_resolver) {
@@ -682,9 +692,382 @@ public:
             },
             "Utility"
         });
+
+        // `.serversync` command
+        bot.register_command({
+            "serversync",
+            {},
+            "sync entire server structures between platforms, auto-bridging matched channels.",
+            "serversync [generate|<code>|yes|edit|remove|status]",
+            {},
+            [this](stoatpp::cluster& bot, const stoatpp::events::Message& msg, const std::vector<std::string>& args) {
+                std::string user_id   = msg.author.id;
+                std::string server_id = msg.server_id;
+                std::string channel_id = msg.channel_id;
+
+                if (args.empty()) {
+                    // Show status for this server
+                    {
+                        std::lock_guard<std::mutex> lock(pending_sync_status_mutex_);
+                        pending_sync_status_[user_id] = [&bot, channel_id](bool found, const nlohmann::json& pairs) {
+                            if (!found || pairs.empty()) {
+                                bot.send_message(channel_id,
+                                    "ℹ️ **Server Sync Status**\nThis server has no active sync links.\n\n"
+                                    "• `.serversync generate` — generate a pairing code\n"
+                                    "• `.serversync <code>` — redeem a code from another platform\n"
+                                    "• `.serversync remove [platform]` — remove all pairs with a platform");
+                                return;
+                            }
+                            std::string out = "🔗 **Server Sync Status**\n\n";
+                            for (const auto& p : pairs) {
+                                out += "• **" + p.value("local_channel_name", p.value("local_channel_id", "?")) + "**";
+                                out += " ↔ `" + p.value("remote_channel_id", "?") + "`";
+                                out += " on **" + p.value("remote_platform", "?") + "**\n";
+                            }
+                            bot.send_message(channel_id, out);
+                        };
+                    }
+                    nlohmann::json req = {
+                        {"type",      "server_sync_status"},
+                        {"user_id",   user_id},
+                        {"server_id", server_id}
+                    };
+                    send_json(req);
+                    return;
+                }
+
+                const std::string& sub = args[0];
+
+                if (sub == "generate") {
+                    bot.fetch_member(server_id, user_id, [this, &bot, msg, user_id, server_id, channel_id]
+                            (stoatpp::models::Member member, bool success) {
+                        if (!success || !is_user_trusted_or_owner(bot, server_id, user_id, member)) {
+                            bot.send_message(channel_id, bronx::emj_warning + " You must be an administrator or trusted user to start a server sync.");
+                            return;
+                        }
+                        // Snapshot local channels
+                        nlohmann::json channels = snapshot_server_channels(bot, server_id);
+                        {
+                            std::lock_guard<std::mutex> lock(pending_sync_gens_mutex_);
+                            pending_sync_gens_[user_id] = [&bot, channel_id, user_id](const std::string& code) {
+                                auto dm_res = bot.rest().open_dm(user_id);
+                                std::string dm_id;
+                                if (dm_res.body.contains("_id") && dm_res.body["_id"].is_string())
+                                    dm_id = dm_res.body["_id"].get<std::string>();
+                                else if (dm_res.body.contains("id") && dm_res.body["id"].is_string())
+                                    dm_id = dm_res.body["id"].get<std::string>();
+                                if (!dm_id.empty()) {
+                                    bot.send_message(dm_id,
+                                        "🔑 **Server Sync Code**\n"
+                                        "Run `.serversync " + code + "` in any channel of the target server on another platform.\n"
+                                        "⏳ This code will expire in 5 minutes.");
+                                    bot.send_message(channel_id, "📩 **Code sent to your DMs!** (<@" + user_id + ">)");
+                                } else {
+                                    bot.send_message(channel_id, bronx::emj_warning + " Could not open a DM. Enable DMs from server members.");
+                                }
+                            };
+                        }
+                        nlohmann::json req = {
+                            {"type",      "server_sync_generate"},
+                            {"user_id",   user_id},
+                            {"server_id", server_id},
+                            {"channels",  channels}
+                        };
+                        send_json(req);
+                    });
+
+                } else if (sub == "remove") {
+                    bot.fetch_member(server_id, user_id, [this, &bot, msg, user_id, server_id, channel_id, args]
+                            (stoatpp::models::Member member, bool success) {
+                        if (!success || !is_user_trusted_or_owner(bot, server_id, user_id, member)) {
+                            bot.send_message(channel_id, bronx::emj_warning + " Permission denied.");
+                            return;
+                        }
+                        std::string platform = (args.size() > 1) ? args[1] : "";
+                        if (bronx::g_db) {
+                            if (platform.empty()) {
+                                // Remove all platforms — query first then delete each
+                                auto pairs = bronx::g_db->get_server_sync_pairs(server_id);
+                                std::unordered_set<std::string> platforms_seen;
+                                for (const auto& p : pairs) platforms_seen.insert(p.remote_platform);
+                                for (const auto& plat : platforms_seen)
+                                    bronx::g_db->remove_server_sync_pairs(server_id, plat);
+                            } else {
+                                bronx::g_db->remove_server_sync_pairs(server_id, platform);
+                            }
+                        }
+                        nlohmann::json req = {
+                            {"type",      "server_sync_remove"},
+                            {"user_id",   user_id},
+                            {"server_id", server_id},
+                            {"platform",  platform}
+                        };
+                        send_json(req);
+                        bot.send_message(channel_id, "🎉 Server sync pairs removed.");
+                    });
+
+                } else if (sub == "yes") {
+                    // Confirm wizard proposal
+                    std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                    auto it = sync_wizards_.find(user_id);
+                    if (it == sync_wizards_.end() || !it->second.awaiting_confirm) {
+                        bot.send_message(channel_id, bronx::emj_no + " No active server sync proposal to confirm.");
+                        return;
+                    }
+                    commit_sync_wizard(bot, it->second, user_id);
+                    sync_wizards_.erase(it);
+
+                } else if (sub == "edit") {
+                    std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                    auto it = sync_wizards_.find(user_id);
+                    if (it == sync_wizards_.end()) {
+                        bot.send_message(channel_id, bronx::emj_no + " No active server sync proposal to edit.");
+                        return;
+                    }
+                    it->second.awaiting_edit    = true;
+                    it->second.awaiting_confirm = false;
+                    it->second.channel_id       = channel_id;
+                    bot.send_message(channel_id,
+                        "✏️ **Manual Pairing Mode**\n"
+                        "Send pairs one per line as:\n"
+                        "```\nstoat_channel_id=remote_channel_id\n```\n"
+                        "Type `done` when finished, or `cancel` to abort.");
+
+                } else {
+                    // Treat as a code to redeem
+                    std::string code = sub;
+                    bot.fetch_member(server_id, user_id, [this, &bot, msg, user_id, server_id, channel_id, code]
+                            (stoatpp::models::Member member, bool success) {
+                        if (!success || !is_user_trusted_or_owner(bot, server_id, user_id, member)) {
+                            bot.send_message(channel_id, bronx::emj_warning + " Permission denied.");
+                            return;
+                        }
+                        nlohmann::json channels = snapshot_server_channels(bot, server_id);
+                        bot.send_message(channel_id, "🔍 Validating code and building channel map... please wait.");
+                        nlohmann::json req = {
+                            {"type",      "server_sync_redeem"},
+                            {"user_id",   user_id},
+                            {"server_id", server_id},
+                            {"code",      code},
+                            {"channels",  channels}
+                        };
+                        send_json(req);
+                    });
+                }
+            },
+            "Utility"
+        });
     }
 
 private:
+    // -------------------------------------------------------------------------
+    // Server-sync wizard state
+    // -------------------------------------------------------------------------
+    struct SyncWizardState {
+        std::string server_id;
+        std::string remote_platform;
+        std::string remote_server_id;
+        std::string channel_id;           // channel to reply to
+        // pairs proposed by the broker (or edited by the user)
+        std::vector<std::pair<std::string,std::string>> pairs; // local_ch_id, remote_ch_id
+        bool awaiting_confirm = false;
+        bool awaiting_edit    = false;
+    };
+
+    // Helper: post the proposal table, set wizard state, ask user to confirm
+    void post_sync_proposal(stoatpp::cluster& bot,
+                            const std::string& user_id,
+                            const std::string& channel_id,
+                            SyncWizardState& state,
+                            const nlohmann::json& pairs_json) {
+        state.pairs.clear();
+        std::string table = "🔗 **Server Sync Proposal**\n"
+                            "Channels matched by name (✅) or unmatched (⚠️):\n\n";
+
+        for (const auto& p : pairs_json) {
+            std::string lch  = p.value("local_channel_id",   "");
+            std::string lnam = p.value("local_channel_name",  lch);
+            std::string rch  = p.value("remote_channel_id",  "");
+            std::string rnam = p.value("remote_channel_name", rch);
+            bool matched     = p.value("auto_matched", false);
+
+            if (!lch.empty() && !rch.empty()) {
+                state.pairs.push_back({lch, rch});
+                table += (matched ? "✅" : "⚠️");
+                table += " **#" + lnam + "** ↔ **#" + rnam + "**\n";
+            } else if (!lch.empty()) {
+                table += "❌ **#" + lnam + "** → *(no match)*\n";
+            }
+        }
+
+        table += "\nReply `.serversync yes` to confirm, `.serversync edit` to adjust manually, or ignore to cancel.";
+        bot.send_message(channel_id, table);
+        state.awaiting_confirm = true;
+        state.awaiting_edit    = false;
+        state.channel_id       = channel_id;
+    }
+
+    // Helper: commit wizard — send confirm to broker and auto-bridge each pair
+    void commit_sync_wizard(stoatpp::cluster& bot,
+                            SyncWizardState& state,
+                            const std::string& user_id) {
+        // Build pairs JSON
+        nlohmann::json pairs_json = nlohmann::json::array();
+        for (const auto& [lch, rch] : state.pairs) {
+            pairs_json.push_back({
+                {"local_channel_id",  lch},
+                {"remote_channel_id", rch}
+            });
+        }
+
+        // Persist locally
+        if (bronx::g_db) {
+            std::vector<bronx::ServerSyncPair> db_pairs;
+            for (const auto& [lch, rch] : state.pairs) {
+                bronx::ServerSyncPair p;
+                p.local_server_id  = state.server_id;
+                p.local_channel_id = lch;
+                p.remote_platform  = state.remote_platform;
+                p.remote_server_id = state.remote_server_id;
+                p.remote_channel_id= rch;
+                db_pairs.push_back(std::move(p));
+            }
+            bronx::g_db->save_server_sync_pairs(state.server_id,
+                                                state.remote_platform,
+                                                db_pairs);
+        }
+
+        // Tell broker to commit and auto-create bridge links per pair
+        nlohmann::json confirm = {
+            {"type",            "server_sync_confirm"},
+            {"user_id",         user_id},
+            {"server_id",       state.server_id},
+            {"remote_platform", state.remote_platform},
+            {"pairs",           pairs_json}
+        };
+        send_json(confirm);
+
+        // Also fire a bridge_add_generate for every confirmed local channel
+        // so the broker auto-bridges each pair without user intervention.
+        for (const auto& [lch, rch] : state.pairs) {
+            std::string gen_user = user_id;
+            {
+                std::lock_guard<std::mutex> lock(pending_bridge_gens_mutex_);
+                // Capture the remote channel so we can redeem immediately on response
+                pending_bridge_gens_[gen_user + ":" + lch] =
+                    [this, &bot, lch, rch, gen_user, &state]
+                    (const std::string& code, const std::string&) {
+                        // Redeem the code for the remote channel automatically
+                        std::string ruser = gen_user;
+                        {
+                            std::lock_guard<std::mutex> lock2(pending_bridge_redeems_mutex_);
+                            pending_bridge_redeems_[ruser + ":" + rch] =
+                                [](const std::string&, const std::string&, const std::string&) {};
+                        }
+                        nlohmann::json redeem = {
+                            {"type",       "bridge_add_redeem"},
+                            {"user_id",    ruser},
+                            {"channel_id", rch},
+                            {"code",       code}
+                        };
+                        send_json(redeem);
+                    };
+            }
+            nlohmann::json gen = {
+                {"type",       "bridge_add_generate"},
+                {"user_id",   user_id + ":" + lch},   // compound key to disambiguate
+                {"channel_id", lch}
+            };
+            send_json(gen);
+        }
+    }
+
+    // Helper: process a line typed during wizard edit mode
+    void handle_sync_wizard_input(stoatpp::cluster& bot,
+                                  const stoatpp::events::Message& msg,
+                                  SyncWizardState& state) {
+        std::string text = msg.content;
+        // Strip leading whitespace
+        while (!text.empty() && std::isspace((unsigned char)text[0])) text.erase(0, 1);
+
+        if (state.awaiting_confirm) {
+            // In confirm mode, only .serversync yes/edit will fire (handled in command)
+            // but if user types raw "yes"/"no" here, handle gracefully
+            if (text == "yes" || text == "y") {
+                commit_sync_wizard(bot, state, msg.author.id);
+                {
+                    std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                    sync_wizards_.erase(msg.author.id);
+                }
+                bot.send_message(state.channel_id,
+                    "🎉 **Server sync committed!** Bridge links are being established for all matched channels.");
+            } else if (text == "no" || text == "cancel") {
+                std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                sync_wizards_.erase(msg.author.id);
+                bot.send_message(state.channel_id, "❌ Server sync cancelled.");
+            }
+            return;
+        }
+
+        if (state.awaiting_edit) {
+            if (text == "cancel") {
+                std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                sync_wizards_.erase(msg.author.id);
+                bot.send_message(state.channel_id, "❌ Server sync cancelled.");
+                return;
+            }
+            if (text == "done") {
+                if (state.pairs.empty()) {
+                    bot.send_message(state.channel_id, bronx::emj_no + " No pairs set. Add at least one pair before confirming.");
+                    return;
+                }
+                commit_sync_wizard(bot, state, msg.author.id);
+                {
+                    std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                    sync_wizards_.erase(msg.author.id);
+                }
+                bot.send_message(state.channel_id,
+                    "🎉 **Server sync committed!** Bridge links are being established for all matched channels.");
+                return;
+            }
+            // Parse "local_id=remote_id" pair
+            size_t eq = text.find('=');
+            if (eq == std::string::npos) {
+                bot.send_message(state.channel_id,
+                    bronx::emj_no + " Invalid format. Use `local_channel_id=remote_channel_id`. Type `done` to finish or `cancel` to abort.");
+                return;
+            }
+            std::string lch = text.substr(0, eq);
+            std::string rch = text.substr(eq + 1);
+            // Remove duplicates for this local channel
+            state.pairs.erase(
+                std::remove_if(state.pairs.begin(), state.pairs.end(),
+                    [&lch](const auto& pr) { return pr.first == lch; }),
+                state.pairs.end());
+            state.pairs.push_back({lch, rch});
+            bot.send_message(state.channel_id,
+                "✅ Pair added: `" + lch + "` ↔ `" + rch + "`. "
+                "Send another pair or type `done` to confirm.");
+        }
+    }
+
+    // Helper: snapshot all visible channels for a server
+    nlohmann::json snapshot_server_channels(stoatpp::cluster& bot,
+                                            const std::string& server_id) {
+        nlohmann::json arr = nlohmann::json::array();
+        auto server_opt = bot.get_server(server_id);
+        if (!server_opt) return arr;
+        for (const auto& ch_id : server_opt->channels) {
+            auto ch_opt = bot.get_channel(ch_id);
+            if (!ch_opt) continue;
+            arr.push_back({
+                {"id",   ch_id},
+                {"name", ch_opt->name ? *ch_opt->name : ""}
+            });
+        }
+        return arr;
+    }
+
     void send_json(const nlohmann::json& j) {
         std::lock_guard<std::mutex> lock(socket_mutex_);
         if (socket_fd_ != -1) {
@@ -1137,6 +1520,110 @@ private:
             std::string channel_id = j["channel_id"].get<std::string>();
             bot.send_message(channel_id, "" + bronx::emj_warning + " This channel has been unbridged.");
         }
+        // --- Server Sync events ---
+        else if (type == "server_sync_generated") {
+            std::string user_id = j["user_id"].get<std::string>();
+            std::string code    = j["code"].get<std::string>();
+            std::function<void(const std::string&)> cb = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(pending_sync_gens_mutex_);
+                auto it = pending_sync_gens_.find(user_id);
+                if (it != pending_sync_gens_.end()) {
+                    cb = it->second;
+                    pending_sync_gens_.erase(it);
+                }
+            }
+            if (cb) cb(code);
+        }
+        else if (type == "server_sync_proposal") {
+            std::string user_id         = j["user_id"].get<std::string>();
+            std::string server_id       = j.value("server_id", "");
+            std::string remote_platform = j.value("remote_platform", "");
+            std::string remote_server_id= j.value("remote_server_id", "");
+            nlohmann::json pairs_json   = j.contains("pairs") ? j["pairs"] : nlohmann::json::array();
+
+            // Build / replace wizard state
+            SyncWizardState state;
+            state.server_id       = server_id;
+            state.remote_platform = remote_platform;
+            state.remote_server_id= remote_server_id;
+
+            // Find a reply channel — use any bridged channel in the server,
+            // or fall back to the first channel the bot can see.
+            std::string reply_ch;
+            {
+                std::lock_guard<std::mutex> lock(channels_mutex_);
+                for (const auto& ch : bridged_channels_) {
+                    auto ch_opt = bot.get_channel(ch);
+                    if (ch_opt && ch_opt->server && *ch_opt->server == server_id) {
+                        reply_ch = ch;
+                        break;
+                    }
+                }
+            }
+            if (reply_ch.empty()) {
+                auto srv_opt = bot.get_server(server_id);
+                if (srv_opt && !srv_opt->channels.empty())
+                    reply_ch = srv_opt->channels[0];
+            }
+
+            post_sync_proposal(bot, user_id, reply_ch, state, pairs_json);
+            {
+                std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                sync_wizards_[user_id] = std::move(state);
+            }
+        }
+        else if (type == "server_sync_complete") {
+            std::string user_id   = j["user_id"].get<std::string>();
+            std::string server_id = j.value("server_id", "");
+            // Notify all channels in this server that are bridged
+            std::lock_guard<std::mutex> lock(channels_mutex_);
+            for (const auto& ch : bridged_channels_) {
+                auto ch_opt = bot.get_channel(ch);
+                if (ch_opt && ch_opt->server && *ch_opt->server == server_id) {
+                    bot.send_message(ch, "✅ **Server sync complete!** All matched channels are now linked.");
+                    break; // one notification per server is enough
+                }
+            }
+        }
+        else if (type == "server_sync_error") {
+            std::string user_id = j["user_id"].get<std::string>();
+            std::string message = j["message"].get<std::string>();
+            std::function<void(const std::string&)> cb = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(pending_sync_gens_mutex_);
+                auto it = pending_sync_gens_.find(user_id);
+                if (it != pending_sync_gens_.end()) {
+                    cb = it->second;
+                    pending_sync_gens_.erase(it);
+                }
+            }
+            // Clean up any wizard state too
+            {
+                std::lock_guard<std::mutex> lock(sync_wizard_mutex_);
+                auto it = sync_wizards_.find(user_id);
+                if (it != sync_wizards_.end()) {
+                    bot.send_message(it->second.channel_id,
+                        bronx::emj_no + " **Server Sync Error:** " + message);
+                    sync_wizards_.erase(it);
+                }
+            }
+        }
+        else if (type == "server_sync_status_response") {
+            std::string user_id    = j["user_id"].get<std::string>();
+            bool found             = j.value("found", false);
+            nlohmann::json pairs   = found && j.contains("pairs") ? j["pairs"] : nlohmann::json::array();
+            std::function<void(bool, const nlohmann::json&)> cb = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(pending_sync_status_mutex_);
+                auto it = pending_sync_status_.find(user_id);
+                if (it != pending_sync_status_.end()) {
+                    cb = it->second;
+                    pending_sync_status_.erase(it);
+                }
+            }
+            if (cb) cb(found, pairs);
+        }
     }
 
     void send_emoji_registry() {
@@ -1255,6 +1742,10 @@ private:
         return create_res.success();
     }
 
+
+
+
+
     std::atomic<bool> running_;
     int socket_fd_;
     std::mutex socket_mutex_;
@@ -1291,6 +1782,16 @@ private:
 
     std::mutex pending_bridge_emojis_mutex_;
     std::unordered_map<std::string, std::function<void(bool, const nlohmann::json&)>> pending_bridge_emojis_;
+
+    // Server-sync state
+    std::mutex sync_wizard_mutex_;
+    std::unordered_map<std::string, SyncWizardState> sync_wizards_;
+
+    std::mutex pending_sync_gens_mutex_;
+    std::unordered_map<std::string, std::function<void(const std::string&)>> pending_sync_gens_;
+
+    std::mutex pending_sync_status_mutex_;
+    std::unordered_map<std::string, std::function<void(bool, const nlohmann::json&)>> pending_sync_status_;
 };
 
 } // namespace bronx::cogs
