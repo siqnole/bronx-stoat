@@ -99,6 +99,7 @@ public:
   using WordFilterWhitelist = ::bronx::WordFilterWhitelist;
   using ServerSyncPair = ::bronx::ServerSyncPair;
   using XPBlacklistEntry = ::bronx::XPBlacklistEntry;
+  using UserOptOut = ::bronx::UserOptOut;
 
   bool init(const std::string &host, const std::string &user,
             const std::string &password, const std::string &dbname,
@@ -401,6 +402,11 @@ public:
   get_user_rank_card(const std::string &user_id);
 
   bool save_user_rank_card(const UserRankCard &urc);
+
+  // Opt-out system
+  UserOptOut get_user_optout(const std::string &user_id);
+  bool set_user_optout_flags(const std::string &user_id, int flags);
+  bool is_opted_out(const std::string &user_id, int flag);
 
   bool delete_user_masquerade(const std::string &user_id);
 
@@ -1234,6 +1240,9 @@ private:
   std::unordered_map<std::string, std::vector<XPBlacklistEntry>>
       xp_blacklist_cache_;
   std::shared_mutex xp_blacklist_cache_mutex_;
+
+  std::unordered_map<std::string, int> user_optout_cache_;
+  std::shared_mutex user_optout_cache_mutex_;
 
   bool init_tables();
   bool init_cache();

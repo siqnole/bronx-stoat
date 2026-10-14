@@ -513,6 +513,18 @@ bool Database::init_tables() {
       return false;
     }
 
+    // Create Table user_optouts
+    std::string create_optouts =
+        "CREATE TABLE IF NOT EXISTS user_optouts ("
+        "  user_id VARCHAR(30) NOT NULL PRIMARY KEY,"
+        "  flags INT NOT NULL DEFAULT 0"
+        ")";
+    if (mysql_query(mysql_, create_optouts.c_str())) {
+      std::cerr << "[bronx db] failed to create table 'user_optouts': "
+                << mysql_error(mysql_) << "\n";
+      return false;
+    }
+
     // Create Table tuppers
     std::string create_tuppers = "CREATE TABLE IF NOT EXISTS tuppers ("
                                  "  id INT AUTO_INCREMENT PRIMARY KEY,"

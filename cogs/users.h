@@ -49,11 +49,20 @@ public:
                     
                     std::string discrim = user.discriminator.empty() ? "" : "#" + user.discriminator;
 
+                    // Use a short custom bio for the bot itself to avoid
+                    // blowing past Stoat's 2000-char embed description limit.
+                    std::string bio_text;
+                    if (user.id == bot.current_user().id) {
+                        bio_text = "stoat's premier all-in-one bot — moderation, roles, levels, economy, logging, and 150+ more commands. [learn more](https://bronx.siqnole.dev/)";
+                    } else {
+                        bio_text = user.bio.value_or("none");
+                    }
+
                     std::string desc = "• **id**: `" + user.id + "`\n";
                     desc += "• **display name**: " + user.display_name.value_or("none") + "\n";
                     desc += "• **type**: " + std::string(user.bot ? "bot" : "user") + "\n";
                     desc += "• **status**: " + status_full + "\n";
-                    desc += "• **bio**: " + user.bio.value_or("none") + "\n\n";
+                    desc += "• **bio**: " + bio_text + "\n\n";
                     desc += "• **joined stoat**: " + stoat_join + "\n";
                     desc += "• **joined " + server_name + "**: " + server_join + "\n";
                     

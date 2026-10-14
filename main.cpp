@@ -1143,6 +1143,11 @@ int main(int argc, char *argv[]) {
             }
           }
 
+          // 4. Check user opt-out
+          if (!skip_xp && bronx::g_db->is_opted_out(msg.author.id, bronx::OPTOUT_LEVELING)) {
+            skip_xp = true;
+          }
+
           if (!skip_xp) {
             // Calculate random XP to award
             int min_xp = cfg_opt->min_xp_per_message;

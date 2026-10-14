@@ -9,6 +9,8 @@
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace bronx::cogs {
 
@@ -1558,20 +1560,28 @@ public:
           embed["title"] = "✏️ Message Edited";
           embed["colour"] = "#ffaa00"; // Orange
 
+          // Build a GitHub-style diff block: one - line for old, one + line for new
+          auto make_diff_block = [](const std::string& before, const std::string& after) -> std::string {
+            // Replace newlines inside each snippet so they stay on one logical line
+            auto flatten = [](std::string s) -> std::string {
+              std::string out;
+              for (char c : s) out += (c == '\n') ? ' ' : c;
+              return out;
+            };
+            std::string b = flatten(before);
+            std::string a = flatten(after);
+            if (b.size() > 900) b = b.substr(0, 897) + "...";
+            if (a.size() > 900) a = a.substr(0, 897) + "...";
+            return "```diff\n- " + b + "\n+ " + a + "\n```";
+          };
+
           std::string desc = "• **Channel:** <#" + e.channel_id + ">\n";
           if (!author_id.empty()) {
-            desc += "• **Author:** <@" + author_id +
-                    ">\n"
-                    "• **Before:**\n" +
-                    trunc_old +
-                    "\n\n"
-                    "• **After:**\n" +
-                    trunc_new + "\n";
+            desc += "• **Author:** <@" + author_id + ">\n";
+            desc += make_diff_block(trunc_old, trunc_new) + "\n";
           } else {
-            desc += "• **Message ID:** `" + e.id +
-                    "` *(not cached)*\n"
-                    "• **After:**\n" +
-                    trunc_new + "\n";
+            desc += "• **Message ID:** `" + e.id + "` *(not cached)*\n";
+            desc += make_diff_block("", trunc_new) + "\n";
           }
           embed["description"] = truncate_str(desc, 1900);
           return std::make_pair("", embed);
@@ -2173,21 +2183,63 @@ public:
           std::string username = usr_opt ? usr_opt->username : "";
 
           std::string details = "";
+
+          // Nickname changes
           if (e.data.contains("nickname")) {
             std::string new_nick = e.data["nickname"].is_null()
                                        ? "none"
                                        : e.data["nickname"].get<std::string>();
-            details += "• **Nickname Change:** ➔ " + new_nick + "\n";
+            details += "• **Nickname:** ➔ " + new_nick + "\n";
           }
-
           for (const auto &field : e.clear) {
             if (field == "Nickname") {
-              details += "• **Nickname Change:** Nickname removed\n";
+              details += "• **Nickname:** removed\n";
             }
           }
 
+          // Role diff — GitHub-style diff block
           if (e.data.contains("roles") && e.data["roles"].is_array()) {
-            details += "• **Roles updated**\n";
+            // Build new role set from event
+            std::unordered_set<std::string> new_roles;
+            for (const auto &r : e.data["roles"]) {
+              if (r.is_string()) new_roles.insert(r.get<std::string>());
+            }
+
+            // Get old role set from cached member
+            std::unordered_set<std::string> old_roles;
+            auto cached_member = bot.get_member(e.server_id, e.user_id);
+            if (cached_member) {
+              for (const auto &r : cached_member->roles) old_roles.insert(r);
+            }
+
+            // Build role name lookup from server cache
+            auto srv = bot.get_server(e.server_id);
+            auto role_name = [&](const std::string &rid) -> std::string {
+              if (srv) {
+                for (const auto &r : srv->roles) {
+                  if (r.id == rid) return r.name;
+                }
+              }
+              return rid; // fallback to ID
+            };
+
+            std::vector<std::string> added, removed;
+            for (const auto &r : new_roles) {
+              if (!old_roles.count(r)) added.push_back(role_name(r));
+            }
+            for (const auto &r : old_roles) {
+              if (!new_roles.count(r)) removed.push_back(role_name(r));
+            }
+
+            if (!added.empty() || !removed.empty()) {
+              std::string diff = "```diff\n";
+              for (const auto &r : added)   diff += "+ " + r + "\n";
+              for (const auto &r : removed) diff += "- " + r + "\n";
+              diff += "```";
+              details += "• **Roles:**\n" + diff + "\n";
+            } else {
+              details += "• **Roles updated**\n"; // no old-state cached
+            }
           }
 
           if (details.empty())

@@ -734,4 +734,16 @@ struct ServerSyncPair {
     uint64_t created_at = 0;
 };
 
+// Opt-out flags (bitmask stored in user_optouts.flags)
+static constexpr int OPTOUT_LEVELING = 1; // skip XP gain
+static constexpr int OPTOUT_ECONOMY  = 2; // skip economy interactions
+static constexpr int OPTOUT_LOGGING  = 4; // skip message edit/delete logs
+
+struct UserOptOut {
+    std::string user_id;
+    int flags = 0; // combination of OPTOUT_* constants
+
+    bool has(int flag) const { return (flags & flag) != 0; }
+};
+
 } // namespace bronx

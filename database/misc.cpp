@@ -1775,3 +1775,62 @@ namespace bronx {
   }
 
 } // namespace bronx
+
+// ---------------------------------------------------------------------------
+// Opt-out system
+// ---------------------------------------------------------------------------
+
+Database::UserOptOut Database::get_user_optout(const std::string &user_id) {
+  {
+    std::shared_lock<std::shared_mutex> lock(user_optout_cache_mutex_);
+    auto it = user_optout_cache_.find(user_id);
+    if (it != user_optout_cache_.end()) {
+      UserOptOut out;
+      out.user_id = user_id;
+      out.flags = it->second;
+      return out;
+    }
+  }
+  std::lock_guard<std::mutex> db_lock(db_mutex_);
+  if (!mysql_) return {user_id, 0};
+  std::string q = "SELECT flags FROM user_optouts WHERE user_id = '" +
+                  escape_string(user_id) + "'";
+  UserOptOut result;
+  result.user_id = user_id;
+  if (mysql_query(mysql_, q.c_str()) == 0) {
+    MYSQL_RES *res = mysql_store_result(mysql_);
+    if (res) {
+      MYSQL_ROW row = mysql_fetch_row(res);
+      if (row) result.flags = row[0] ? std::stoi(row[0]) : 0;
+      mysql_free_result(res);
+    }
+  }
+  {
+    std::lock_guard<std::shared_mutex> wlock(user_optout_cache_mutex_);
+    user_optout_cache_[user_id] = result.flags;
+  }
+  return result;
+}
+
+bool Database::set_user_optout_flags(const std::string &user_id, int flags) {
+  std::lock_guard<std::mutex> db_lock(db_mutex_);
+  if (!mysql_) return false;
+  std::string esc_uid = escape_string(user_id);
+  std::string q;
+  if (flags == 0) {
+    q = "DELETE FROM user_optouts WHERE user_id = '" + esc_uid + "'";
+  } else {
+    q = "INSERT INTO user_optouts (user_id, flags) VALUES ('" + esc_uid +
+        "', " + std::to_string(flags) + ") "
+        "ON DUPLICATE KEY UPDATE flags = " + std::to_string(flags);
+  }
+  if (mysql_query(mysql_, q.c_str())) return false;
+  std::lock_guard<std::shared_mutex> wlock(user_optout_cache_mutex_);
+  user_optout_cache_[user_id] = flags;
+  return true;
+}
+
+bool Database::is_opted_out(const std::string &user_id, int flag) {
+  return get_user_optout(user_id).has(flag);
+}
+
