@@ -361,6 +361,7 @@ dispatch_log(stoatpp::cluster &bot, const std::string &server_id,
       stoatpp::models::WebhookExecutePayload wh_payload;
       wh_payload.content = payload.content;
       wh_payload.username = "Bronx Logger";
+      wh_payload.avatar_url = bot.current_user().avatar_url(bot.config().cdn_url);
       wh_payload.embeds = payload.embeds;
 
       auto exec_res = bot.rest().execute_webhook(wh_id, wh_token, wh_payload);
@@ -1471,23 +1472,27 @@ public:
               {"username", username},
               {"channel", "<#" + e.channel_id + ">"},
               {"content", trunc_deleted},
-              {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
+              {"jump_url", "https://app.stoat.chat/channel/" + e.channel_id + "/" + e.id}};
 
           auto default_fallback = [e, author_id, username, trunc_deleted]() {
             nlohmann::json embed = nlohmann::json::object();
             embed["title"] = "🗑️ Message Deleted";
-            embed["colour"] = "#ff4444"; // Red
+            embed["colour"] = "#ff4444";
 
-            std::string desc = "• **Channel:** <#" + e.channel_id + ">\n";
+            std::string desc;
             if (!author_id.empty()) {
-              desc += "• **Author:** <@" + author_id + "> (" + username +
-                      ")\n"
-                      "• **Content:**\n" +
-                      trunc_deleted + "\n";
+              desc = "<@" + author_id + "> in <#" + e.channel_id + ">\n";
+              if (!trunc_deleted.empty()) {
+                // Show deleted content in a blockquote-style diff block
+                std::string flat;
+                for (char c : trunc_deleted) flat += (c == '\n') ? ' ' : c;
+                if (flat.size() > 1800) flat = flat.substr(0, 1797) + "...";
+                desc += "```diff\n- " + flat + "\n```";
+              }
             } else {
-              desc += "• **Message ID:** `" + e.id + "` *(not cached)*\n";
+              desc = "<#" + e.channel_id + "> — message `" + e.id + "` *(not cached)*";
             }
-            embed["description"] = truncate_str(desc, 1900);
+            embed["description"] = desc;
             return std::make_pair("", embed);
           };
 
@@ -1553,36 +1558,31 @@ public:
             {"channel", "<#" + e.channel_id + ">"},
             {"before", trunc_old},
             {"after", trunc_new},
-            {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
+            {"jump_url", "https://app.stoat.chat/channel/" + e.channel_id + "/" + e.id}};
 
         auto default_fallback = [e, author_id, trunc_old, trunc_new]() {
           nlohmann::json embed = nlohmann::json::object();
           embed["title"] = "✏️ Message Edited";
-          embed["colour"] = "#ffaa00"; // Orange
+          embed["colour"] = "#ffaa00";
 
-          // Build a GitHub-style diff block: one - line for old, one + line for new
-          auto make_diff_block = [](const std::string& before, const std::string& after) -> std::string {
-            // Replace newlines inside each snippet so they stay on one logical line
-            auto flatten = [](std::string s) -> std::string {
-              std::string out;
-              for (char c : s) out += (c == '\n') ? ' ' : c;
-              return out;
-            };
-            std::string b = flatten(before);
-            std::string a = flatten(after);
-            if (b.size() > 900) b = b.substr(0, 897) + "...";
-            if (a.size() > 900) a = a.substr(0, 897) + "...";
-            return "```diff\n- " + b + "\n+ " + a + "\n```";
+          auto flatten = [](const std::string& s) -> std::string {
+            std::string out;
+            for (char c : s) out += (c == '\n') ? ' ' : c;
+            return out;
           };
 
-          std::string desc = "• **Channel:** <#" + e.channel_id + ">\n";
+          std::string b = flatten(trunc_old);
+          std::string a = flatten(trunc_new);
+          if (b.size() > 860) b = b.substr(0, 857) + "...";
+          if (a.size() > 860) a = a.substr(0, 857) + "...";
+
+          std::string desc;
           if (!author_id.empty()) {
-            desc += "• **Author:** <@" + author_id + ">\n";
-            desc += make_diff_block(trunc_old, trunc_new) + "\n";
+            desc = "<@" + author_id + "> in <#" + e.channel_id + ">\n";
           } else {
-            desc += "• **Message ID:** `" + e.id + "` *(not cached)*\n";
-            desc += make_diff_block("", trunc_new) + "\n";
+            desc = "<#" + e.channel_id + "> — message `" + e.id + "` *(not cached)*\n";
           }
+          desc += "```diff\n- " + b + "\n+ " + a + "\n```";
           embed["description"] = truncate_str(desc, 1900);
           return std::make_pair("", embed);
         };
@@ -1637,16 +1637,10 @@ public:
                 auto default_fallback = [e, final_count]() {
                   nlohmann::json embed = nlohmann::json::object();
                   embed["title"] = "📥 Member Joined";
-                  embed["colour"] = "#44ff44"; // Green
-
-                  std::string desc = "• **User:** <@" + e.user_id +
-                                     ">\n"
-                                     "• **User ID:** `" +
-                                     e.user_id + "`\n";
-                  if (final_count > 0) {
-                    desc += "• **Total Members:** " +
-                            std::to_string(final_count) + "\n";
-                  }
+                  embed["colour"] = "#44ff44";
+                  std::string desc = "<@" + e.user_id + ">";
+                  if (final_count > 0)
+                    desc += " — member #" + std::to_string(final_count);
                   embed["description"] = desc;
                   return std::make_pair("", embed);
                 };
@@ -1678,13 +1672,10 @@ public:
                 auto default_fallback = [e, final_count]() {
                   nlohmann::json embed = nlohmann::json::object();
                   embed["title"] = "📤 Member Left";
-                  embed["colour"] = "#888888"; // Grey
-
-                  std::string desc = "• **User ID:** `" + e.user_id + "`\n";
-                  if (final_count > 0) {
-                    desc += "• **Total Members:** " +
-                            std::to_string(final_count) + "\n";
-                  }
+                  embed["colour"] = "#888888";
+                  std::string desc = "`" + e.user_id + "`";
+                  if (final_count > 0)
+                    desc += " — " + std::to_string(final_count) + " members remaining";
                   embed["description"] = desc;
                   return std::make_pair("", embed);
                 };
@@ -1725,15 +1716,11 @@ public:
 
             auto default_fallback = [user_id, old_username, new_username]() {
               nlohmann::json embed = nlohmann::json::object();
-              embed["title"] = "👤 User Updated";
+              embed["title"] = "👤 Username Changed";
               embed["colour"] = "#00aaff";
-              embed["description"] = "• **User:** <@" + user_id +
-                                     ">\n"
-                                     "• **Old Username:** " +
-                                     old_username +
-                                     "\n"
-                                     "• **New Username:** " +
-                                     new_username;
+              embed["description"] = "<@" + user_id + ">\n"
+                                     "```diff\n- " + old_username +
+                                     "\n+ " + new_username + "\n```";
               return std::make_pair("", embed);
             };
 
@@ -1758,14 +1745,8 @@ public:
           auto default_fallback = [e]() {
             nlohmann::json embed = nlohmann::json::object();
             embed["title"] = "🆕 Role Created";
-            embed["colour"] = "#44ff44"; // Green
-            embed["description"] = "• **Role:** <%" + e.role_id +
-                                   ">\n"
-                                   "• **Name:** " +
-                                   e.role.name +
-                                   "\n"
-                                   "• **ID:** `" +
-                                   e.role_id + "`";
+            embed["colour"] = "#44ff44";
+            embed["description"] = "<%" + e.role_id + "> `" + e.role.name + "`";
             return std::make_pair("", embed);
           };
 
@@ -1796,11 +1777,8 @@ public:
           auto default_fallback = [e, role_name]() {
             nlohmann::json embed = nlohmann::json::object();
             embed["title"] = "🗑️ Role Deleted";
-            embed["colour"] = "#ff4444"; // Red
-            embed["description"] = "• **Name:** " + role_name +
-                                   "\n"
-                                   "• **ID:** `" +
-                                   e.role_id + "`";
+            embed["colour"] = "#ff4444";
+            embed["description"] = "`" + role_name + "` `" + e.role_id + "`";
             return std::make_pair("", embed);
           };
 
@@ -1860,14 +1838,10 @@ public:
       auto default_fallback = [e, new_name, details]() {
         nlohmann::json embed = nlohmann::json::object();
         embed["title"] = "✏️ Role Updated";
-        embed["colour"] = "#ffa500"; // Orange
-        embed["description"] = "• **Role:** <%" + e.role_id +
-                               ">\n"
-                               "• **Name:** " +
-                               new_name +
-                               "\n"
-                               "• **ID:** `" +
-                               e.role_id + "`\n" + details;
+        embed["colour"] = "#ffa500";
+        std::string desc = "<%" + e.role_id + ">";
+        if (!details.empty()) desc += "\n" + details;
+        embed["description"] = desc;
         return std::make_pair("", embed);
       };
 
@@ -1891,14 +1865,8 @@ public:
           auto default_fallback = [e, channel_name]() {
             nlohmann::json embed = nlohmann::json::object();
             embed["title"] = "🆕 Channel Created";
-            embed["colour"] = "#44ff44"; // Green
-            embed["description"] = "• **Channel:** <#" + e.channel.id +
-                                   ">\n"
-                                   "• **Name:** " +
-                                   channel_name +
-                                   "\n"
-                                   "• **ID:** `" +
-                                   e.channel.id + "`";
+            embed["colour"] = "#44ff44";
+            embed["description"] = "<#" + e.channel.id + "> `" + channel_name + "`";
             return std::make_pair("", embed);
           };
 
@@ -1928,11 +1896,8 @@ public:
           auto default_fallback = [e, channel_name]() {
             nlohmann::json embed = nlohmann::json::object();
             embed["title"] = "🗑️ Channel Deleted";
-            embed["colour"] = "#ff4444"; // Red
-            embed["description"] = "• **Name:** " + channel_name +
-                                   "\n"
-                                   "• **ID:** `" +
-                                   e.id + "`";
+            embed["colour"] = "#ff4444";
+            embed["description"] = "`" + channel_name + "` `" + e.id + "`";
             return std::make_pair("", embed);
           };
 
@@ -1972,14 +1937,10 @@ public:
       auto default_fallback = [e, new_name, details]() {
         nlohmann::json embed = nlohmann::json::object();
         embed["title"] = "✏️ Channel Updated";
-        embed["colour"] = "#ffa500"; // Orange
-        embed["description"] = "• **Channel:** <#" + e.id +
-                               ">\n"
-                               "• **Name:** " +
-                               new_name +
-                               "\n"
-                               "• **ID:** `" +
-                               e.id + "`\n" + details;
+        embed["colour"] = "#ffa500";
+        std::string desc = "<#" + e.id + ">";
+        if (!details.empty()) desc += "\n" + details;
+        embed["description"] = desc;
         return std::make_pair("", embed);
       };
 
@@ -2016,13 +1977,7 @@ public:
         }
         embed["title"] = title_str;
         embed["colour"] = color_str;
-        embed["description"] = "• **Webhook ID:** `" + e.webhook_id +
-                               "`\n"
-                               "• **Channel:** <#" +
-                               e.channel_id +
-                               ">\n"
-                               "• **Action:** " +
-                               e.type;
+        embed["description"] = "`" + e.webhook_id + "` in <#" + e.channel_id + ">";
         return std::make_pair("", embed);
       };
 
@@ -2051,22 +2006,14 @@ public:
           {"channel", "<#" + e.channel_id + ">"},
           {"messageId", e.id},
           {"emoji", e.emoji_id},
-          {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
+          {"jump_url", "https://app.stoat.chat/channel/" + e.channel_id + "/" + e.id}};
 
       auto default_fallback = [e, username]() {
         nlohmann::json embed = nlohmann::json::object();
         embed["title"] = "➕ Reaction Added";
-        embed["colour"] = "#44ff44"; // Green
-        embed["description"] = "• **User:** <@" + e.user_id + "> (" + username +
-                               ")\n"
-                               "• **Channel:** <#" +
-                               e.channel_id +
-                               ">\n"
-                               "• **Message ID:** `" +
-                               e.id +
-                               "`\n"
-                               "• **Emoji:** " +
-                               e.emoji_id;
+        embed["colour"] = "#44ff44";
+        embed["description"] = "<@" + e.user_id + "> reacted " + e.emoji_id +
+                               " in <#" + e.channel_id + ">";
         return std::make_pair("", embed);
       };
 
@@ -2096,22 +2043,14 @@ public:
           {"channel", "<#" + e.channel_id + ">"},
           {"messageId", e.id},
           {"emoji", e.emoji_id},
-          {"jump_url", "https://app.revolt.chat/channel/" + e.channel_id + "/" + e.id}};
+          {"jump_url", "https://app.stoat.chat/channel/" + e.channel_id + "/" + e.id}};
 
       auto default_fallback = [e, username]() {
         nlohmann::json embed = nlohmann::json::object();
         embed["title"] = "➖ Reaction Removed";
-        embed["colour"] = "#ff4444"; // Red
-        embed["description"] = "• **User:** <@" + e.user_id + "> (" + username +
-                               ")\n"
-                               "• **Channel:** <#" +
-                               e.channel_id +
-                               ">\n"
-                               "• **Message ID:** `" +
-                               e.id +
-                               "`\n"
-                               "• **Emoji:** " +
-                               e.emoji_id;
+        embed["colour"] = "#ff4444";
+        embed["description"] = "<@" + e.user_id + "> removed " + e.emoji_id +
+                               " in <#" + e.channel_id + ">";
         return std::make_pair("", embed);
       };
 
@@ -2164,9 +2103,11 @@ public:
 
       auto default_fallback = [server_name, details]() {
         nlohmann::json embed = nlohmann::json::object();
-        embed["title"] = "🖥️ Server Settings Updated";
-        embed["colour"] = "#ffa500"; // Orange
-        embed["description"] = "• **Server:** " + server_name + "\n" + details;
+        embed["title"] = "🖥️ Server Updated";
+        embed["colour"] = "#ffa500";
+        std::string desc = "`" + server_name + "`";
+        if (!details.empty()) desc += "\n" + details;
+        embed["description"] = desc;
         return std::make_pair("", embed);
       };
 
@@ -2232,13 +2173,22 @@ public:
             }
 
             if (!added.empty() || !removed.empty()) {
+              // Build comma-separated + / - lines, GitHub style
+              auto join = [](const std::vector<std::string>& v) -> std::string {
+                std::string s;
+                for (size_t i = 0; i < v.size(); ++i) {
+                  if (i) s += ", ";
+                  s += "%" + v[i];
+                }
+                return s;
+              };
               std::string diff = "```diff\n";
-              for (const auto &r : added)   diff += "+ " + r + "\n";
-              for (const auto &r : removed) diff += "- " + r + "\n";
+              if (!added.empty())   diff += "+ " + join(added)   + "\n";
+              if (!removed.empty()) diff += "- " + join(removed) + "\n";
               diff += "```";
-              details += "• **Roles:**\n" + diff + "\n";
+              details += diff;
             } else {
-              details += "• **Roles updated**\n"; // no old-state cached
+              details += "*(roles updated — no cache)*";
             }
           }
 
@@ -2253,9 +2203,12 @@ public:
           auto default_fallback = [e, username, details]() {
             nlohmann::json embed = nlohmann::json::object();
             embed["title"] = "👥 Member Updated";
-            embed["colour"] = "#ffa500"; // Orange
-            embed["description"] = "• **Member:** <@" + e.user_id + "> (" +
-                                   username + ")\n" + details;
+            embed["colour"] = "#ffa500";
+            // Header: @user (username), then the diff/details block
+            std::string desc = "<@" + e.user_id + ">";
+            if (!username.empty()) desc += " (" + username + ")";
+            if (!details.empty()) desc += "\n" + details;
+            embed["description"] = desc;
             return std::make_pair("", embed);
           };
 

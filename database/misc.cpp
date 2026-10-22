@@ -1780,6 +1780,8 @@ namespace bronx {
 // Opt-out system
 // ---------------------------------------------------------------------------
 
+namespace bronx {
+
 Database::UserOptOut Database::get_user_optout(const std::string &user_id) {
   {
     std::shared_lock<std::shared_mutex> lock(user_optout_cache_mutex_);
@@ -1834,3 +1836,4 @@ bool Database::is_opted_out(const std::string &user_id, int flag) {
   return get_user_optout(user_id).has(flag);
 }
 
+} // namespace bronx
